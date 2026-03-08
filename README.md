@@ -1,6 +1,6 @@
-# Karasad — AI Karaoke from Any Song
+# Nightingale — AI Karaoke from Any Song
 
-Turn any music folder into a karaoke machine. Karasad scans your library, separates vocals from instrumentals using AI, transcribes lyrics with word-level timestamps, and plays it all back with synchronized highlighting and dynamic shader backgrounds.
+Turn any music folder into a karaoke machine. Nightingale scans your library, separates vocals from instrumentals using AI, transcribes lyrics with word-level timestamps, and plays it all back with synchronized highlighting and dynamic shader backgrounds.
 
 ## Prerequisites
 
@@ -29,8 +29,8 @@ A song typically takes 2–5 minutes to analyze on GPU, 10–20 minutes on CPU.
 ### 1. Clone and build the Rust app
 
 ```bash
-git clone <repo-url> karasad
-cd karasad
+git clone <repo-url> nightingale
+cd nightingale
 cargo build --release
 ```
 
@@ -107,12 +107,12 @@ Music File (.mp3/.flac/...)
   └─────────────┘
 ```
 
-Analysis results are cached at `~/.karasad/cache/` using blake3 file hashes. Re-analyzing only happens if the source file changes.
+Analysis results are cached at `~/.nightingale/cache/` using blake3 file hashes. Re-analyzing only happens if the source file changes.
 
 ## Project structure
 
 ```
-karasad/
+nightingale/
 ├── analyzer/
 │   ├── analyze.py          # Demucs + WhisperX pipeline
 │   ├── requirements.txt

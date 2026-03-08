@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Karasad Song Analyzer
+Nightingale Song Analyzer
 Separates vocals/instrumentals with Demucs and transcribes lyrics with WhisperX.
 
 Usage:
@@ -12,7 +12,7 @@ Outputs (in output_dir):
     {hash}_transcript.json
 
 Progress protocol (parsed by Rust app):
-    [karasad:PROGRESS:<percent>] <message>
+    [nightingale:PROGRESS:<percent>] <message>
 """
 
 import argparse
@@ -36,7 +36,7 @@ torch.load = _patched_torch_load
 
 
 def progress(pct: int, msg: str):
-    print(f"[karasad:PROGRESS:{pct}] {msg}", flush=True)
+    print(f"[nightingale:PROGRESS:{pct}] {msg}", flush=True)
 
 
 def detect_device() -> str:
@@ -123,7 +123,7 @@ def detect_language_multiwindow(model, audio, sample_rate=16000, window_secs=30)
         results = model.model.model.detect_language(encoder_output)
         lang_token, prob = results[0][0]
         lang = lang_token[2:-2]
-        print(f"[karasad:LOG] Window @{offset/sample_rate:.0f}s: lang={lang} prob={prob:.2f}", flush=True)
+        print(f"[nightingale:LOG] Window @{offset/sample_rate:.0f}s: lang={lang} prob={prob:.2f}", flush=True)
         votes.append((lang, prob))
 
     lang_scores: dict[str, float] = {}
@@ -131,7 +131,7 @@ def detect_language_multiwindow(model, audio, sample_rate=16000, window_secs=30)
         lang_scores[lang] = lang_scores.get(lang, 0.0) + prob
 
     best_lang = max(lang_scores, key=lambda l: lang_scores[l])
-    print(f"[karasad:LOG] Language scores: {lang_scores} -> '{best_lang}'", flush=True)
+    print(f"[nightingale:LOG] Language scores: {lang_scores} -> '{best_lang}'", flush=True)
     return best_lang
 
 
@@ -145,7 +145,7 @@ def transcribe_vocals(vocals_path: str, original_audio_path: str, device: str) -
 
     progress(55, "Loading WhisperX model...")
     audio = whisperx.load_audio(vocals_path)
-    print(f"[karasad:LOG] Vocals audio loaded: {len(audio)} samples from {vocals_path}", flush=True)
+    print(f"[nightingale:LOG] Vocals audio loaded: {len(audio)} samples from {vocals_path}", flush=True)
 
     model = whisperx.load_model(
         "large-v3-turbo", device, compute_type=compute_type, task="transcribe"
@@ -153,28 +153,28 @@ def transcribe_vocals(vocals_path: str, original_audio_path: str, device: str) -
 
     progress(58, "Detecting language from vocals (multi-window)...")
     language = detect_language_multiwindow(model, audio)
-    print(f"[karasad:LOG] Final detected language: '{language}'", flush=True)
+    print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
     progress(59, f"Detected language: {language}")
 
     model = whisperx.load_model(
         "large-v3-turbo", device, compute_type=compute_type,
         task="transcribe", language=language,
     )
-    print(f"[karasad:LOG] Model loaded with lang={language}, tokenizer={model.tokenizer}", flush=True)
+    print(f"[nightingale:LOG] Model loaded with lang={language}, tokenizer={model.tokenizer}", flush=True)
 
     progress(60, "Transcribing vocals...")
     result = model.transcribe(audio, batch_size=8, task="transcribe", language=language)
 
     result_language = result.get("language", language)
-    print(f"[karasad:LOG] Transcribe returned language='{result_language}', segments={len(result.get('segments', []))}", flush=True)
+    print(f"[nightingale:LOG] Transcribe returned language='{result_language}', segments={len(result.get('segments', []))}", flush=True)
     if result.get("segments"):
         first_seg = result["segments"][0]
-        print(f"[karasad:LOG] First segment text: '{first_seg.get('text', '')[:100]}'", flush=True)
-        print(f"[karasad:LOG] First segment time: {first_seg.get('start')} -> {first_seg.get('end')}", flush=True)
+        print(f"[nightingale:LOG] First segment text: '{first_seg.get('text', '')[:100]}'", flush=True)
+        print(f"[nightingale:LOG] First segment time: {first_seg.get('start')} -> {first_seg.get('end')}", flush=True)
     progress(75, f"Language: {result_language}")
 
     progress(80, f"Aligning word timestamps (lang={result_language})...")
-    print(f"[karasad:LOG] Loading align model for language='{result_language}' on device='{device}'", flush=True)
+    print(f"[nightingale:LOG] Loading align model for language='{result_language}' on device='{device}'", flush=True)
     align_model, metadata = whisperx.load_align_model(language_code=result_language, device=device)
     result = whisperx.align(result["segments"], align_model, metadata, audio, device)
 
@@ -192,7 +192,7 @@ def transcribe_vocals(vocals_path: str, original_audio_path: str, device: str) -
             duration = end - start
             if duration > MAX_WORD_DURATION:
                 new_start = end - 0.5
-                print(f"[karasad:LOG] Fixing misaligned word '{w['word'].strip()}' ({duration:.1f}s): {start:.1f}->{new_start:.1f}", flush=True)
+                print(f"[nightingale:LOG] Fixing misaligned word '{w['word'].strip()}' ({duration:.1f}s): {start:.1f}->{new_start:.1f}", flush=True)
                 start = new_start
             word_entry = {
                 "word": w["word"].strip(),
@@ -212,29 +212,29 @@ def transcribe_vocals(vocals_path: str, original_audio_path: str, device: str) -
                 "words": words,
                 "_avg_score": avg_score,
             })
-            print(f"[karasad:LOG] Segment [{words[0]['start']:.1f}-{words[-1]['end']:.1f}] avg_score={avg_score:.2f}: {segments[-1]['text'][:80]}", flush=True)
+            print(f"[nightingale:LOG] Segment [{words[0]['start']:.1f}-{words[-1]['end']:.1f}] avg_score={avg_score:.2f}: {segments[-1]['text'][:80]}", flush=True)
 
     while segments and segments[0]["_avg_score"] < EDGE_CONFIDENCE_THRESHOLD:
         dropped = segments.pop(0)
-        print(f"[karasad:LOG] Dropping low-confidence leading segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
+        print(f"[nightingale:LOG] Dropping low-confidence leading segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
 
     while segments and segments[-1]["_avg_score"] < EDGE_CONFIDENCE_THRESHOLD:
         dropped = segments.pop()
-        print(f"[karasad:LOG] Dropping low-confidence trailing segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
+        print(f"[nightingale:LOG] Dropping low-confidence trailing segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
 
     for seg in segments:
         del seg["_avg_score"]
 
     progress(90, f"Transcription complete: {len(segments)} segments, lang={result_language}")
     if segments:
-        print(f"[karasad:LOG] First aligned segment: '{segments[0]['text'][:100]}'", flush=True)
-        print(f"[karasad:LOG] First word: '{segments[0]['words'][0]}'", flush=True)
-        print(f"[karasad:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
+        print(f"[nightingale:LOG] First aligned segment: '{segments[0]['text'][:100]}'", flush=True)
+        print(f"[nightingale:LOG] First word: '{segments[0]['words'][0]}'", flush=True)
+        print(f"[nightingale:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
     return {"language": result_language, "segments": segments}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Karasad Song Analyzer")
+    parser = argparse.ArgumentParser(description="Nightingale Song Analyzer")
     parser.add_argument("audio_path", help="Path to the audio file")
     parser.add_argument("output_dir", help="Directory to write output files")
     parser.add_argument("--hash", dest="file_hash", help="Pre-computed file hash (skip computing)")
@@ -244,7 +244,7 @@ def main():
     output_dir = os.path.abspath(args.output_dir)
 
     if not os.path.isfile(audio_path):
-        print(f"[karasad] ERROR: File not found: {audio_path}", file=sys.stderr)
+        print(f"[nightingale] ERROR: File not found: {audio_path}", file=sys.stderr)
         sys.exit(1)
 
     os.makedirs(output_dir, exist_ok=True)
@@ -267,7 +267,7 @@ def main():
         progress(50, "Stems already cached, skipping separation")
         vocals_path = final_vocals
     else:
-        with tempfile.TemporaryDirectory(prefix="karasad_") as work_dir:
+        with tempfile.TemporaryDirectory(prefix="nightingale_") as work_dir:
             vocals_path, instrumental_path = separate_stems(audio_path, work_dir, device)
             progress(92, "Saving stems to cache...")
             import shutil

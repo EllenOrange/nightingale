@@ -3044,24 +3044,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "karasad"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_kira_audio",
- "blake3",
- "cpal 0.17.1",
- "dirs",
- "hound",
- "lofty",
- "pitch-detection",
- "rfd",
- "serde",
- "serde_json",
- "walkdir",
-]
-
-[[package]]
 name = "khronos-egl"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3409,6 +3391,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys",
+]
+
+[[package]]
+name = "nightingale"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_kira_audio",
+ "blake3",
+ "cpal 0.17.1",
+ "dirs",
+ "hound",
+ "lofty",
+ "pitch-detection",
+ "rfd",
+ "serde",
+ "serde_json",
+ "walkdir",
 ]
 
 [[package]]

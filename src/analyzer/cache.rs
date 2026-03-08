@@ -11,7 +11,7 @@ impl CacheDir {
     pub fn new() -> Self {
         let path = dirs::home_dir()
             .expect("could not find home directory")
-            .join(".karasad")
+            .join(".nightingale")
             .join("cache");
         std::fs::create_dir_all(&path).expect("could not create cache directory");
         Self { path }

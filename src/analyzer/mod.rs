@@ -92,7 +92,7 @@ fn find_python() -> String {
 }
 
 fn parse_progress_line(line: &str) -> Option<(u32, String)> {
-    let prefix = "[karasad:PROGRESS:";
+    let prefix = "[nightingale:PROGRESS:";
     let start = line.find(prefix)?;
     let after_prefix = &line[start + prefix.len()..];
     let end_bracket = after_prefix.find(']')?;

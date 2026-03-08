@@ -34,7 +34,7 @@ fn main() {
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Karasad — Own Your Karaoke".into(),
+                    title: "Nightingale — Your Karaoke".into(),
                     resolution: (1280, 720).into(),
                     mode: window_mode,
                     ..default()

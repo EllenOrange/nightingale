@@ -17,7 +17,7 @@ impl AppConfig {
     fn config_path() -> PathBuf {
         dirs::home_dir()
             .expect("could not find home directory")
-            .join(".karasad")
+            .join(".nightingale")
             .join("config.json")
     }
 
