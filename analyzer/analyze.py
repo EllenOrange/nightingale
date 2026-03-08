@@ -178,23 +178,52 @@ def transcribe_vocals(vocals_path: str, original_audio_path: str, device: str) -
     align_model, metadata = whisperx.load_align_model(language_code=result_language, device=device)
     result = whisperx.align(result["segments"], align_model, metadata, audio, device)
 
+    MAX_WORD_DURATION = 5.0
+    EDGE_CONFIDENCE_THRESHOLD = 0.5
+
     segments = []
     for seg in result["segments"]:
         words = []
         for w in seg.get("words", []):
-            if "start" in w and "end" in w:
-                words.append({
-                    "word": w["word"].strip(),
-                    "start": round(w["start"], 3),
-                    "end": round(w["end"], 3),
-                })
+            if "start" not in w or "end" not in w:
+                continue
+            start = w["start"]
+            end = w["end"]
+            duration = end - start
+            if duration > MAX_WORD_DURATION:
+                new_start = end - 0.5
+                print(f"[karasad:LOG] Fixing misaligned word '{w['word'].strip()}' ({duration:.1f}s): {start:.1f}->{new_start:.1f}", flush=True)
+                start = new_start
+            word_entry = {
+                "word": w["word"].strip(),
+                "start": round(start, 3),
+                "end": round(end, 3),
+            }
+            if "score" in w:
+                word_entry["score"] = round(w["score"], 3)
+            words.append(word_entry)
         if words:
+            scores = [w["score"] for w in words if "score" in w]
+            avg_score = sum(scores) / len(scores) if scores else 0.0
             segments.append({
-                "text": seg.get("text", "").strip(),
-                "start": round(seg["start"], 3),
-                "end": round(seg["end"], 3),
+                "text": " ".join(w["word"] for w in words),
+                "start": words[0]["start"],
+                "end": words[-1]["end"],
                 "words": words,
+                "_avg_score": avg_score,
             })
+            print(f"[karasad:LOG] Segment [{words[0]['start']:.1f}-{words[-1]['end']:.1f}] avg_score={avg_score:.2f}: {segments[-1]['text'][:80]}", flush=True)
+
+    while segments and segments[0]["_avg_score"] < EDGE_CONFIDENCE_THRESHOLD:
+        dropped = segments.pop(0)
+        print(f"[karasad:LOG] Dropping low-confidence leading segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
+
+    while segments and segments[-1]["_avg_score"] < EDGE_CONFIDENCE_THRESHOLD:
+        dropped = segments.pop()
+        print(f"[karasad:LOG] Dropping low-confidence trailing segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
+
+    for seg in segments:
+        del seg["_avg_score"]
 
     progress(90, f"Transcription complete: {len(segments)} segments, lang={result_language}")
     if segments:

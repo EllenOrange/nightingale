@@ -18,6 +18,9 @@ pub struct CurrentLine;
 pub struct NextLine;
 
 #[derive(Component)]
+pub struct CountdownNode;
+
+#[derive(Component)]
 pub struct LyricWord {
     pub segment_idx: usize,
     pub word_idx: usize,
@@ -28,6 +31,12 @@ const UNSUNG_COLOR: Color = Color::srgba(1.0, 1.0, 1.0, 0.95);
 const NEXT_LINE_COLOR: Color = Color::srgba(1.0, 1.0, 1.0, 0.35);
 const BACKDROP_CURRENT: Color = Color::srgba(0.0, 0.0, 0.0, 0.55);
 const BACKDROP_NEXT: Color = Color::srgba(0.0, 0.0, 0.0, 0.35);
+const COUNTDOWN_COLOR: Color = Color::srgb(0.4, 0.75, 1.0);
+const COUNTDOWN_BG: Color = Color::srgba(0.0, 0.0, 0.0, 0.6);
+
+const COUNTDOWN_DURATION: f64 = 3.0;
+const COUNTDOWN_GAP_THRESHOLD: f64 = 5.0;
+const LYRICS_LEAD: f64 = 0.15;
 
 pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript) {
     let state = LyricsState {
@@ -50,24 +59,56 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript) {
             },
         ))
         .with_children(|root| {
-            root.spawn((
-                CurrentLine,
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    flex_wrap: FlexWrap::Wrap,
-                    justify_content: JustifyContent::Center,
-                    column_gap: Val::Px(8.0),
-                    padding: UiRect::new(
-                        Val::Px(20.0),
-                        Val::Px(20.0),
-                        Val::Px(10.0),
-                        Val::Px(10.0),
-                    ),
-                    border_radius: BorderRadius::all(Val::Px(8.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::NONE),
-            ));
+            root.spawn(Node::default())
+            .with_children(|wrapper| {
+                wrapper.spawn((
+                    CountdownNode,
+                    Node {
+                        position_type: PositionType::Absolute,
+                        top: Val::Px(-20.0),
+                        left: Val::Px(-20.0),
+                        width: Val::Px(40.0),
+                        height: Val::Px(40.0),
+                        border_radius: BorderRadius::all(Val::Percent(50.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                    Visibility::Hidden,
+                    ZIndex(1),
+                ))
+                .with_children(|cd| {
+                    cd.spawn((
+                        Text::new(""),
+                        TextFont {
+                            font_size: 22.0,
+                            ..default()
+                        },
+                        TextColor(COUNTDOWN_COLOR),
+                    ));
+                });
+
+                wrapper.spawn((
+                    CurrentLine,
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        flex_wrap: FlexWrap::Wrap,
+                        justify_content: JustifyContent::Center,
+                        column_gap: Val::Px(8.0),
+                        padding: UiRect::new(
+                            Val::Px(20.0),
+                            Val::Px(20.0),
+                            Val::Px(10.0),
+                            Val::Px(10.0),
+                        ),
+                        border_radius: BorderRadius::all(Val::Px(8.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                    Visibility::Hidden,
+                ));
+            });
 
             root.spawn((
                 NextLine,
@@ -86,6 +127,7 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript) {
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
+                Visibility::Hidden,
             ));
         });
 
@@ -95,8 +137,19 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript) {
 pub fn update_lyrics(
     mut lyrics: ResMut<LyricsState>,
     current_time: f64,
-    current_line_query: Query<(Entity, &mut BackgroundColor), (With<CurrentLine>, Without<NextLine>)>,
-    next_line_query: Query<(Entity, &mut BackgroundColor), (With<NextLine>, Without<CurrentLine>)>,
+    mut current_line_query: Query<
+        (Entity, &mut BackgroundColor, &mut Visibility),
+        (With<CurrentLine>, Without<NextLine>, Without<CountdownNode>),
+    >,
+    mut next_line_query: Query<
+        (Entity, &mut BackgroundColor, &mut Visibility),
+        (With<NextLine>, Without<CurrentLine>, Without<CountdownNode>),
+    >,
+    mut countdown_query: Query<
+        (&mut Visibility, &mut BackgroundColor, &Children),
+        (With<CountdownNode>, Without<CurrentLine>, Without<NextLine>),
+    >,
+    mut countdown_text_query: Query<&mut Text, Without<LyricWord>>,
     mut word_query: Query<(&LyricWord, &mut TextColor)>,
     commands: &mut Commands,
 ) {
@@ -104,22 +157,72 @@ pub fn update_lyrics(
         return;
     }
 
-    let new_segment = find_current_segment(&lyrics.transcript.segments, current_time);
+    let seg_idx = find_current_segment(&lyrics.transcript.segments, current_time);
 
-    if new_segment != lyrics.current_segment {
-        lyrics.current_segment = new_segment;
+    if seg_idx != lyrics.current_segment {
+        lyrics.current_segment = seg_idx;
         let segments = &lyrics.transcript.segments;
-        rebuild_lines(
-            new_segment,
-            segments,
-            current_line_query,
-            next_line_query,
-            commands,
-        );
-        return;
+        rebuild_lines(seg_idx, segments, &current_line_query, &next_line_query, commands);
     }
 
     let segments = &lyrics.transcript.segments;
+    let seg = &segments[seg_idx];
+    let active = current_time >= seg.start - LYRICS_LEAD && current_time <= seg.end + 0.5;
+
+    let gap_before = if seg_idx == 0 {
+        seg.start
+    } else {
+        seg.start - segments[seg_idx - 1].end
+    };
+    let time_until = seg.start - current_time;
+    let show_countdown =
+        gap_before >= COUNTDOWN_GAP_THRESHOLD && time_until > 0.0 && time_until <= COUNTDOWN_DURATION;
+
+    let show_current = active || show_countdown;
+
+    let next_exists = seg_idx + 1 < segments.len();
+    let show_next = show_current && next_exists;
+
+    if let Ok((_, mut bg, mut vis)) = current_line_query.single_mut() {
+        if show_current {
+            *vis = Visibility::Inherited;
+            *bg = BackgroundColor(BACKDROP_CURRENT);
+        } else {
+            *vis = Visibility::Hidden;
+            *bg = BackgroundColor(Color::NONE);
+        }
+    }
+
+    if let Ok((_, mut bg, mut vis)) = next_line_query.single_mut() {
+        if show_next {
+            *vis = Visibility::Inherited;
+            *bg = BackgroundColor(BACKDROP_NEXT);
+        } else {
+            *vis = Visibility::Hidden;
+            *bg = BackgroundColor(Color::NONE);
+        }
+    }
+
+    if let Ok((mut vis, mut bg, children)) = countdown_query.single_mut() {
+        if show_countdown {
+            let n = time_until.ceil() as i32;
+            *vis = Visibility::Inherited;
+            *bg = BackgroundColor(COUNTDOWN_BG);
+            for child in children.iter() {
+                if let Ok(mut text) = countdown_text_query.get_mut(child) {
+                    **text = format!("{n}");
+                }
+            }
+        } else {
+            *vis = Visibility::Hidden;
+            *bg = BackgroundColor(Color::NONE);
+        }
+    }
+
+    if !active {
+        return;
+    }
+
     for (lw, mut color) in &mut word_query {
         if lw.segment_idx < segments.len() && lw.word_idx < segments[lw.segment_idx].words.len() {
             let word = &segments[lw.segment_idx].words[lw.word_idx];
@@ -138,9 +241,30 @@ pub fn update_lyrics(
     }
 }
 
+pub fn last_segment_end(lyrics: &LyricsState) -> f64 {
+    lyrics
+        .transcript
+        .segments
+        .last()
+        .map(|s| s.end)
+        .unwrap_or(0.0)
+}
+
+pub fn first_segment_start(lyrics: &LyricsState) -> f64 {
+    lyrics
+        .transcript
+        .segments
+        .first()
+        .map(|s| s.start)
+        .unwrap_or(0.0)
+}
+
 fn find_current_segment(segments: &[Segment], time: f64) -> usize {
     for (i, seg) in segments.iter().enumerate() {
         if time < seg.end + 0.5 {
+            if i + 1 < segments.len() && time >= segments[i + 1].start - LYRICS_LEAD {
+                return i + 1;
+            }
             return i;
         }
     }
@@ -150,14 +274,19 @@ fn find_current_segment(segments: &[Segment], time: f64) -> usize {
 fn rebuild_lines(
     idx: usize,
     segments: &[Segment],
-    mut current_line_query: Query<(Entity, &mut BackgroundColor), (With<CurrentLine>, Without<NextLine>)>,
-    mut next_line_query: Query<(Entity, &mut BackgroundColor), (With<NextLine>, Without<CurrentLine>)>,
+    current_line_query: &Query<
+        (Entity, &mut BackgroundColor, &mut Visibility),
+        (With<CurrentLine>, Without<NextLine>, Without<CountdownNode>),
+    >,
+    next_line_query: &Query<
+        (Entity, &mut BackgroundColor, &mut Visibility),
+        (With<NextLine>, Without<CurrentLine>, Without<CountdownNode>),
+    >,
     commands: &mut Commands,
 ) {
-    if let Ok((entity, mut bg)) = current_line_query.single_mut() {
+    if let Ok((entity, _, _)) = current_line_query.single() {
         commands.entity(entity).despawn_children();
         if idx < segments.len() {
-            *bg = BackgroundColor(BACKDROP_CURRENT);
             commands.entity(entity).with_children(|parent| {
                 for (wi, word) in segments[idx].words.iter().enumerate() {
                     parent.spawn((
@@ -174,16 +303,13 @@ fn rebuild_lines(
                     ));
                 }
             });
-        } else {
-            *bg = BackgroundColor(Color::NONE);
         }
     }
 
-    if let Ok((entity, mut bg)) = next_line_query.single_mut() {
+    if let Ok((entity, _, _)) = next_line_query.single() {
         commands.entity(entity).despawn_children();
         let next_idx = idx + 1;
         if next_idx < segments.len() {
-            *bg = BackgroundColor(BACKDROP_NEXT);
             commands.entity(entity).with_children(|parent| {
                 for word in &segments[next_idx].words {
                     parent.spawn((
@@ -196,8 +322,6 @@ fn rebuild_lines(
                     ));
                 }
             });
-        } else {
-            *bg = BackgroundColor(Color::NONE);
         }
     }
 }

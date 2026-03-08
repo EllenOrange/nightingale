@@ -15,7 +15,9 @@ use background::{
     ActiveTheme, AuroraMaterial, BackgroundQuad, NebulaMaterial, PlasmaMaterial,
     StarfieldMaterial, WavesMaterial, despawn_background, spawn_background,
 };
-use lyrics::{CurrentLine, LyricWord, LyricsRoot, LyricsState, NextLine, setup_lyrics};
+use lyrics::{
+    CountdownNode, CurrentLine, LyricWord, LyricsRoot, LyricsState, NextLine, setup_lyrics,
+};
 
 pub struct PlayerPlugin;
 
@@ -24,7 +26,8 @@ impl Plugin for PlayerPlugin {
         app.add_systems(OnEnter(AppState::Playing), enter_playing)
             .add_systems(
                 Update,
-                (player_update, handle_player_input).run_if(in_state(AppState::Playing)),
+                (player_update, handle_player_input, handle_skip_buttons)
+                    .run_if(in_state(AppState::Playing)),
             )
             .add_systems(OnExit(AppState::Playing), exit_playing);
     }
@@ -38,6 +41,12 @@ struct GuideVolumeText;
 
 #[derive(Component)]
 struct ThemeText;
+
+#[derive(Component)]
+struct SkipIntroButton;
+
+#[derive(Component)]
+struct SkipOutroButton;
 
 fn enter_playing(
     mut commands: Commands,
@@ -69,7 +78,14 @@ fn enter_playing(
     transcript.split_long_segments(8);
 
     let saved_guide = config.guide_volume.unwrap_or(0.0);
-    setup_audio(&mut commands, &asset_server, &target, &library, &cache, saved_guide);
+    setup_audio(
+        &mut commands,
+        &asset_server,
+        &target,
+        &library,
+        &cache,
+        saved_guide,
+    );
     setup_lyrics(&mut commands, &transcript);
     spawn_background(
         &mut commands,
@@ -105,6 +121,7 @@ fn enter_playing(
         .with_children(|hud| {
             hud.spawn(Node {
                 flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(2.0),
                 ..default()
             })
             .with_children(|info| {
@@ -124,6 +141,68 @@ fn enter_playing(
                     },
                     TextColor(Color::srgba(1.0, 1.0, 1.0, 0.6)),
                 ));
+
+                info.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(8.0),
+                    margin: UiRect::top(Val::Px(8.0)),
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn((
+                        SkipIntroButton,
+                        Button,
+                        Node {
+                            display: Display::None,
+                            padding: UiRect::new(
+                                Val::Px(14.0),
+                                Val::Px(14.0),
+                                Val::Px(6.0),
+                                Val::Px(6.0),
+                            ),
+                            border_radius: BorderRadius::all(Val::Px(6.0)),
+                            ..default()
+                        },
+                        BackgroundColor(SKIP_BTN_BG),
+                    ))
+                    .with_children(|btn| {
+                        btn.spawn((
+                            Text::new("Skip Intro"),
+                            TextFont {
+                                font_size: 13.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+                        ));
+                    });
+
+                    row.spawn((
+                        SkipOutroButton,
+                        Button,
+                        Node {
+                            display: Display::None,
+                            padding: UiRect::new(
+                                Val::Px(14.0),
+                                Val::Px(14.0),
+                                Val::Px(6.0),
+                                Val::Px(6.0),
+                            ),
+                            border_radius: BorderRadius::all(Val::Px(6.0)),
+                            ..default()
+                        },
+                        BackgroundColor(SKIP_BTN_BG),
+                    ))
+                    .with_children(|btn| {
+                        btn.spawn((
+                            Text::new("Skip Outro"),
+                            TextFont {
+                                font_size: 13.0,
+                                ..default()
+                            },
+                            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+                        ));
+                    });
+                });
             });
 
             hud.spawn(Node {
@@ -160,7 +239,31 @@ fn enter_playing(
                 ));
             });
         });
+
+    commands.spawn((
+        PlayerHud,
+        Node {
+            width: Val::Percent(100.0),
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(8.0),
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+    ))
+    .with_children(|bar| {
+        bar.spawn((
+            Text::new("Lyrics and timing are AI-generated and may not be perfectly accurate"),
+            TextFont {
+                font_size: 11.0,
+                ..default()
+            },
+            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.25)),
+        ));
+    });
 }
+
+const SKIP_BTN_BG: Color = Color::srgba(0.0, 0.0, 0.0, 0.5);
+const SKIP_BTN_HOVER: Color = Color::srgba(0.2, 0.2, 0.3, 0.7);
 
 fn format_guide_text(volume: f64) -> String {
     let vol_pct = (volume * 100.0) as i32;
@@ -176,26 +279,111 @@ fn player_update(
     audio: Res<bevy_kira_audio::Audio>,
     time: Res<Time>,
     lyrics_state: Option<ResMut<LyricsState>>,
-    current_line_query: Query<(Entity, &mut BackgroundColor), (With<CurrentLine>, Without<NextLine>)>,
-    next_line_query: Query<(Entity, &mut BackgroundColor), (With<NextLine>, Without<CurrentLine>)>,
+    current_line_query: Query<
+        (Entity, &mut BackgroundColor, &mut Visibility),
+        (With<CurrentLine>, Without<NextLine>, Without<CountdownNode>),
+    >,
+    next_line_query: Query<
+        (Entity, &mut BackgroundColor, &mut Visibility),
+        (With<NextLine>, Without<CurrentLine>, Without<CountdownNode>),
+    >,
+    countdown_query: Query<
+        (&mut Visibility, &mut BackgroundColor, &Children),
+        (With<CountdownNode>, Without<CurrentLine>, Without<NextLine>),
+    >,
+    countdown_text_query: Query<&mut Text, Without<LyricWord>>,
     word_query: Query<(&LyricWord, &mut TextColor)>,
     mut commands: Commands,
     mut audio_instances: ResMut<Assets<AudioInstance>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut intro_node: Query<&mut Node, (With<SkipIntroButton>, Without<SkipOutroButton>)>,
+    mut outro_node: Query<&mut Node, (With<SkipOutroButton>, Without<SkipIntroButton>)>,
 ) {
     start_playback(&mut karaoke, &audio, &time);
     update_vocals_volume(&karaoke, &mut audio_instances);
 
     let current_time = audio::playback_time(&karaoke, &audio_instances);
 
+    if audio::is_finished(&karaoke, &audio_instances) {
+        next_state.set(AppState::Menu);
+        return;
+    }
+
     if let Some(lyrics) = lyrics_state {
+        let first_start = lyrics::first_segment_start(&lyrics);
+        let last_end = lyrics::last_segment_end(&lyrics);
+
+        if let Ok(mut node) = intro_node.single_mut() {
+            node.display = if current_time < first_start - 3.0 {
+                Display::Flex
+            } else {
+                Display::None
+            };
+        }
+        if let Ok(mut node) = outro_node.single_mut() {
+            node.display = if current_time > last_end + 1.0 {
+                Display::Flex
+            } else {
+                Display::None
+            };
+        }
+
         lyrics::update_lyrics(
             lyrics,
             current_time,
             current_line_query,
             next_line_query,
+            countdown_query,
+            countdown_text_query,
             word_query,
             &mut commands,
         );
+    }
+}
+
+fn handle_skip_buttons(
+    mut intro_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (With<SkipIntroButton>, Without<SkipOutroButton>, Changed<Interaction>),
+    >,
+    mut outro_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (With<SkipOutroButton>, Without<SkipIntroButton>, Changed<Interaction>),
+    >,
+    lyrics_state: Option<Res<LyricsState>>,
+    karaoke: Option<ResMut<KaraokeAudio>>,
+    mut audio_instances: ResMut<Assets<AudioInstance>>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    for (interaction, mut bg) in &mut intro_query {
+        match interaction {
+            Interaction::Pressed => {
+                if let (Some(lyrics), Some(karaoke)) = (&lyrics_state, &karaoke) {
+                    let target = (lyrics::first_segment_start(lyrics) - 3.0).max(0.0);
+                    audio::seek_to(karaoke, &mut audio_instances, target);
+                }
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(SKIP_BTN_HOVER);
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(SKIP_BTN_BG);
+            }
+        }
+    }
+
+    for (interaction, mut bg) in &mut outro_query {
+        match interaction {
+            Interaction::Pressed => {
+                next_state.set(AppState::Menu);
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(SKIP_BTN_HOVER);
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(SKIP_BTN_BG);
+            }
+        }
     }
 }
 

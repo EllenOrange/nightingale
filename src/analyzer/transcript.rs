@@ -19,6 +19,8 @@ pub struct Word {
     pub word: String,
     pub start: f64,
     pub end: f64,
+    #[serde(default)]
+    pub score: Option<f64>,
 }
 
 impl Transcript {

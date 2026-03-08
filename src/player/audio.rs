@@ -103,6 +103,35 @@ pub fn playback_time(
     0.0
 }
 
+pub fn is_finished(karaoke: &KaraokeAudio, audio_instances: &Assets<AudioInstance>) -> bool {
+    if !karaoke.playing {
+        return false;
+    }
+    if let Some(ref handle) = karaoke.instrumental_instance {
+        if let Some(instance) = audio_instances.get(handle) {
+            return instance.state().position().is_none();
+        }
+    }
+    false
+}
+
+pub fn seek_to(
+    karaoke: &KaraokeAudio,
+    audio_instances: &mut Assets<AudioInstance>,
+    position: f64,
+) {
+    if let Some(ref handle) = karaoke.instrumental_instance {
+        if let Some(instance) = audio_instances.get_mut(handle) {
+            instance.seek_to(position);
+        }
+    }
+    if let Some(ref handle) = karaoke.vocals_instance {
+        if let Some(instance) = audio_instances.get_mut(handle) {
+            instance.seek_to(position);
+        }
+    }
+}
+
 pub fn cleanup_audio(commands: &mut Commands, audio: &Res<Audio>) {
     audio.stop();
     commands.remove_resource::<KaraokeAudio>();

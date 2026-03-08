@@ -161,6 +161,7 @@ fn build_sidebar(root: &mut ChildSpawnerCommands) {
             },
         ));
 
+        spawn_sidebar_button(sidebar, "Rescan Folder", SidebarAction::RescanFolder);
         spawn_sidebar_button(sidebar, "Change Folder", SidebarAction::ChangeFolder);
         spawn_sidebar_button(sidebar, "Exit", SidebarAction::Exit);
     });
@@ -388,12 +389,17 @@ fn build_song_card(
                     ))
                     .with_children(|overlay| {
                         overlay.spawn((
-                            Text::new("⟳"),
+                            SpinnerDotText,
+                            Text::new("."),
                             TextFont {
                                 font_size: 28.0,
                                 ..default()
                             },
                             TextColor(ACCENT),
+                            Node {
+                                margin: UiRect::bottom(Val::Px(16.0)),
+                                ..default()
+                            },
                         ));
                     });
             });
@@ -511,10 +517,20 @@ fn handle_sidebar_click(
     mut next_state: ResMut<NextState<AppState>>,
     mut queue: ResMut<AnalysisQueue>,
     mut exit: MessageWriter<AppExit>,
+    config: Res<crate::config::AppConfig>,
 ) {
     for (interaction, sidebar_btn, mut bg) in &mut interaction_query {
         match interaction {
             Interaction::Pressed => match sidebar_btn.action {
+                SidebarAction::RescanFolder => {
+                    if let Some(folder) = config.last_folder.clone() {
+                        commands.remove_resource::<SongLibrary>();
+                        queue.queue.clear();
+                        queue.active = None;
+                        commands.insert_resource(crate::scanner::ScanRequest { folder });
+                        next_state.set(AppState::Scanning);
+                    }
+                }
                 SidebarAction::ChangeFolder => {
                     commands.remove_resource::<SongLibrary>();
                     queue.queue.clear();
@@ -616,10 +632,10 @@ fn update_status_badges(
     queue: Res<AnalysisQueue>,
     time: Res<Time>,
     mut badge_query: Query<(&StatusBadge, &mut BackgroundColor)>,
-    mut badge_text_query: Query<(&BadgeText, &mut Text), Without<StatsText>>,
-    mut stats_query: Query<&mut Text, With<StatsText>>,
-    mut spinner_query: Query<(&SpinnerOverlay, &mut Visibility, &Children)>,
-    mut transform_query: Query<&mut Transform>,
+    mut badge_text_query: Query<(&BadgeText, &mut Text), (Without<StatsText>, Without<SpinnerDotText>)>,
+    mut stats_query: Query<&mut Text, (With<StatsText>, Without<SpinnerDotText>)>,
+    mut spinner_query: Query<(&SpinnerOverlay, &mut Visibility)>,
+    mut dot_text_query: Query<&mut Text, With<SpinnerDotText>>,
 ) {
     for (badge, mut bg) in &mut badge_query {
         if badge.song_index >= library.songs.len() {
@@ -668,24 +684,28 @@ fn update_status_badges(
         );
     }
 
-    let angle = time.elapsed_secs() * 3.0;
-    for (spinner, mut vis, children) in &mut spinner_query {
+    let dot_phase = (time.elapsed_secs() * 2.5) as usize % 3;
+    let dots = match dot_phase {
+        0 => ".",
+        1 => "..",
+        _ => "...",
+    };
+
+    for (spinner, mut vis) in &mut spinner_query {
         if spinner.song_index >= library.songs.len() {
             continue;
         }
-        let analyzing = library.songs[spinner.song_index].analysis_status == AnalysisStatus::Analyzing;
+        let analyzing =
+            library.songs[spinner.song_index].analysis_status == AnalysisStatus::Analyzing;
         *vis = if analyzing {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         };
-        if analyzing {
-            for child in children.iter() {
-                if let Ok(mut transform) = transform_query.get_mut(child) {
-                    transform.rotation = Quat::from_rotation_z(-angle);
-                }
-            }
-        }
+    }
+
+    for mut dot_text in &mut dot_text_query {
+        **dot_text = dots.into();
     }
 }
 

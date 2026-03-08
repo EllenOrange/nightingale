@@ -34,8 +34,12 @@ pub struct SpinnerOverlay {
     pub song_index: usize,
 }
 
+#[derive(Component)]
+pub struct SpinnerDotText;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidebarAction {
+    RescanFolder,
     ChangeFolder,
     Exit,
 }
