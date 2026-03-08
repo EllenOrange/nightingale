@@ -1,0 +1,248 @@
+use bevy::{
+    prelude::*,
+    render::render_resource::AsBindGroup,
+    shader::ShaderRef,
+    sprite_render::{Material2d, Material2dPlugin},
+};
+
+use crate::states::AppState;
+
+pub struct BackgroundPlugin;
+
+impl Plugin for BackgroundPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_plugins((
+            Material2dPlugin::<PlasmaMaterial>::default(),
+            Material2dPlugin::<AuroraMaterial>::default(),
+            Material2dPlugin::<WavesMaterial>::default(),
+            Material2dPlugin::<NebulaMaterial>::default(),
+            Material2dPlugin::<StarfieldMaterial>::default(),
+        ))
+        .init_resource::<ActiveTheme>()
+        .add_systems(
+            Update,
+            tick_material_time.run_if(in_state(AppState::Playing)),
+        );
+    }
+}
+
+#[derive(Resource)]
+pub struct ActiveTheme {
+    pub index: usize,
+}
+
+impl Default for ActiveTheme {
+    fn default() -> Self {
+        Self { index: 0 }
+    }
+}
+
+impl ActiveTheme {
+    pub fn theme_count() -> usize {
+        5
+    }
+
+    pub fn name(&self) -> &str {
+        match self.index % Self::theme_count() {
+            0 => "Plasma",
+            1 => "Aurora",
+            2 => "Waves",
+            3 => "Nebula",
+            4 => "Starfield",
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn next(&mut self) {
+        self.index = (self.index + 1) % Self::theme_count();
+    }
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct PlasmaMaterial {
+    #[uniform(0)]
+    pub time: f32,
+}
+
+impl Material2d for PlasmaMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/plasma.wgsl".into()
+    }
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct AuroraMaterial {
+    #[uniform(0)]
+    pub time: f32,
+}
+
+impl Material2d for AuroraMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/aurora.wgsl".into()
+    }
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct WavesMaterial {
+    #[uniform(0)]
+    pub time: f32,
+}
+
+impl Material2d for WavesMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/waves.wgsl".into()
+    }
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct NebulaMaterial {
+    #[uniform(0)]
+    pub time: f32,
+}
+
+impl Material2d for NebulaMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/nebula.wgsl".into()
+    }
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+pub struct StarfieldMaterial {
+    #[uniform(0)]
+    pub time: f32,
+}
+
+impl Material2d for StarfieldMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/starfield.wgsl".into()
+    }
+}
+
+#[derive(Component)]
+pub struct BackgroundQuad;
+
+#[derive(Component)]
+pub struct BackgroundMaterialHandle(pub MaterialVariant);
+
+pub enum MaterialVariant {
+    Plasma(Handle<PlasmaMaterial>),
+    Aurora(Handle<AuroraMaterial>),
+    Waves(Handle<WavesMaterial>),
+    Nebula(Handle<NebulaMaterial>),
+    Starfield(Handle<StarfieldMaterial>),
+}
+
+pub fn spawn_background(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    plasma_materials: &mut ResMut<Assets<PlasmaMaterial>>,
+    aurora_materials: &mut ResMut<Assets<AuroraMaterial>>,
+    waves_materials: &mut ResMut<Assets<WavesMaterial>>,
+    nebula_materials: &mut ResMut<Assets<NebulaMaterial>>,
+    starfield_materials: &mut ResMut<Assets<StarfieldMaterial>>,
+    theme: &ActiveTheme,
+) {
+    let mesh = meshes.add(Rectangle::new(1.0, 1.0));
+    let transform = Transform::from_scale(Vec3::new(3000.0, 2000.0, 1.0))
+        .with_translation(Vec3::new(0.0, 0.0, -10.0));
+
+    match theme.index % ActiveTheme::theme_count() {
+        1 => {
+            let handle = aurora_materials.add(AuroraMaterial { time: 0.0 });
+            commands.spawn((
+                BackgroundQuad,
+                BackgroundMaterialHandle(MaterialVariant::Aurora(handle.clone())),
+                Mesh2d(mesh),
+                MeshMaterial2d(handle),
+                transform,
+            ));
+        }
+        2 => {
+            let handle = waves_materials.add(WavesMaterial { time: 0.0 });
+            commands.spawn((
+                BackgroundQuad,
+                BackgroundMaterialHandle(MaterialVariant::Waves(handle.clone())),
+                Mesh2d(mesh),
+                MeshMaterial2d(handle),
+                transform,
+            ));
+        }
+        3 => {
+            let handle = nebula_materials.add(NebulaMaterial { time: 0.0 });
+            commands.spawn((
+                BackgroundQuad,
+                BackgroundMaterialHandle(MaterialVariant::Nebula(handle.clone())),
+                Mesh2d(mesh),
+                MeshMaterial2d(handle),
+                transform,
+            ));
+        }
+        4 => {
+            let handle = starfield_materials.add(StarfieldMaterial { time: 0.0 });
+            commands.spawn((
+                BackgroundQuad,
+                BackgroundMaterialHandle(MaterialVariant::Starfield(handle.clone())),
+                Mesh2d(mesh),
+                MeshMaterial2d(handle),
+                transform,
+            ));
+        }
+        _ => {
+            let handle = plasma_materials.add(PlasmaMaterial { time: 0.0 });
+            commands.spawn((
+                BackgroundQuad,
+                BackgroundMaterialHandle(MaterialVariant::Plasma(handle.clone())),
+                Mesh2d(mesh),
+                MeshMaterial2d(handle),
+                transform,
+            ));
+        }
+    }
+}
+
+pub fn despawn_background(commands: &mut Commands, query: &Query<Entity, With<BackgroundQuad>>) {
+    for entity in query.iter() {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn tick_material_time(
+    time: Res<Time>,
+    bg_query: Query<&BackgroundMaterialHandle, With<BackgroundQuad>>,
+    mut plasma: ResMut<Assets<PlasmaMaterial>>,
+    mut aurora: ResMut<Assets<AuroraMaterial>>,
+    mut waves: ResMut<Assets<WavesMaterial>>,
+    mut nebula: ResMut<Assets<NebulaMaterial>>,
+    mut starfield: ResMut<Assets<StarfieldMaterial>>,
+) {
+    let t = time.elapsed_secs();
+    for holder in &bg_query {
+        match &holder.0 {
+            MaterialVariant::Plasma(h) => {
+                if let Some(mat) = plasma.get_mut(h) {
+                    mat.time = t;
+                }
+            }
+            MaterialVariant::Aurora(h) => {
+                if let Some(mat) = aurora.get_mut(h) {
+                    mat.time = t;
+                }
+            }
+            MaterialVariant::Waves(h) => {
+                if let Some(mat) = waves.get_mut(h) {
+                    mat.time = t;
+                }
+            }
+            MaterialVariant::Nebula(h) => {
+                if let Some(mat) = nebula.get_mut(h) {
+                    mat.time = t;
+                }
+            }
+            MaterialVariant::Starfield(h) => {
+                if let Some(mat) = starfield.get_mut(h) {
+                    mat.time = t;
+                }
+            }
+        }
+    }
+}
