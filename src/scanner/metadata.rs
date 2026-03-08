@@ -1,11 +1,11 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
+use lofty::prelude::*;
 
 #[derive(Debug, Clone, Resource)]
 pub struct SongLibrary {
     pub songs: Vec<Song>,
-    pub root_folder: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +30,20 @@ pub enum AnalysisStatus {
 }
 
 impl Song {
+    pub fn from_path(path: &Path, file_hash: String, analysis_status: AnalysisStatus) -> Self {
+        let (title, artist, album, duration_secs, album_art) = read_metadata(path);
+        Self {
+            path: path.to_path_buf(),
+            file_hash,
+            title,
+            artist,
+            album,
+            duration_secs,
+            album_art,
+            analysis_status,
+        }
+    }
+
     pub fn display_title(&self) -> &str {
         if self.title.is_empty() {
             self.path
@@ -48,4 +62,35 @@ impl Song {
             &self.artist
         }
     }
+}
+
+fn read_metadata(path: &Path) -> (String, String, String, f64, Option<Vec<u8>>) {
+    let tagged = match lofty::read_from_path(path) {
+        Ok(t) => t,
+        Err(_) => return (String::new(), String::new(), String::new(), 0.0, None),
+    };
+
+    let properties = tagged.properties();
+    let duration_secs = properties.duration().as_secs_f64();
+
+    let tag = match tagged.primary_tag().or_else(|| tagged.first_tag()) {
+        Some(t) => t,
+        None => {
+            return (
+                String::new(),
+                String::new(),
+                String::new(),
+                duration_secs,
+                None,
+            )
+        }
+    };
+
+    let title = tag.title().map(|s| s.to_string()).unwrap_or_default();
+    let artist = tag.artist().map(|s| s.to_string()).unwrap_or_default();
+    let album = tag.album().map(|s| s.to_string()).unwrap_or_default();
+
+    let album_art = tag.pictures().first().map(|pic| pic.data().to_vec());
+
+    (title, artist, album, duration_secs, album_art)
 }

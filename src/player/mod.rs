@@ -1,6 +1,8 @@
 pub mod audio;
 pub mod background;
 pub mod lyrics;
+pub mod microphone;
+pub mod scoring;
 
 use bevy::prelude::*;
 use bevy_kira_audio::AudioInstance;
@@ -18,6 +20,7 @@ use background::{
 use lyrics::{
     CountdownNode, CurrentLine, LyricWord, LyricsRoot, LyricsState, NextLine, setup_lyrics,
 };
+use scoring::{MicStatusText, ScoreText};
 
 pub struct PlayerPlugin;
 
@@ -26,7 +29,23 @@ impl Plugin for PlayerPlugin {
         app.add_systems(OnEnter(AppState::Playing), enter_playing)
             .add_systems(
                 Update,
-                (player_update, handle_player_input, handle_skip_buttons)
+                (
+                    player_update,
+                    handle_escape,
+                    handle_guide_volume,
+                    handle_theme_switch,
+                )
+                    .run_if(in_state(AppState::Playing)),
+            )
+            .add_systems(
+                Update,
+                (
+                    handle_skip_buttons,
+                    handle_mic_toggle,
+                    scoring::update_pitch_scoring,
+                    scoring::draw_pitch_waves,
+                    scoring::update_score_text,
+                )
                     .run_if(in_state(AppState::Playing)),
             )
             .add_systems(OnExit(AppState::Playing), exit_playing);
@@ -47,6 +66,39 @@ struct SkipIntroButton;
 
 #[derive(Component)]
 struct SkipOutroButton;
+
+const SKIP_BTN_BG: Color = Color::srgba(0.0, 0.0, 0.0, 0.5);
+const SKIP_BTN_HOVER: Color = Color::srgba(0.2, 0.2, 0.3, 0.7);
+
+fn spawn_skip_button(parent: &mut ChildSpawnerCommands, label: &str, component: impl Component) {
+    parent
+        .spawn((
+            component,
+            Button,
+            Node {
+                display: Display::None,
+                padding: UiRect::new(
+                    Val::Px(14.0),
+                    Val::Px(14.0),
+                    Val::Px(6.0),
+                    Val::Px(6.0),
+                ),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(SKIP_BTN_BG),
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(label),
+                TextFont {
+                    font_size: 13.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+            ));
+        });
+}
 
 fn enter_playing(
     mut commands: Commands,
@@ -98,12 +150,24 @@ fn enter_playing(
         &theme,
     );
 
+    let vocals_path = cache.vocals_path(hash);
+    if let Some(vocals_buf) = scoring::load_vocals_buffer(&vocals_path) {
+        commands.insert_resource(vocals_buf);
+    }
+
+    let mic_capture = microphone::start_microphone();
+    let mic_active = mic_capture.active;
+    commands.insert_resource(mic_capture);
+    commands.insert_resource(scoring::PitchState::default());
+    commands.insert_resource(scoring::ScoringState::from_transcript(&transcript));
+
     let title = song.display_title().to_string();
     let artist = song.display_artist().to_string();
 
     let guide_vol = config.guide_volume.unwrap_or(0.0);
     let guide_text = format_guide_text(guide_vol);
     let theme_text = format!("Theme: {} [T]", theme.name());
+    let mic_text = format_mic_text(mic_active);
 
     commands
         .spawn((
@@ -149,59 +213,8 @@ fn enter_playing(
                     ..default()
                 })
                 .with_children(|row| {
-                    row.spawn((
-                        SkipIntroButton,
-                        Button,
-                        Node {
-                            display: Display::None,
-                            padding: UiRect::new(
-                                Val::Px(14.0),
-                                Val::Px(14.0),
-                                Val::Px(6.0),
-                                Val::Px(6.0),
-                            ),
-                            border_radius: BorderRadius::all(Val::Px(6.0)),
-                            ..default()
-                        },
-                        BackgroundColor(SKIP_BTN_BG),
-                    ))
-                    .with_children(|btn| {
-                        btn.spawn((
-                            Text::new("Skip Intro"),
-                            TextFont {
-                                font_size: 13.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
-                        ));
-                    });
-
-                    row.spawn((
-                        SkipOutroButton,
-                        Button,
-                        Node {
-                            display: Display::None,
-                            padding: UiRect::new(
-                                Val::Px(14.0),
-                                Val::Px(14.0),
-                                Val::Px(6.0),
-                                Val::Px(6.0),
-                            ),
-                            border_radius: BorderRadius::all(Val::Px(6.0)),
-                            ..default()
-                        },
-                        BackgroundColor(SKIP_BTN_BG),
-                    ))
-                    .with_children(|btn| {
-                        btn.spawn((
-                            Text::new("Skip Outro"),
-                            TextFont {
-                                font_size: 13.0,
-                                ..default()
-                            },
-                            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
-                        ));
-                    });
+                    spawn_skip_button(row, "Skip Intro", SkipIntroButton);
+                    spawn_skip_button(row, "Skip Outro", SkipOutroButton);
                 });
             });
 
@@ -211,6 +224,24 @@ fn enter_playing(
                 ..default()
             })
             .with_children(|ctrl| {
+                ctrl.spawn((
+                    ScoreText,
+                    Text::new("Score: --"),
+                    TextFont {
+                        font_size: 16.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.7)),
+                ));
+                ctrl.spawn((
+                    MicStatusText,
+                    Text::new(mic_text),
+                    TextFont {
+                        font_size: 14.0,
+                        ..default()
+                    },
+                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.5)),
+                ));
                 ctrl.spawn((
                     GuideVolumeText,
                     Text::new(guide_text),
@@ -240,30 +271,30 @@ fn enter_playing(
             });
         });
 
-    commands.spawn((
-        PlayerHud,
-        Node {
-            width: Val::Percent(100.0),
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(8.0),
-            justify_content: JustifyContent::Center,
-            ..default()
-        },
-    ))
-    .with_children(|bar| {
-        bar.spawn((
-            Text::new("Lyrics and timing are AI-generated and may not be perfectly accurate"),
-            TextFont {
-                font_size: 11.0,
+    commands
+        .spawn((
+            PlayerHud,
+            Node {
+                width: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(8.0),
+                justify_content: JustifyContent::Center,
                 ..default()
             },
-            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.25)),
-        ));
-    });
+        ))
+        .with_children(|bar| {
+            bar.spawn((
+                Text::new(
+                    "Lyrics and timing are AI-generated and may not be perfectly accurate",
+                ),
+                TextFont {
+                    font_size: 11.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.25)),
+            ));
+        });
 }
-
-const SKIP_BTN_BG: Color = Color::srgba(0.0, 0.0, 0.0, 0.5);
-const SKIP_BTN_HOVER: Color = Color::srgba(0.2, 0.2, 0.3, 0.7);
 
 fn format_guide_text(volume: f64) -> String {
     let vol_pct = (volume * 100.0) as i32;
@@ -271,6 +302,14 @@ fn format_guide_text(volume: f64) -> String {
         "Guide: OFF [G +/-]".into()
     } else {
         format!("Guide: {vol_pct}% [G +/-]")
+    }
+}
+
+fn format_mic_text(active: bool) -> String {
+    if active {
+        "Mic: ON [M]".into()
+    } else {
+        "Mic: OFF [M]".into()
     }
 }
 
@@ -344,11 +383,19 @@ fn player_update(
 fn handle_skip_buttons(
     mut intro_query: Query<
         (&Interaction, &mut BackgroundColor),
-        (With<SkipIntroButton>, Without<SkipOutroButton>, Changed<Interaction>),
+        (
+            With<SkipIntroButton>,
+            Without<SkipOutroButton>,
+            Changed<Interaction>,
+        ),
     >,
     mut outro_query: Query<
         (&Interaction, &mut BackgroundColor),
-        (With<SkipOutroButton>, Without<SkipIntroButton>, Changed<Interaction>),
+        (
+            With<SkipOutroButton>,
+            Without<SkipIntroButton>,
+            Changed<Interaction>,
+        ),
     >,
     lyrics_state: Option<Res<LyricsState>>,
     karaoke: Option<ResMut<KaraokeAudio>>,
@@ -387,14 +434,73 @@ fn handle_skip_buttons(
     }
 }
 
-fn handle_player_input(
+fn handle_mic_toggle(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut mic: Option<ResMut<microphone::MicrophoneCapture>>,
+    mut mic_text_query: Query<&mut Text, With<MicStatusText>>,
+) {
+    if keyboard.just_pressed(KeyCode::KeyM) {
+        if let Some(ref mut mic) = mic {
+            mic.active = !mic.active;
+            if let Ok(mut text) = mic_text_query.single_mut() {
+                **text = format_mic_text(mic.active);
+            }
+        }
+    }
+}
+
+fn handle_escape(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<AppState>>,
+) {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        next_state.set(AppState::Menu);
+    }
+}
+
+fn handle_guide_volume(
+    keyboard: Res<ButtonInput<KeyCode>>,
     mut karaoke: Option<ResMut<KaraokeAudio>>,
+    mut config: ResMut<crate::config::AppConfig>,
+    mut query: Query<&mut Text, With<GuideVolumeText>>,
+) {
+    let Some(ref mut karaoke) = karaoke else {
+        return;
+    };
+
+    let mut changed = false;
+
+    if keyboard.just_pressed(KeyCode::KeyG) {
+        karaoke.guide_volume = if karaoke.guide_volume > 0.0 {
+            0.0
+        } else {
+            0.3
+        };
+        changed = true;
+    }
+    if keyboard.just_pressed(KeyCode::Equal) {
+        karaoke.guide_volume = (karaoke.guide_volume + 0.1).min(1.0);
+        changed = true;
+    }
+    if keyboard.just_pressed(KeyCode::Minus) {
+        karaoke.guide_volume = (karaoke.guide_volume - 0.1).max(0.0);
+        changed = true;
+    }
+
+    if changed {
+        config.guide_volume = Some(karaoke.guide_volume);
+        config.save();
+        if let Ok(mut text) = query.single_mut() {
+            **text = format_guide_text(karaoke.guide_volume);
+        }
+    }
+}
+
+fn handle_theme_switch(
+    keyboard: Res<ButtonInput<KeyCode>>,
     mut theme: ResMut<ActiveTheme>,
     mut config: ResMut<crate::config::AppConfig>,
-    mut guide_text_query: Query<&mut Text, (With<GuideVolumeText>, Without<ThemeText>)>,
-    mut theme_text_query: Query<&mut Text, (With<ThemeText>, Without<GuideVolumeText>)>,
+    mut query: Query<&mut Text, With<ThemeText>>,
     mut commands: Commands,
     bg_query: Query<Entity, With<BackgroundQuad>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -404,61 +510,28 @@ fn handle_player_input(
     mut nebula_materials: ResMut<Assets<NebulaMaterial>>,
     mut starfield_materials: ResMut<Assets<StarfieldMaterial>>,
 ) {
-    if keyboard.just_pressed(KeyCode::Escape) {
-        next_state.set(AppState::Menu);
+    if !keyboard.just_pressed(KeyCode::KeyT) {
         return;
     }
 
-    if let Some(ref mut karaoke) = karaoke {
-        let mut guide_changed = false;
+    despawn_background(&mut commands, &bg_query);
+    theme.next();
+    spawn_background(
+        &mut commands,
+        &mut meshes,
+        &mut plasma_materials,
+        &mut aurora_materials,
+        &mut waves_materials,
+        &mut nebula_materials,
+        &mut starfield_materials,
+        &theme,
+    );
 
-        if keyboard.just_pressed(KeyCode::KeyG) {
-            karaoke.guide_volume = if karaoke.guide_volume > 0.0 {
-                0.0
-            } else {
-                0.3
-            };
-            guide_changed = true;
-        }
+    config.last_theme = Some(theme.index);
+    config.save();
 
-        if keyboard.just_pressed(KeyCode::Equal) {
-            karaoke.guide_volume = (karaoke.guide_volume + 0.1).min(1.0);
-            guide_changed = true;
-        }
-        if keyboard.just_pressed(KeyCode::Minus) {
-            karaoke.guide_volume = (karaoke.guide_volume - 0.1).max(0.0);
-            guide_changed = true;
-        }
-
-        if guide_changed {
-            config.guide_volume = Some(karaoke.guide_volume);
-            config.save();
-            if let Ok(mut text) = guide_text_query.single_mut() {
-                **text = format_guide_text(karaoke.guide_volume);
-            }
-        }
-    }
-
-    if keyboard.just_pressed(KeyCode::KeyT) {
-        despawn_background(&mut commands, &bg_query);
-        theme.next();
-        spawn_background(
-            &mut commands,
-            &mut meshes,
-            &mut plasma_materials,
-            &mut aurora_materials,
-            &mut waves_materials,
-            &mut nebula_materials,
-            &mut starfield_materials,
-            &theme,
-        );
-
-        config.last_theme = Some(theme.index);
-        config.save();
-
-        if let Ok(mut text) = theme_text_query.single_mut() {
-            **text = format!("Theme: {} [T]", theme.name());
-        }
+    if let Ok(mut text) = query.single_mut() {
+        **text = format!("Theme: {} [T]", theme.name());
     }
 }
 
@@ -483,4 +556,9 @@ fn exit_playing(
     for entity in &bg_query {
         commands.entity(entity).despawn();
     }
+
+    commands.remove_resource::<microphone::MicrophoneCapture>();
+    commands.remove_resource::<scoring::VocalsBuffer>();
+    commands.remove_resource::<scoring::PitchState>();
+    commands.remove_resource::<scoring::ScoringState>();
 }

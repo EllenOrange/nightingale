@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
-use lofty::prelude::*;
 use walkdir::WalkDir;
 
 use crate::analyzer::cache::CacheDir;
 use crate::states::AppState;
+use crate::ui;
 use metadata::{AnalysisStatus, Song, SongLibrary};
 
 pub struct ScannerPlugin;
@@ -58,25 +58,11 @@ fn start_scan(mut commands: Commands, scan_request: Res<ScanRequest>, cache: Res
                 row_gap: Val::Px(16.0),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.08, 0.08, 0.12)),
+            BackgroundColor(ui::BG_COLOR),
         ))
         .with_children(|root| {
-            root.spawn((
-                Text::new("Scanning music folder..."),
-                TextFont {
-                    font_size: 28.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.4, 0.6, 1.0)),
-            ));
-            root.spawn((
-                Text::new(format!("{}", folder.display())),
-                TextFont {
-                    font_size: 14.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.5, 0.5, 0.55)),
-            ));
+            ui::spawn_label(root, "Scanning music folder...", 28.0, ui::ACCENT);
+            ui::spawn_label(root, format!("{}", folder.display()), 14.0, ui::TEXT_DIM);
         });
 
     let result: Arc<Mutex<Option<Vec<Song>>>> = Arc::new(Mutex::new(None));
@@ -94,7 +80,6 @@ fn start_scan(mut commands: Commands, scan_request: Res<ScanRequest>, cache: Res
 fn poll_scan(
     mut commands: Commands,
     pending: Option<Res<PendingScan>>,
-    scan_request: Res<ScanRequest>,
     mut next_state: ResMut<NextState<AppState>>,
     ui_query: Query<Entity, With<ScanningUi>>,
 ) {
@@ -105,7 +90,6 @@ fn poll_scan(
         info!("Found {} songs", songs.len());
         commands.insert_resource(SongLibrary {
             songs: songs.clone(),
-            root_folder: scan_request.folder.clone(),
         });
         drop(lock);
         commands.remove_resource::<PendingScan>();
@@ -167,18 +151,7 @@ fn build_song(path: &Path, cache: &CacheDir) -> Result<Song, Box<dyn std::error:
         AnalysisStatus::NotAnalyzed
     };
 
-    let (title, artist, album, duration_secs, album_art) = read_metadata(path);
-
-    Ok(Song {
-        path: path.to_path_buf(),
-        file_hash,
-        title,
-        artist,
-        album,
-        duration_secs,
-        album_art,
-        analysis_status,
-    })
+    Ok(Song::from_path(path, file_hash, analysis_status))
 }
 
 fn compute_file_hash(path: &Path) -> Result<String, std::io::Error> {
@@ -193,35 +166,4 @@ fn compute_file_hash(path: &Path) -> Result<String, std::io::Error> {
         hasher.update(&buf[..n]);
     }
     Ok(hasher.finalize().to_hex()[..32].to_string())
-}
-
-fn read_metadata(path: &Path) -> (String, String, String, f64, Option<Vec<u8>>) {
-    let tagged = match lofty::read_from_path(path) {
-        Ok(t) => t,
-        Err(_) => return (String::new(), String::new(), String::new(), 0.0, None),
-    };
-
-    let properties = tagged.properties();
-    let duration_secs = properties.duration().as_secs_f64();
-
-    let tag = match tagged.primary_tag().or_else(|| tagged.first_tag()) {
-        Some(t) => t,
-        None => {
-            return (
-                String::new(),
-                String::new(),
-                String::new(),
-                duration_secs,
-                None,
-            )
-        }
-    };
-
-    let title = tag.title().map(|s| s.to_string()).unwrap_or_default();
-    let artist = tag.artist().map(|s| s.to_string()).unwrap_or_default();
-    let album = tag.album().map(|s| s.to_string()).unwrap_or_default();
-
-    let album_art = tag.pictures().first().map(|pic| pic.data().to_vec());
-
-    (title, artist, album, duration_secs, album_art)
 }

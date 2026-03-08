@@ -1,6 +1,5 @@
 use bevy::prelude::*;
-use bevy_kira_audio::prelude::*;
-use bevy_kira_audio::{Audio, AudioInstance};
+use bevy_kira_audio::{Audio, AudioInstance, prelude::*};
 
 use crate::analyzer::cache::CacheDir;
 use crate::analyzer::PlayTarget;

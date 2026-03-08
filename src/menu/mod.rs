@@ -9,6 +9,7 @@ use bevy::prelude::*;
 use crate::analyzer::{AnalysisQueue, PlayTarget};
 use crate::scanner::metadata::{AnalysisStatus, SongLibrary};
 use crate::states::AppState;
+use crate::ui;
 use song_card::*;
 
 pub struct MenuPlugin;
@@ -16,19 +17,19 @@ pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuState>()
-            .add_systems(OnEnter(AppState::Menu), (load_album_art, build_menu).chain())
+            .add_systems(
+                OnEnter(AppState::Menu),
+                (load_album_art, build_menu).chain(),
+            )
             .add_systems(
                 Update,
                 (
                     handle_song_click,
                     handle_search_input,
                     update_status_badges,
+                    handle_sidebar_click,
                 )
                     .run_if(in_state(AppState::Menu)),
-            )
-            .add_systems(
-                Update,
-                handle_sidebar_click.run_if(in_state(AppState::Menu)),
             )
             .add_systems(OnExit(AppState::Menu), cleanup_menu);
     }
@@ -84,21 +85,6 @@ fn load_album_art(
 #[derive(Component)]
 struct MenuRoot;
 
-const BG_COLOR: Color = Color::srgb(0.08, 0.08, 0.12);
-const SIDEBAR_BG: Color = Color::srgb(0.06, 0.06, 0.09);
-const CARD_COLOR: Color = Color::srgb(0.14, 0.14, 0.20);
-const CARD_HOVER: Color = Color::srgb(0.20, 0.20, 0.28);
-const ACCENT: Color = Color::srgb(0.4, 0.6, 1.0);
-const TEXT_PRIMARY: Color = Color::srgb(0.95, 0.95, 0.97);
-const TEXT_SECONDARY: Color = Color::srgb(0.6, 0.6, 0.65);
-const BADGE_READY: Color = Color::srgb(0.2, 0.7, 0.3);
-const BADGE_NOT_ANALYZED: Color = Color::srgb(0.5, 0.5, 0.55);
-const BADGE_QUEUED: Color = Color::srgb(0.7, 0.55, 0.1);
-const BADGE_ANALYZING: Color = Color::srgb(0.9, 0.7, 0.1);
-const BADGE_FAILED: Color = Color::srgb(0.8, 0.2, 0.2);
-const SIDEBAR_BTN: Color = Color::srgb(0.14, 0.14, 0.20);
-const SIDEBAR_BTN_HOVER: Color = Color::srgb(0.22, 0.22, 0.30);
-
 fn build_menu(
     mut commands: Commands,
     library: Res<SongLibrary>,
@@ -114,7 +100,7 @@ fn build_menu(
                 flex_direction: FlexDirection::Row,
                 ..default()
             },
-            BackgroundColor(BG_COLOR),
+            BackgroundColor(ui::BG_COLOR),
         ))
         .with_children(|root| {
             build_sidebar(root);
@@ -141,7 +127,7 @@ fn build_sidebar(root: &mut ChildSpawnerCommands) {
                 font_size: 28.0,
                 ..default()
             },
-            TextColor(ACCENT),
+            TextColor(ui::ACCENT),
             Node {
                 margin: UiRect::bottom(Val::Px(4.0)),
                 ..default()
@@ -149,12 +135,12 @@ fn build_sidebar(root: &mut ChildSpawnerCommands) {
         ));
 
         sidebar.spawn((
-            Text::new("AI Karaoke"),
+            Text::new("Your own Karaoke"),
             TextFont {
                 font_size: 14.0,
                 ..default()
             },
-            TextColor(TEXT_SECONDARY),
+            TextColor(ui::TEXT_SECONDARY),
             Node {
                 margin: UiRect::bottom(Val::Px(24.0)),
                 ..default()
@@ -167,11 +153,7 @@ fn build_sidebar(root: &mut ChildSpawnerCommands) {
     });
 }
 
-fn spawn_sidebar_button(
-    parent: &mut ChildSpawnerCommands,
-    label: &str,
-    action: SidebarAction,
-) {
+fn spawn_sidebar_button(parent: &mut ChildSpawnerCommands, label: &str, action: SidebarAction) {
     parent
         .spawn((
             SidebarButton { action },
@@ -187,14 +169,7 @@ fn spawn_sidebar_button(
             BackgroundColor(SIDEBAR_BTN),
         ))
         .with_children(|btn| {
-            btn.spawn((
-                Text::new(label),
-                TextFont {
-                    font_size: 14.0,
-                    ..default()
-                },
-                TextColor(TEXT_PRIMARY),
-            ));
+            ui::spawn_label(btn, label, 14.0, ui::TEXT_PRIMARY);
         });
 }
 
@@ -238,7 +213,7 @@ fn build_main_area(
                     font_size: 16.0,
                     ..default()
                 },
-                TextColor(TEXT_SECONDARY),
+                TextColor(ui::TEXT_SECONDARY),
             ));
         });
 
@@ -258,7 +233,7 @@ fn build_main_area(
                 font_size: 14.0,
                 ..default()
             },
-            TextColor(TEXT_SECONDARY),
+            TextColor(ui::TEXT_SECONDARY),
             Node {
                 margin: UiRect::bottom(Val::Px(16.0)),
                 ..default()
@@ -280,10 +255,7 @@ fn build_main_area(
             let query = menu_state.search_query.to_lowercase();
             for (i, song) in library.songs.iter().enumerate() {
                 if !query.is_empty() {
-                    let matches = song
-                        .display_title()
-                        .to_lowercase()
-                        .contains(&query)
+                    let matches = song.display_title().to_lowercase().contains(&query)
                         || song.display_artist().to_lowercase().contains(&query);
                     if !matches {
                         continue;
@@ -294,182 +266,6 @@ fn build_main_area(
             }
         });
     });
-}
-
-fn build_song_card(
-    parent: &mut ChildSpawnerCommands,
-    song: &crate::scanner::metadata::Song,
-    index: usize,
-    art_handle: Option<Handle<Image>>,
-) {
-    let (badge_text, badge_color) = match &song.analysis_status {
-        AnalysisStatus::Ready => ("READY", BADGE_READY),
-        AnalysisStatus::NotAnalyzed => ("NOT ANALYZED", BADGE_NOT_ANALYZED),
-        AnalysisStatus::Queued => ("QUEUED", BADGE_QUEUED),
-        AnalysisStatus::Analyzing => ("ANALYZING...", BADGE_ANALYZING),
-        AnalysisStatus::Failed(_) => ("FAILED", BADGE_FAILED),
-    };
-
-    let duration_str = format_duration(song.duration_secs);
-
-    parent
-        .spawn((
-            SongCard { song_index: index },
-            Button,
-            Node {
-                width: Val::Percent(100.0),
-                min_height: Val::Px(72.0),
-                padding: UiRect::all(Val::Px(16.0)),
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(16.0),
-                border_radius: BorderRadius::all(Val::Px(8.0)),
-                ..default()
-            },
-            BackgroundColor(CARD_COLOR),
-        ))
-        .with_children(|card| {
-            card.spawn((
-                AlbumArtSlot { song_index: index },
-                Node {
-                    width: Val::Px(48.0),
-                    height: Val::Px(48.0),
-                    ..default()
-                },
-            ))
-            .with_children(|wrapper| {
-                if let Some(handle) = art_handle {
-                    wrapper.spawn((
-                        ImageNode::new(handle),
-                        Node {
-                            width: Val::Px(48.0),
-                            height: Val::Px(48.0),
-                            border_radius: BorderRadius::all(Val::Px(6.0)),
-                            ..default()
-                        },
-                    ));
-                } else {
-                    wrapper
-                        .spawn((
-                            Node {
-                                width: Val::Px(48.0),
-                                height: Val::Px(48.0),
-                                justify_content: JustifyContent::Center,
-                                align_items: AlignItems::Center,
-                                border_radius: BorderRadius::all(Val::Px(6.0)),
-                                ..default()
-                            },
-                            BackgroundColor(Color::srgb(0.2, 0.2, 0.28)),
-                        ))
-                        .with_children(|art| {
-                            art.spawn((
-                                Text::new("♪"),
-                                TextFont {
-                                    font_size: 24.0,
-                                    ..default()
-                                },
-                                TextColor(ACCENT),
-                            ));
-                        });
-                }
-
-                wrapper
-                    .spawn((
-                        SpinnerOverlay { song_index: index },
-                        Node {
-                            position_type: PositionType::Absolute,
-                            width: Val::Px(48.0),
-                            height: Val::Px(48.0),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            border_radius: BorderRadius::all(Val::Px(6.0)),
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
-                        Visibility::Hidden,
-                    ))
-                    .with_children(|overlay| {
-                        overlay.spawn((
-                            SpinnerDotText,
-                            Text::new("."),
-                            TextFont {
-                                font_size: 28.0,
-                                ..default()
-                            },
-                            TextColor(ACCENT),
-                            Node {
-                                margin: UiRect::bottom(Val::Px(16.0)),
-                                ..default()
-                            },
-                        ));
-                    });
-            });
-
-            card.spawn(Node {
-                flex_direction: FlexDirection::Column,
-                flex_grow: 1.0,
-                row_gap: Val::Px(4.0),
-                ..default()
-            })
-            .with_children(|info| {
-                info.spawn((
-                    Text::new(song.display_title()),
-                    TextFont {
-                        font_size: 18.0,
-                        ..default()
-                    },
-                    TextColor(TEXT_PRIMARY),
-                ));
-                info.spawn((
-                    Text::new(format!("{} · {}", song.display_artist(), song.album)),
-                    TextFont {
-                        font_size: 14.0,
-                        ..default()
-                    },
-                    TextColor(TEXT_SECONDARY),
-                ));
-            });
-
-            card.spawn((
-                Text::new(duration_str),
-                TextFont {
-                    font_size: 14.0,
-                    ..default()
-                },
-                TextColor(TEXT_SECONDARY),
-                Node {
-                    margin: UiRect::right(Val::Px(12.0)),
-                    ..default()
-                },
-            ));
-
-            card.spawn((
-                StatusBadge { song_index: index },
-                Node {
-                    padding: UiRect::new(Val::Px(10.0), Val::Px(10.0), Val::Px(4.0), Val::Px(4.0)),
-                    border_radius: BorderRadius::all(Val::Px(4.0)),
-                    ..default()
-                },
-                BackgroundColor(badge_color),
-            ))
-            .with_children(|badge| {
-                badge.spawn((
-                    BadgeText { song_index: index },
-                    Text::new(badge_text),
-                    TextFont {
-                        font_size: 11.0,
-                        ..default()
-                    },
-                    TextColor(TEXT_PRIMARY),
-                ));
-            });
-        });
-}
-
-fn format_duration(secs: f64) -> String {
-    let total = secs as u64;
-    let m = total / 60;
-    let s = total % 60;
-    format!("{m}:{s:02}")
 }
 
 fn handle_song_click(
@@ -606,24 +402,13 @@ fn handle_search_input(
     }
 
     if let Ok(list_entity) = song_list_query.single() {
-        commands.entity(list_entity).despawn_children();
-        let query = menu_state.search_query.to_lowercase();
-        commands.entity(list_entity).with_children(|list| {
-            for (i, song) in library.songs.iter().enumerate() {
-                if !query.is_empty() {
-                    let matches = song
-                        .display_title()
-                        .to_lowercase()
-                        .contains(&query)
-                        || song.display_artist().to_lowercase().contains(&query);
-                    if !matches {
-                        continue;
-                    }
-                }
-                let art = art_cache.handles.get(i).and_then(|h| h.clone());
-                build_song_card(list, song, i, art);
-            }
-        });
+        populate_song_list(
+            &mut commands,
+            list_entity,
+            &library.songs,
+            &menu_state.search_query,
+            &art_cache.handles,
+        );
     }
 }
 
@@ -632,7 +417,10 @@ fn update_status_badges(
     queue: Res<AnalysisQueue>,
     time: Res<Time>,
     mut badge_query: Query<(&StatusBadge, &mut BackgroundColor)>,
-    mut badge_text_query: Query<(&BadgeText, &mut Text), (Without<StatsText>, Without<SpinnerDotText>)>,
+    mut badge_text_query: Query<
+        (&BadgeText, &mut Text),
+        (Without<StatsText>, Without<SpinnerDotText>),
+    >,
     mut stats_query: Query<&mut Text, (With<StatsText>, Without<SpinnerDotText>)>,
     mut spinner_query: Query<(&SpinnerOverlay, &mut Visibility)>,
     mut dot_text_query: Query<&mut Text, With<SpinnerDotText>>,
