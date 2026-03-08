@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::analyzer::transcript::{Segment, Transcript};
+use crate::ui::UiTheme;
 
 #[derive(Resource)]
 pub struct LyricsState {
@@ -26,19 +27,11 @@ pub struct LyricWord {
     pub word_idx: usize,
 }
 
-const SUNG_COLOR: Color = Color::srgb(0.4, 0.75, 1.0);
-const UNSUNG_COLOR: Color = Color::srgba(1.0, 1.0, 1.0, 0.95);
-const NEXT_LINE_COLOR: Color = Color::srgba(1.0, 1.0, 1.0, 0.35);
-const BACKDROP_CURRENT: Color = Color::srgba(0.0, 0.0, 0.0, 0.55);
-const BACKDROP_NEXT: Color = Color::srgba(0.0, 0.0, 0.0, 0.35);
-const COUNTDOWN_COLOR: Color = Color::srgb(0.4, 0.75, 1.0);
-const COUNTDOWN_BG: Color = Color::srgba(0.0, 0.0, 0.0, 0.6);
-
 const COUNTDOWN_DURATION: f64 = 3.0;
 const COUNTDOWN_GAP_THRESHOLD: f64 = 5.0;
 const LYRICS_LEAD: f64 = 0.15;
 
-pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript) {
+pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &UiTheme) {
     let state = LyricsState {
         transcript: transcript.clone(),
         current_segment: usize::MAX,
@@ -85,7 +78,7 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript) {
                             font_size: 22.0,
                             ..default()
                         },
-                        TextColor(COUNTDOWN_COLOR),
+                        TextColor(theme.countdown_color),
                     ));
                 });
 
@@ -152,6 +145,7 @@ pub fn update_lyrics(
     mut countdown_text_query: Query<&mut Text, Without<LyricWord>>,
     mut word_query: Query<(&LyricWord, &mut TextColor)>,
     commands: &mut Commands,
+    theme: &UiTheme,
 ) {
     if lyrics.transcript.segments.is_empty() {
         return;
@@ -162,7 +156,7 @@ pub fn update_lyrics(
     if seg_idx != lyrics.current_segment {
         lyrics.current_segment = seg_idx;
         let segments = &lyrics.transcript.segments;
-        rebuild_lines(seg_idx, segments, &current_line_query, &next_line_query, commands);
+        rebuild_lines(seg_idx, segments, &current_line_query, &next_line_query, commands, theme);
     }
 
     let segments = &lyrics.transcript.segments;
@@ -186,7 +180,7 @@ pub fn update_lyrics(
     if let Ok((_, mut bg, mut vis)) = current_line_query.single_mut() {
         if show_current {
             *vis = Visibility::Inherited;
-            *bg = BackgroundColor(BACKDROP_CURRENT);
+            *bg = BackgroundColor(theme.lyric_backdrop);
         } else {
             *vis = Visibility::Hidden;
             *bg = BackgroundColor(Color::NONE);
@@ -196,7 +190,7 @@ pub fn update_lyrics(
     if let Ok((_, mut bg, mut vis)) = next_line_query.single_mut() {
         if show_next {
             *vis = Visibility::Inherited;
-            *bg = BackgroundColor(BACKDROP_NEXT);
+            *bg = BackgroundColor(theme.lyric_backdrop_next);
         } else {
             *vis = Visibility::Hidden;
             *bg = BackgroundColor(Color::NONE);
@@ -207,7 +201,7 @@ pub fn update_lyrics(
         if show_countdown {
             let n = time_until.ceil() as i32;
             *vis = Visibility::Inherited;
-            *bg = BackgroundColor(COUNTDOWN_BG);
+            *bg = BackgroundColor(theme.countdown_bg);
             for child in children.iter() {
                 if let Ok(mut text) = countdown_text_query.get_mut(child) {
                     **text = format!("{n}");
@@ -223,22 +217,33 @@ pub fn update_lyrics(
         return;
     }
 
+    let sung = theme.sung_color;
+    let unsung = theme.unsung_color;
+
+    let (sung_r, sung_g, sung_b) = extract_rgb(sung);
+
     for (lw, mut color) in &mut word_query {
         if lw.segment_idx < segments.len() && lw.word_idx < segments[lw.segment_idx].words.len() {
             let word = &segments[lw.segment_idx].words[lw.word_idx];
             if current_time >= word.end {
-                *color = TextColor(SUNG_COLOR);
+                *color = TextColor(sung);
             } else if current_time >= word.start {
                 let progress = (current_time - word.start) / (word.end - word.start);
-                let r = 1.0 - (1.0 - 0.4) * progress as f32;
-                let g = 1.0 - (1.0 - 0.75) * progress as f32;
-                let b = 1.0;
+                let (ur, ug, ub) = extract_rgb(unsung);
+                let r = ur + (sung_r - ur) * progress as f32;
+                let g = ug + (sung_g - ug) * progress as f32;
+                let b = ub + (sung_b - ub) * progress as f32;
                 *color = TextColor(Color::srgb(r, g, b));
             } else {
-                *color = TextColor(UNSUNG_COLOR);
+                *color = TextColor(unsung);
             }
         }
     }
+}
+
+fn extract_rgb(color: Color) -> (f32, f32, f32) {
+    let srgba = color.to_srgba();
+    (srgba.red, srgba.green, srgba.blue)
 }
 
 pub fn last_segment_end(lyrics: &LyricsState) -> f64 {
@@ -283,6 +288,7 @@ fn rebuild_lines(
         (With<NextLine>, Without<CurrentLine>, Without<CountdownNode>),
     >,
     commands: &mut Commands,
+    theme: &UiTheme,
 ) {
     if let Ok((entity, _, _)) = current_line_query.single() {
         commands.entity(entity).despawn_children();
@@ -299,7 +305,7 @@ fn rebuild_lines(
                             font_size: 42.0,
                             ..default()
                         },
-                        TextColor(UNSUNG_COLOR),
+                        TextColor(theme.unsung_color),
                     ));
                 }
             });
@@ -318,7 +324,7 @@ fn rebuild_lines(
                             font_size: 28.0,
                             ..default()
                         },
-                        TextColor(NEXT_LINE_COLOR),
+                        TextColor(theme.next_line_color),
                     ));
                 }
             });

@@ -4,9 +4,7 @@ use std::path::Path;
 use bevy::prelude::*;
 
 use super::audio;
-use super::lyrics::LyricsState;
 use super::microphone::{MicrophoneCapture, detect_pitch_from_samples};
-use crate::analyzer::transcript::Transcript;
 use audio::KaraokeAudio;
 use bevy_kira_audio::AudioInstance;
 
@@ -39,6 +37,7 @@ impl VocalsBuffer {
         }
         Some(self.samples[sample_idx..sample_idx + window_size].to_vec())
     }
+
 }
 
 pub fn load_vocals_buffer(path: &Path) -> Option<VocalsBuffer> {
@@ -153,23 +152,18 @@ fn ema(prev: Option<f32>, current: Option<f32>) -> Option<f32> {
 pub struct ScoringState {
     earned: f64,
     scored_time: f64,
-    elapsed_lyrics: f64,
-    lyrics_duration: f64,
+    elapsed: f64,
+    song_duration: f64,
     last_time: f64,
 }
 
 impl ScoringState {
-    pub fn from_transcript(transcript: &Transcript) -> Self {
-        let duration: f64 = transcript
-            .segments
-            .iter()
-            .map(|seg| seg.end - seg.start)
-            .sum();
+    pub fn new(song_duration: f64) -> Self {
         Self {
             earned: 0.0,
             scored_time: 0.0,
-            elapsed_lyrics: 0.0,
-            lyrics_duration: duration.max(1.0),
+            elapsed: 0.0,
+            song_duration: song_duration.max(1.0),
             last_time: 0.0,
         }
     }
@@ -179,7 +173,7 @@ impl ScoringState {
             return 0;
         }
         let accuracy = self.earned / self.scored_time;
-        let progress = (self.elapsed_lyrics / self.lyrics_duration).min(1.0);
+        let progress = (self.elapsed / self.song_duration).min(1.0);
         (accuracy * progress * 1000.0).round().clamp(0.0, 1000.0) as u32
     }
 }
@@ -219,20 +213,11 @@ fn snap_to_ref_octave(ref_semi: f32, user_semi: f32) -> f32 {
     user_semi - octave_offset
 }
 
-fn is_in_lyric_segment(lyrics: &LyricsState, time: f64) -> bool {
-    lyrics
-        .transcript
-        .segments
-        .iter()
-        .any(|seg| time >= seg.start && time <= seg.end)
-}
-
 pub fn update_pitch_scoring(
     karaoke: Option<Res<KaraokeAudio>>,
     audio_instances: Res<Assets<AudioInstance>>,
     mic: Option<Res<MicrophoneCapture>>,
     vocals: Option<Res<VocalsBuffer>>,
-    lyrics: Option<Res<LyricsState>>,
     mut pitch_state: Option<ResMut<PitchState>>,
     mut scoring: Option<ResMut<ScoringState>>,
 ) {
@@ -269,14 +254,10 @@ pub fn update_pitch_scoring(
     let dt = (current_time - scoring.last_time).clamp(0.0, 0.1);
     scoring.last_time = current_time;
 
-    if let Some(lyrics) = lyrics {
-        if is_in_lyric_segment(&lyrics, current_time) {
-            scoring.elapsed_lyrics += dt;
-            if ref_pitch.is_some() {
-                scoring.scored_time += dt;
-                scoring.earned += similarity as f64 * dt;
-            }
-        }
+    scoring.elapsed += dt;
+    if ref_pitch.is_some() {
+        scoring.scored_time += dt;
+        scoring.earned += similarity as f64 * dt;
     }
 }
 

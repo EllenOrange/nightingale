@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::scanner::metadata::Song;
-use crate::ui;
+use crate::ui::UiTheme;
 
 #[derive(Component)]
 pub struct SongCard {
@@ -42,6 +42,8 @@ pub struct SpinnerDotText;
 pub enum SidebarAction {
     RescanFolder,
     ChangeFolder,
+    ToggleTheme,
+    ToggleFullscreen,
     Exit,
 }
 
@@ -50,16 +52,8 @@ pub struct SidebarButton {
     pub action: SidebarAction,
 }
 
-pub const CARD_COLOR: Color = Color::srgb(0.14, 0.14, 0.20);
-pub const CARD_HOVER: Color = Color::srgb(0.20, 0.20, 0.28);
-pub const BADGE_READY: Color = Color::srgb(0.2, 0.7, 0.3);
-pub const BADGE_NOT_ANALYZED: Color = Color::srgb(0.5, 0.5, 0.55);
-pub const BADGE_QUEUED: Color = Color::srgb(0.7, 0.55, 0.1);
-pub const BADGE_ANALYZING: Color = Color::srgb(0.9, 0.7, 0.1);
-pub const BADGE_FAILED: Color = Color::srgb(0.8, 0.2, 0.2);
-pub const SIDEBAR_BG: Color = Color::srgb(0.06, 0.06, 0.09);
-pub const SIDEBAR_BTN: Color = Color::srgb(0.14, 0.14, 0.20);
-pub const SIDEBAR_BTN_HOVER: Color = Color::srgb(0.22, 0.22, 0.30);
+#[derive(Component)]
+pub struct EmptyStateRoot;
 
 use crate::scanner::metadata::AnalysisStatus;
 
@@ -68,8 +62,9 @@ pub fn build_song_card(
     song: &Song,
     index: usize,
     art_handle: Option<Handle<Image>>,
+    theme: &UiTheme,
 ) {
-    let (badge_text, badge_color) = badge_info(&song.analysis_status);
+    let (badge_text, badge_color) = badge_info(&song.analysis_status, theme);
     let duration_str = format_duration(song.duration_secs);
 
     parent
@@ -83,13 +78,15 @@ pub fn build_song_card(
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(16.0),
                 border_radius: BorderRadius::all(Val::Px(8.0)),
+                border: UiRect::left(Val::Px(3.0)),
                 ..default()
             },
-            BackgroundColor(CARD_COLOR),
+            BorderColor::all(Color::NONE),
+            BackgroundColor(theme.card_bg),
         ))
         .with_children(|card| {
-            spawn_album_art(card, index, art_handle);
-            spawn_song_info(card, song);
+            spawn_album_art(card, index, art_handle, theme);
+            spawn_song_info(card, song, theme);
 
             card.spawn((
                 Text::new(duration_str),
@@ -97,28 +94,33 @@ pub fn build_song_card(
                     font_size: 14.0,
                     ..default()
                 },
-                TextColor(ui::TEXT_SECONDARY),
+                TextColor(theme.text_secondary),
                 Node {
                     margin: UiRect::right(Val::Px(12.0)),
                     ..default()
                 },
             ));
 
-            spawn_status_badge(card, index, badge_text, badge_color);
+            spawn_status_badge(card, index, badge_text, badge_color, theme);
         });
 }
 
-fn badge_info(status: &AnalysisStatus) -> (&'static str, Color) {
+fn badge_info<'a>(status: &AnalysisStatus, theme: &UiTheme) -> (&'a str, Color) {
     match status {
-        AnalysisStatus::Ready => ("READY", BADGE_READY),
-        AnalysisStatus::NotAnalyzed => ("NOT ANALYZED", BADGE_NOT_ANALYZED),
-        AnalysisStatus::Queued => ("QUEUED", BADGE_QUEUED),
-        AnalysisStatus::Analyzing => ("ANALYZING...", BADGE_ANALYZING),
-        AnalysisStatus::Failed(_) => ("FAILED", BADGE_FAILED),
+        AnalysisStatus::Ready => ("READY", theme.badge_ready),
+        AnalysisStatus::NotAnalyzed => ("NOT ANALYZED", theme.badge_not_analyzed),
+        AnalysisStatus::Queued => ("QUEUED", theme.badge_queued),
+        AnalysisStatus::Analyzing => ("ANALYZING...", theme.badge_analyzing),
+        AnalysisStatus::Failed(_) => ("FAILED", theme.badge_failed),
     }
 }
 
-fn spawn_album_art(card: &mut ChildSpawnerCommands, index: usize, art_handle: Option<Handle<Image>>) {
+fn spawn_album_art(
+    card: &mut ChildSpawnerCommands,
+    index: usize,
+    art_handle: Option<Handle<Image>>,
+    theme: &UiTheme,
+) {
     card.spawn((
         AlbumArtSlot,
         Node {
@@ -149,7 +151,7 @@ fn spawn_album_art(card: &mut ChildSpawnerCommands, index: usize, art_handle: Op
                         border_radius: BorderRadius::all(Val::Px(6.0)),
                         ..default()
                     },
-                    BackgroundColor(Color::srgb(0.2, 0.2, 0.28)),
+                    BackgroundColor(theme.surface_hover),
                 ))
                 .with_children(|art| {
                     art.spawn((
@@ -158,7 +160,7 @@ fn spawn_album_art(card: &mut ChildSpawnerCommands, index: usize, art_handle: Op
                             font_size: 24.0,
                             ..default()
                         },
-                        TextColor(ui::ACCENT),
+                        TextColor(theme.accent),
                     ));
                 });
         }
@@ -186,7 +188,7 @@ fn spawn_album_art(card: &mut ChildSpawnerCommands, index: usize, art_handle: Op
                         font_size: 28.0,
                         ..default()
                     },
-                    TextColor(ui::ACCENT),
+                    TextColor(theme.accent),
                     Node {
                         margin: UiRect::bottom(Val::Px(16.0)),
                         ..default()
@@ -196,7 +198,7 @@ fn spawn_album_art(card: &mut ChildSpawnerCommands, index: usize, art_handle: Op
     });
 }
 
-fn spawn_song_info(card: &mut ChildSpawnerCommands, song: &Song) {
+fn spawn_song_info(card: &mut ChildSpawnerCommands, song: &Song, theme: &UiTheme) {
     card.spawn(Node {
         flex_direction: FlexDirection::Column,
         flex_grow: 1.0,
@@ -210,7 +212,7 @@ fn spawn_song_info(card: &mut ChildSpawnerCommands, song: &Song) {
                 font_size: 18.0,
                 ..default()
             },
-            TextColor(ui::TEXT_PRIMARY),
+            TextColor(theme.text_primary),
         ));
         info.spawn((
             Text::new(format!("{} · {}", song.display_artist(), song.album)),
@@ -218,12 +220,18 @@ fn spawn_song_info(card: &mut ChildSpawnerCommands, song: &Song) {
                 font_size: 14.0,
                 ..default()
             },
-            TextColor(ui::TEXT_SECONDARY),
+            TextColor(theme.text_secondary),
         ));
     });
 }
 
-fn spawn_status_badge(card: &mut ChildSpawnerCommands, index: usize, text: &str, color: Color) {
+fn spawn_status_badge(
+    card: &mut ChildSpawnerCommands,
+    index: usize,
+    text: &str,
+    color: Color,
+    theme: &UiTheme,
+) {
     card.spawn((
         StatusBadge { song_index: index },
         Node {
@@ -241,7 +249,7 @@ fn spawn_status_badge(card: &mut ChildSpawnerCommands, index: usize, text: &str,
                 font_size: 11.0,
                 ..default()
             },
-            TextColor(ui::TEXT_PRIMARY),
+            TextColor(theme.text_primary),
         ));
     });
 }
@@ -259,6 +267,7 @@ pub fn populate_song_list(
     songs: &[Song],
     query: &str,
     art_handles: &[Option<Handle<Image>>],
+    theme: &UiTheme,
 ) {
     commands.entity(list_entity).despawn_children();
     let lower = query.to_lowercase();
@@ -272,7 +281,7 @@ pub fn populate_song_list(
                 }
             }
             let art = art_handles.get(i).and_then(|h| h.clone());
-            build_song_card(list, song, i, art);
+            build_song_card(list, song, i, art, theme);
         }
     });
 }

@@ -12,6 +12,7 @@ use crate::analyzer::transcript::Transcript;
 use crate::analyzer::PlayTarget;
 use crate::scanner::metadata::SongLibrary;
 use crate::states::AppState;
+use crate::ui::UiTheme;
 use audio::{KaraokeAudio, cleanup_audio, setup_audio, start_playback, update_vocals_volume};
 use background::{
     ActiveTheme, AuroraMaterial, BackgroundQuad, NebulaMaterial, PlasmaMaterial,
@@ -113,7 +114,8 @@ fn enter_playing(
     mut waves_materials: ResMut<Assets<WavesMaterial>>,
     mut nebula_materials: ResMut<Assets<NebulaMaterial>>,
     mut starfield_materials: ResMut<Assets<StarfieldMaterial>>,
-    theme: Res<ActiveTheme>,
+    bg_theme: Res<ActiveTheme>,
+    ui_theme: Res<UiTheme>,
 ) {
     let song = &library.songs[target.song_index];
     let hash = &song.file_hash;
@@ -138,7 +140,7 @@ fn enter_playing(
         &cache,
         saved_guide,
     );
-    setup_lyrics(&mut commands, &transcript);
+    setup_lyrics(&mut commands, &transcript, &ui_theme);
     spawn_background(
         &mut commands,
         &mut meshes,
@@ -147,26 +149,31 @@ fn enter_playing(
         &mut waves_materials,
         &mut nebula_materials,
         &mut starfield_materials,
-        &theme,
+        &bg_theme,
     );
 
     let vocals_path = cache.vocals_path(hash);
+    let song_duration = song.duration_secs;
     if let Some(vocals_buf) = scoring::load_vocals_buffer(&vocals_path) {
         commands.insert_resource(vocals_buf);
     }
 
-    let mic_capture = microphone::start_microphone();
+    let mut mic_capture = microphone::start_microphone();
+    let mic_has_device = mic_capture.active;
+    if mic_has_device {
+        mic_capture.active = config.mic_active.unwrap_or(true);
+    }
     let mic_active = mic_capture.active;
     commands.insert_resource(mic_capture);
     commands.insert_resource(scoring::PitchState::default());
-    commands.insert_resource(scoring::ScoringState::from_transcript(&transcript));
+    commands.insert_resource(scoring::ScoringState::new(song_duration));
 
     let title = song.display_title().to_string();
     let artist = song.display_artist().to_string();
 
     let guide_vol = config.guide_volume.unwrap_or(0.0);
     let guide_text = format_guide_text(guide_vol);
-    let theme_text = format!("Theme: {} [T]", theme.name());
+    let theme_text = format!("Theme: {} [T]", bg_theme.name());
     let mic_text = format_mic_text(mic_active);
 
     commands
@@ -195,7 +202,7 @@ fn enter_playing(
                         font_size: 22.0,
                         ..default()
                     },
-                    TextColor(Color::WHITE),
+                    TextColor(ui_theme.hud_primary),
                 ));
                 info.spawn((
                     Text::new(artist),
@@ -203,7 +210,7 @@ fn enter_playing(
                         font_size: 16.0,
                         ..default()
                     },
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.6)),
+                    TextColor(ui_theme.hud_secondary),
                 ));
 
                 info.spawn(Node {
@@ -231,7 +238,7 @@ fn enter_playing(
                         font_size: 16.0,
                         ..default()
                     },
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.7)),
+                    TextColor(ui_theme.hud_secondary),
                 ));
                 ctrl.spawn((
                     MicStatusText,
@@ -240,7 +247,7 @@ fn enter_playing(
                         font_size: 14.0,
                         ..default()
                     },
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.5)),
+                    TextColor(ui_theme.hud_dim),
                 ));
                 ctrl.spawn((
                     GuideVolumeText,
@@ -249,7 +256,7 @@ fn enter_playing(
                         font_size: 14.0,
                         ..default()
                     },
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.5)),
+                    TextColor(ui_theme.hud_dim),
                 ));
                 ctrl.spawn((
                     ThemeText,
@@ -258,7 +265,7 @@ fn enter_playing(
                         font_size: 14.0,
                         ..default()
                     },
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.5)),
+                    TextColor(ui_theme.hud_dim),
                 ));
                 ctrl.spawn((
                     Text::new("[ESC] Back"),
@@ -266,7 +273,7 @@ fn enter_playing(
                         font_size: 14.0,
                         ..default()
                     },
-                    TextColor(Color::srgba(1.0, 1.0, 1.0, 0.5)),
+                    TextColor(ui_theme.hud_dim),
                 ));
             });
         });
@@ -337,6 +344,7 @@ fn player_update(
     mut next_state: ResMut<NextState<AppState>>,
     mut intro_node: Query<&mut Node, (With<SkipIntroButton>, Without<SkipOutroButton>)>,
     mut outro_node: Query<&mut Node, (With<SkipOutroButton>, Without<SkipIntroButton>)>,
+    ui_theme: Res<UiTheme>,
 ) {
     start_playback(&mut karaoke, &audio, &time);
     update_vocals_volume(&karaoke, &mut audio_instances);
@@ -376,6 +384,7 @@ fn player_update(
             countdown_text_query,
             word_query,
             &mut commands,
+            &ui_theme,
         );
     }
 }
@@ -438,10 +447,13 @@ fn handle_mic_toggle(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut mic: Option<ResMut<microphone::MicrophoneCapture>>,
     mut mic_text_query: Query<&mut Text, With<MicStatusText>>,
+    mut config: ResMut<crate::config::AppConfig>,
 ) {
     if keyboard.just_pressed(KeyCode::KeyM) {
         if let Some(ref mut mic) = mic {
             mic.active = !mic.active;
+            config.mic_active = Some(mic.active);
+            config.save();
             if let Ok(mut text) = mic_text_query.single_mut() {
                 **text = format_mic_text(mic.active);
             }

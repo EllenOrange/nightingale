@@ -8,6 +8,9 @@ pub struct AppConfig {
     pub last_folder: Option<PathBuf>,
     pub last_theme: Option<usize>,
     pub guide_volume: Option<f64>,
+    pub fullscreen: Option<bool>,
+    pub dark_mode: Option<bool>,
+    pub mic_active: Option<bool>,
 }
 
 impl AppConfig {
@@ -38,5 +41,13 @@ impl AppConfig {
         if let Ok(json) = serde_json::to_string_pretty(self) {
             let _ = std::fs::write(&path, json);
         }
+    }
+
+    pub fn is_fullscreen(&self) -> bool {
+        self.fullscreen.unwrap_or(true)
+    }
+
+    pub fn is_dark_mode(&self) -> bool {
+        self.dark_mode.unwrap_or(true)
     }
 }

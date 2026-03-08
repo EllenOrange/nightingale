@@ -1,15 +1,19 @@
 pub mod song_card;
 
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
 use bevy::app::AppExit;
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{ImageSampler, ImageType};
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
+use bevy::window::WindowMode;
 
 use crate::analyzer::{AnalysisQueue, PlayTarget};
 use crate::scanner::metadata::{AnalysisStatus, SongLibrary};
 use crate::states::AppState;
-use crate::ui;
+use crate::ui::{self, UiTheme};
 use song_card::*;
 
 pub struct MenuPlugin;
@@ -28,6 +32,7 @@ impl Plugin for MenuPlugin {
                     handle_search_input,
                     update_status_badges,
                     handle_sidebar_click,
+                    poll_folder_result,
                 )
                     .run_if(in_state(AppState::Menu)),
             )
@@ -43,6 +48,11 @@ struct MenuState {
 #[derive(Resource)]
 struct AlbumArtCache {
     handles: Vec<Option<Handle<Image>>>,
+}
+
+#[derive(Resource)]
+struct PendingFolderPick {
+    result: Arc<Mutex<Option<Option<PathBuf>>>>,
 }
 
 fn load_album_art(
@@ -90,7 +100,19 @@ fn build_menu(
     library: Res<SongLibrary>,
     menu_state: Res<MenuState>,
     art_cache: Res<AlbumArtCache>,
+    theme: Res<UiTheme>,
+    config: Res<crate::config::AppConfig>,
+    windows: Query<&Window>,
+    asset_server: Res<AssetServer>,
 ) {
+    let has_folder = config.last_folder.as_ref().is_some_and(|f| f.is_dir());
+    let is_fs = windows
+        .single()
+        .map(|w| matches!(w.mode, WindowMode::BorderlessFullscreen(_)))
+        .unwrap_or(config.is_fullscreen());
+
+    let logo_handle: Handle<Image> = asset_server.load("images/logo.png");
+
     commands
         .spawn((
             MenuRoot,
@@ -100,76 +122,111 @@ fn build_menu(
                 flex_direction: FlexDirection::Row,
                 ..default()
             },
-            BackgroundColor(ui::BG_COLOR),
+            BackgroundColor(theme.bg),
         ))
         .with_children(|root| {
-            build_sidebar(root);
-            build_main_area(root, &library, &menu_state, &art_cache);
+            build_sidebar(root, &theme, has_folder, is_fs, logo_handle);
+            build_main_area(root, &library, &menu_state, &art_cache, &theme);
         });
 }
 
-fn build_sidebar(root: &mut ChildSpawnerCommands) {
+fn build_sidebar(
+    root: &mut ChildSpawnerCommands,
+    theme: &UiTheme,
+    has_folder: bool,
+    is_fullscreen: bool,
+    logo: Handle<Image>,
+) {
     root.spawn((
         Node {
-            width: Val::Px(200.0),
+            width: Val::Px(220.0),
             height: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
-            padding: UiRect::all(Val::Px(16.0)),
-            row_gap: Val::Px(12.0),
+            align_items: AlignItems::Center,
+            padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(16.0), Val::Px(16.0)),
+            row_gap: Val::Px(8.0),
             ..default()
         },
-        BackgroundColor(SIDEBAR_BG),
+        BackgroundColor(theme.sidebar_bg),
     ))
     .with_children(|sidebar| {
         sidebar.spawn((
-            Text::new("KARASAD"),
-            TextFont {
-                font_size: 28.0,
-                ..default()
-            },
-            TextColor(ui::ACCENT),
+            ImageNode::new(logo),
             Node {
-                margin: UiRect::bottom(Val::Px(4.0)),
+                width: Val::Px(180.0),
+                margin: UiRect::bottom(Val::Px(20.0)),
                 ..default()
             },
         ));
 
-        sidebar.spawn((
-            Text::new("Your own Karaoke"),
-            TextFont {
-                font_size: 14.0,
-                ..default()
-            },
-            TextColor(ui::TEXT_SECONDARY),
-            Node {
-                margin: UiRect::bottom(Val::Px(24.0)),
-                ..default()
-            },
-        ));
+        let folder_label = if has_folder {
+            "Change Folder"
+        } else {
+            "Select Folder"
+        };
+        spawn_sidebar_button(sidebar, folder_label, SidebarAction::ChangeFolder, theme, true);
 
-        spawn_sidebar_button(sidebar, "Rescan Folder", SidebarAction::RescanFolder);
-        spawn_sidebar_button(sidebar, "Change Folder", SidebarAction::ChangeFolder);
-        spawn_sidebar_button(sidebar, "Exit", SidebarAction::Exit);
+        spawn_sidebar_button(
+            sidebar,
+            "Rescan Folder",
+            SidebarAction::RescanFolder,
+            theme,
+            has_folder,
+        );
+
+        sidebar.spawn(Node {
+            flex_grow: 1.0,
+            ..default()
+        });
+
+        let fs_label = if is_fullscreen {
+            "Windowed"
+        } else {
+            "Fullscreen"
+        };
+        spawn_sidebar_button(sidebar, fs_label, SidebarAction::ToggleFullscreen, theme, true);
+
+        let theme_label = format!("Theme: {}", theme.mode_label());
+        spawn_sidebar_button(sidebar, &theme_label, SidebarAction::ToggleTheme, theme, true);
+
+        spawn_sidebar_button(sidebar, "Exit", SidebarAction::Exit, theme, true);
     });
 }
 
-fn spawn_sidebar_button(parent: &mut ChildSpawnerCommands, label: &str, action: SidebarAction) {
+fn spawn_sidebar_button(
+    parent: &mut ChildSpawnerCommands,
+    label: &str,
+    action: SidebarAction,
+    theme: &UiTheme,
+    enabled: bool,
+) {
+    let bg = if enabled {
+        theme.sidebar_btn
+    } else {
+        theme.sidebar_btn
+    };
+    let text_color = if enabled {
+        theme.text_primary
+    } else {
+        theme.text_dim
+    };
+
     parent
         .spawn((
             SidebarButton { action },
             Button,
             Node {
                 width: Val::Percent(100.0),
-                padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(10.0), Val::Px(10.0)),
+                padding: UiRect::new(Val::Px(14.0), Val::Px(14.0), Val::Px(10.0), Val::Px(10.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(SIDEBAR_BTN),
+            BackgroundColor(bg),
         ))
         .with_children(|btn| {
-            ui::spawn_label(btn, label, 14.0, ui::TEXT_PRIMARY);
+            ui::spawn_label(btn, label, 13.0, text_color);
         });
 }
 
@@ -178,6 +235,7 @@ fn build_main_area(
     library: &SongLibrary,
     menu_state: &MenuState,
     art_cache: &AlbumArtCache,
+    theme: &UiTheme,
 ) {
     root.spawn(Node {
         flex_grow: 1.0,
@@ -188,6 +246,11 @@ fn build_main_area(
         ..default()
     })
     .with_children(|main| {
+        if library.songs.is_empty() {
+            build_empty_state(main, theme);
+            return;
+        }
+
         main.spawn((
             Node {
                 width: Val::Px(600.0),
@@ -198,7 +261,7 @@ fn build_main_area(
                 border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
-            BackgroundColor(CARD_COLOR),
+            BackgroundColor(theme.card_bg),
         ))
         .with_children(|bar| {
             let display_text = if menu_state.search_query.is_empty() {
@@ -213,7 +276,7 @@ fn build_main_area(
                     font_size: 16.0,
                     ..default()
                 },
-                TextColor(ui::TEXT_SECONDARY),
+                TextColor(theme.text_secondary),
             ));
         });
 
@@ -233,7 +296,7 @@ fn build_main_area(
                 font_size: 14.0,
                 ..default()
             },
-            TextColor(ui::TEXT_SECONDARY),
+            TextColor(theme.text_secondary),
             Node {
                 margin: UiRect::bottom(Val::Px(16.0)),
                 ..default()
@@ -262,23 +325,66 @@ fn build_main_area(
                     }
                 }
                 let art = art_cache.handles.get(i).and_then(|h| h.clone());
-                build_song_card(list, song, i, art);
+                build_song_card(list, song, i, art, theme);
             }
         });
     });
 }
 
+fn build_empty_state(parent: &mut ChildSpawnerCommands, theme: &UiTheme) {
+    parent
+        .spawn((
+            EmptyStateRoot,
+            Node {
+                flex_grow: 1.0,
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(16.0),
+                ..default()
+            },
+        ))
+        .with_children(|empty| {
+            empty.spawn((
+                Text::new("♪"),
+                TextFont {
+                    font_size: 64.0,
+                    ..default()
+                },
+                TextColor(theme.text_dim),
+            ));
+            empty.spawn((
+                Text::new("No songs loaded"),
+                TextFont {
+                    font_size: 24.0,
+                    ..default()
+                },
+                TextColor(theme.text_secondary),
+            ));
+            empty.spawn((
+                Text::new("Select a music folder to get started"),
+                TextFont {
+                    font_size: 15.0,
+                    ..default()
+                },
+                TextColor(theme.text_dim),
+            ));
+        });
+}
+
 fn handle_song_click(
     mut commands: Commands,
     mut interaction_query: Query<
-        (&Interaction, &SongCard, &mut BackgroundColor),
+        (&Interaction, &SongCard, &mut BackgroundColor, &mut BorderColor),
         Changed<Interaction>,
     >,
     mut library: ResMut<SongLibrary>,
     mut next_state: ResMut<NextState<AppState>>,
     mut queue: ResMut<AnalysisQueue>,
+    theme: Res<UiTheme>,
 ) {
-    for (interaction, song_card, mut bg) in &mut interaction_query {
+    for (interaction, song_card, mut bg, mut border) in &mut interaction_query {
         match interaction {
             Interaction::Pressed => {
                 let idx = song_card.song_index;
@@ -295,10 +401,12 @@ fn handle_song_click(
                 }
             }
             Interaction::Hovered => {
-                *bg = BackgroundColor(CARD_HOVER);
+                *bg = BackgroundColor(theme.card_hover);
+                *border = BorderColor::all(theme.accent);
             }
             Interaction::None => {
-                *bg = BackgroundColor(CARD_COLOR);
+                *bg = BackgroundColor(theme.card_bg);
+                *border = BorderColor::all(Color::NONE);
             }
         }
     }
@@ -313,14 +421,17 @@ fn handle_sidebar_click(
     mut next_state: ResMut<NextState<AppState>>,
     mut queue: ResMut<AnalysisQueue>,
     mut exit: MessageWriter<AppExit>,
-    config: Res<crate::config::AppConfig>,
+    mut config: ResMut<crate::config::AppConfig>,
+    pending: Option<Res<PendingFolderPick>>,
+    mut windows: Query<&mut Window>,
+    mut theme: ResMut<UiTheme>,
 ) {
     for (interaction, sidebar_btn, mut bg) in &mut interaction_query {
         match interaction {
             Interaction::Pressed => match sidebar_btn.action {
                 SidebarAction::RescanFolder => {
                     if let Some(folder) = config.last_folder.clone() {
-                        commands.remove_resource::<SongLibrary>();
+                        commands.insert_resource(SongLibrary { songs: vec![] });
                         queue.queue.clear();
                         queue.active = None;
                         commands.insert_resource(crate::scanner::ScanRequest { folder });
@@ -328,22 +439,83 @@ fn handle_sidebar_click(
                     }
                 }
                 SidebarAction::ChangeFolder => {
-                    commands.remove_resource::<SongLibrary>();
-                    queue.queue.clear();
-                    queue.active = None;
-                    next_state.set(AppState::FolderSelect);
+                    if pending.is_some() {
+                        return;
+                    }
+                    let result: Arc<Mutex<Option<Option<PathBuf>>>> = Arc::new(Mutex::new(None));
+                    let result_clone = Arc::clone(&result);
+                    std::thread::spawn(move || {
+                        let folder = rfd::FileDialog::new()
+                            .set_title("Select your music folder")
+                            .pick_folder();
+                        *result_clone.lock().unwrap() = Some(folder);
+                    });
+                    commands.insert_resource(PendingFolderPick { result });
+                }
+                SidebarAction::ToggleTheme => {
+                    theme.toggle();
+                    config.dark_mode = Some(theme.mode == crate::ui::ThemeMode::Dark);
+                    config.save();
+                    rebuild_menu(&mut commands, &mut next_state);
+                }
+                SidebarAction::ToggleFullscreen => {
+                    if let Ok(mut window) = windows.single_mut() {
+                        let is_fs = matches!(window.mode, WindowMode::BorderlessFullscreen(_));
+                        window.mode = if is_fs {
+                            WindowMode::Windowed
+                        } else {
+                            WindowMode::BorderlessFullscreen(
+                                bevy::window::MonitorSelection::Current,
+                            )
+                        };
+                        config.fullscreen = Some(!is_fs);
+                        config.save();
+                        rebuild_menu(&mut commands, &mut next_state);
+                    }
                 }
                 SidebarAction::Exit => {
                     exit.write(AppExit::Success);
                 }
             },
             Interaction::Hovered => {
-                *bg = BackgroundColor(SIDEBAR_BTN_HOVER);
+                *bg = BackgroundColor(theme.sidebar_btn_hover);
             }
             Interaction::None => {
-                *bg = BackgroundColor(SIDEBAR_BTN);
+                *bg = BackgroundColor(theme.sidebar_btn);
             }
         }
+    }
+}
+
+fn rebuild_menu(_commands: &mut Commands, next_state: &mut ResMut<NextState<AppState>>) {
+    next_state.set(AppState::Menu);
+}
+
+fn poll_folder_result(
+    mut commands: Commands,
+    pending: Option<Res<PendingFolderPick>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut config: ResMut<crate::config::AppConfig>,
+    mut queue: ResMut<AnalysisQueue>,
+) {
+    let Some(pending) = pending else { return };
+
+    let lock = pending.result.lock().unwrap();
+    if let Some(ref maybe_folder) = *lock {
+        if let Some(folder) = maybe_folder {
+            info!("Selected folder: {}", folder.display());
+            commands.insert_resource(SongLibrary { songs: vec![] });
+            queue.queue.clear();
+            queue.active = None;
+            commands.insert_resource(crate::scanner::ScanRequest {
+                folder: folder.clone(),
+            });
+            config.last_folder = Some(folder.clone());
+            config.save();
+            next_state.set(AppState::Scanning);
+        }
+        drop(lock);
+        commands.remove_resource::<PendingFolderPick>();
     }
 }
 
@@ -355,6 +527,7 @@ fn handle_search_input(
     song_list_query: Query<Entity, With<SongListRoot>>,
     mut commands: Commands,
     art_cache: Res<AlbumArtCache>,
+    theme: Res<UiTheme>,
 ) {
     let mut changed = false;
 
@@ -408,6 +581,7 @@ fn handle_search_input(
             &library.songs,
             &menu_state.search_query,
             &art_cache.handles,
+            &theme,
         );
     }
 }
@@ -416,6 +590,7 @@ fn update_status_badges(
     library: Res<SongLibrary>,
     queue: Res<AnalysisQueue>,
     time: Res<Time>,
+    theme: Res<UiTheme>,
     mut badge_query: Query<(&StatusBadge, &mut BackgroundColor)>,
     mut badge_text_query: Query<
         (&BadgeText, &mut Text),
@@ -430,11 +605,11 @@ fn update_status_badges(
             continue;
         }
         let color = match &library.songs[badge.song_index].analysis_status {
-            AnalysisStatus::Ready => BADGE_READY,
-            AnalysisStatus::NotAnalyzed => BADGE_NOT_ANALYZED,
-            AnalysisStatus::Queued => BADGE_QUEUED,
-            AnalysisStatus::Analyzing => BADGE_ANALYZING,
-            AnalysisStatus::Failed(_) => BADGE_FAILED,
+            AnalysisStatus::Ready => theme.badge_ready,
+            AnalysisStatus::NotAnalyzed => theme.badge_not_analyzed,
+            AnalysisStatus::Queued => theme.badge_queued,
+            AnalysisStatus::Analyzing => theme.badge_analyzing,
+            AnalysisStatus::Failed(_) => theme.badge_failed,
         };
         *bg = BackgroundColor(color);
     }

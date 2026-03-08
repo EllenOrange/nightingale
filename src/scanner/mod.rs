@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 
 use crate::analyzer::cache::CacheDir;
 use crate::states::AppState;
-use crate::ui;
+use crate::ui::{self, UiTheme};
 use metadata::{AnalysisStatus, Song, SongLibrary};
 
 pub struct ScannerPlugin;
@@ -40,7 +40,12 @@ struct PendingScan {
 #[derive(Component)]
 struct ScanningUi;
 
-fn start_scan(mut commands: Commands, scan_request: Res<ScanRequest>, cache: Res<CacheDir>) {
+fn start_scan(
+    mut commands: Commands,
+    scan_request: Res<ScanRequest>,
+    cache: Res<CacheDir>,
+    theme: Res<UiTheme>,
+) {
     let folder = scan_request.folder.clone();
     let cache_path = cache.path.clone();
 
@@ -58,11 +63,11 @@ fn start_scan(mut commands: Commands, scan_request: Res<ScanRequest>, cache: Res
                 row_gap: Val::Px(16.0),
                 ..default()
             },
-            BackgroundColor(ui::BG_COLOR),
+            BackgroundColor(theme.bg),
         ))
         .with_children(|root| {
-            ui::spawn_label(root, "Scanning music folder...", 28.0, ui::ACCENT);
-            ui::spawn_label(root, format!("{}", folder.display()), 14.0, ui::TEXT_DIM);
+            ui::spawn_label(root, "Scanning music folder...", 28.0, theme.accent);
+            ui::spawn_label(root, format!("{}", folder.display()), 14.0, theme.text_dim);
         });
 
     let result: Arc<Mutex<Option<Vec<Song>>>> = Arc::new(Mutex::new(None));

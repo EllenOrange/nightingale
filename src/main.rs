@@ -1,6 +1,5 @@
 mod analyzer;
 mod config;
-mod folder_select;
 mod menu;
 mod player;
 mod scanner;
@@ -9,15 +8,27 @@ pub mod ui;
 
 use bevy::asset::{AssetPlugin, UnapprovedPathMode, load_internal_binary_asset};
 use bevy::prelude::*;
+use bevy::window::WindowMode;
 use bevy_kira_audio::AudioPlugin;
 
 use analyzer::cache::CacheDir;
 use config::AppConfig;
 use player::background::BackgroundPlugin;
+use scanner::metadata::SongLibrary;
 use states::AppState;
+use ui::UiTheme;
 
 fn main() {
     let mut app = App::new();
+
+    let config = AppConfig::load();
+    let has_saved_folder = config.last_folder.as_ref().is_some_and(|f| f.is_dir());
+
+    let window_mode = if config.is_fullscreen() {
+        WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
+    } else {
+        WindowMode::Windowed
+    };
 
     app.add_plugins(
         DefaultPlugins
@@ -25,6 +36,7 @@ fn main() {
                 primary_window: Some(Window {
                     title: "Karasad — Own Your Karaoke".into(),
                     resolution: (1280, 720).into(),
+                    mode: window_mode,
                     ..default()
                 }),
                 ..default()
@@ -42,21 +54,21 @@ fn main() {
         |bytes: &[u8], _path: String| { Font::try_from_bytes(bytes.to_vec()).unwrap() }
     );
 
-    let config = AppConfig::load();
-    let has_saved_folder = config.last_folder.as_ref().is_some_and(|f| f.is_dir());
-
-    let theme = player::background::ActiveTheme {
+    let bg_theme = player::background::ActiveTheme {
         index: config.last_theme.unwrap_or(0),
     };
+    let ui_theme = UiTheme::from_config(&config);
 
     app.add_plugins(AudioPlugin)
         .add_plugins(BackgroundPlugin)
         .init_state::<AppState>()
         .insert_resource(CacheDir::new())
+        .insert_resource(SongLibrary { songs: vec![] })
         .insert_resource(config)
-        .insert_resource(theme)
+        .insert_resource(bg_theme)
+        .insert_resource(ui_theme)
         .add_systems(Startup, setup_camera)
-        .add_plugins(folder_select::FolderSelectPlugin)
+        .add_systems(Update, toggle_fullscreen)
         .add_plugins(scanner::ScannerPlugin)
         .add_plugins(analyzer::AnalyzerPlugin)
         .add_plugins(menu::MenuPlugin)
@@ -85,6 +97,25 @@ fn auto_open_saved_folder(
                 folder: folder.clone(),
             });
             next_state.set(AppState::Scanning);
+        }
+    }
+}
+
+fn toggle_fullscreen(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut windows: Query<&mut Window>,
+    mut config: ResMut<AppConfig>,
+) {
+    if keyboard.just_pressed(KeyCode::F11) {
+        if let Ok(mut window) = windows.single_mut() {
+            let is_fs = matches!(window.mode, WindowMode::BorderlessFullscreen(_));
+            window.mode = if is_fs {
+                WindowMode::Windowed
+            } else {
+                WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
+            };
+            config.fullscreen = Some(!is_fs);
+            config.save();
         }
     }
 }
