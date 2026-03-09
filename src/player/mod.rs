@@ -187,6 +187,14 @@ fn enter_playing(
         }
     };
 
+    let total_words: usize = transcript.segments.iter().map(|s| s.words.len()).sum();
+    info!(
+        "Loaded transcript: {} segments, {} words, lang={}",
+        transcript.segments.len(),
+        total_words,
+        transcript.language
+    );
+
     transcript.split_long_segments(8);
 
     let saved_guide = config.guide_volume.unwrap_or(0.0);
