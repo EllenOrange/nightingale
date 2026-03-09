@@ -138,7 +138,8 @@ def detect_language_multiwindow(model, audio, sample_rate=16000, window_secs=30)
 def build_segments(all_words: list[dict]) -> list[dict]:
     """Group words into segments based on time gaps; filter low-confidence edges if scores exist."""
     MAX_WORD_GAP = 3.0
-    SENTENCE_GAP = 0.3
+    MIN_SENTENCE_GAP = 0.05
+    MIN_WORDS_PER_LINE = 3
     EDGE_CONFIDENCE_THRESHOLD = 0.5
 
     def _flush(words):
@@ -159,9 +160,14 @@ def build_segments(all_words: list[dict]) -> list[dict]:
             gap = w["start"] - current_words[-1]["end"]
             last_text = current_words[-1]["word"]
             next_text = w["word"]
-            punctuation_end = last_text.rstrip().endswith((".", "!", "?"))
+            punctuation_end = last_text.rstrip().endswith((".", "!", "?", ","))
             capital_start = next_text[:1].isupper()
-            if gap > MAX_WORD_GAP or (gap >= SENTENCE_GAP and (punctuation_end or capital_start)):
+            long_enough = len(current_words) >= MIN_WORDS_PER_LINE
+
+            if gap > MAX_WORD_GAP:
+                segments.append(_flush(current_words))
+                current_words = []
+            elif long_enough and gap >= MIN_SENTENCE_GAP and punctuation_end and capital_start:
                 segments.append(_flush(current_words))
                 current_words = []
         current_words.append(w)
@@ -182,7 +188,7 @@ def build_segments(all_words: list[dict]) -> list[dict]:
             dropped = segments.pop()
             print(f"[nightingale:LOG] Dropping low-confidence trailing segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
 
-    MAX_WORDS_PER_LINE = 12
+    MAX_WORDS_PER_LINE = 10
     MIN_SPLIT_SIZE = 4
     split_segments = []
     for seg in segments:
@@ -358,7 +364,8 @@ def transcribe_vocals(
     asr_options = {
         "beam_size": beam_size,
         "initial_prompt": (
-            "Song Lyrics. Split lines with punctuation:"
+            "Everything before GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT.",
+            "Song Lyrics. Split lines with punctuation. GO:"
         ),
     }
 
