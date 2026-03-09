@@ -9,11 +9,11 @@ use super::microphone::{MicrophoneCapture, detect_pitch_from_samples};
 use audio::KaraokeAudio;
 use bevy_kira_audio::AudioInstance;
 
-const PITCH_BUFFER_SIZE: usize = 80;
+const PITCH_BUFFER_SIZE: usize = 200;
 pub const DISPLAY_WIDTH: f32 = 480.0;
 pub const DISPLAY_HEIGHT: f32 = 56.0;
 pub const DISPLAY_TOP_OFFSET: f32 = 55.0;
-const PUSH_INTERVAL: f64 = 0.05;
+const PUSH_INTERVAL: f64 = 0.02;
 const SMOOTHING: f32 = 0.55;
 
 const SEMITONE_TOLERANCE: f32 = 6.0;
