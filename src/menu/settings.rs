@@ -368,10 +368,13 @@ fn dispatch_settings_action(
 
 pub fn handle_settings_click(
     mut commands: Commands,
-    mut interaction_query: Query<
-        (&Interaction, &SettingsButton, &mut BackgroundColor),
-        Changed<Interaction>,
-    >,
+    mut bg_queries: ParamSet<(
+        Query<
+            (&Interaction, &SettingsButton, &mut BackgroundColor),
+            Changed<Interaction>,
+        >,
+        Query<(&SettingsRow, &mut BackgroundColor, &mut BorderColor)>,
+    )>,
     mut config: ResMut<crate::config::AppConfig>,
     overlay_query: Query<Entity, With<SettingsOverlay>>,
     mut value_texts: Query<(&SettingsValueText, &mut Text)>,
@@ -379,7 +382,6 @@ pub fn handle_settings_click(
     mut windows: Query<&mut Window>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut settings_focus: Option<ResMut<SettingsFocus>>,
-    mut row_query: Query<(&SettingsRow, &mut BackgroundColor, &mut BorderColor)>,
 ) {
     if overlay_query.is_empty() {
         return;
@@ -439,8 +441,9 @@ pub fn handle_settings_click(
             || keyboard.just_pressed(KeyCode::Enter);
 
         if any_nav {
-            for (row, mut bg, mut border) in &mut row_query {
-                if row.0 == sf.0 {
+            let focus_idx = sf.0;
+            for (row, mut bg, mut border) in &mut bg_queries.p1() {
+                if row.0 == focus_idx {
                     *bg = BackgroundColor(theme.popup_btn_hover);
                     *border = BorderColor::all(theme.accent);
                 } else {
@@ -451,7 +454,7 @@ pub fn handle_settings_click(
         }
     }
 
-    for (interaction, settings_btn, mut bg) in &mut interaction_query {
+    for (interaction, settings_btn, mut bg) in &mut bg_queries.p0() {
         match interaction {
             Interaction::Pressed => {
                 dispatch_settings_action(

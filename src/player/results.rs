@@ -528,17 +528,6 @@ pub fn handle_pause_input(
         return;
     }
 
-    if keyboard.just_pressed(KeyCode::Escape) {
-        for entity in &overlay_query {
-            commands.entity(entity).despawn();
-        }
-        commands.remove_resource::<PauseFocus>();
-        if let Some(karaoke) = karaoke {
-            super::audio::resume_audio(&karaoke, &mut audio_instances);
-        }
-        return;
-    }
-
     if let Some(ref mut pf) = pause_focus {
         if keyboard.just_pressed(KeyCode::ArrowDown) || keyboard.just_pressed(KeyCode::ArrowUp) {
             pf.0 = if pf.0 == 0 { 1 } else { 0 };

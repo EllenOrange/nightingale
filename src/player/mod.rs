@@ -402,7 +402,7 @@ fn enter_playing(
 fn configure_gizmos(mut store: ResMut<GizmoConfigStore>) {
     let (config, _) = store.config_mut::<DefaultGizmoConfigGroup>();
 
-    config.line.width = 8.0;
+    config.line.width = 3.0;
 }
 
 pub fn no_player_overlay(
@@ -774,7 +774,7 @@ fn handle_escape(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
     results_q: Query<(), With<ResultsOverlay>>,
-    pause_q: Query<(), With<PauseOverlay>>,
+    pause_q: Query<Entity, With<PauseOverlay>>,
     karaoke: Option<Res<KaraokeAudio>>,
     mut audio_instances: ResMut<Assets<AudioInstance>>,
     theme: Res<UiTheme>,
@@ -783,7 +783,17 @@ fn handle_escape(
     if !keyboard.just_pressed(KeyCode::Escape) {
         return;
     }
-    if !results_q.is_empty() || !pause_q.is_empty() {
+    if !results_q.is_empty() {
+        return;
+    }
+    if !pause_q.is_empty() {
+        for entity in &pause_q {
+            commands.entity(entity).despawn();
+        }
+        commands.remove_resource::<results::PauseFocus>();
+        if let Some(karaoke) = &karaoke {
+            audio::resume_audio(karaoke, &mut audio_instances);
+        }
         return;
     }
     if let Some(karaoke) = &karaoke {
