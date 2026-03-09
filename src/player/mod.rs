@@ -514,6 +514,16 @@ fn check_mic_health(
         return;
     }
 
+    if mic.is_silence_only() {
+        warn!("Mic '{}': no real input detected, disabling", mic.device_name);
+        mic.active = false;
+        mic.device_name = "(no mic)".into();
+        if let Ok(mut text) = mic_text_query.single_mut() {
+            **text = format_mic_text(false, &mic.device_name);
+        }
+        return;
+    }
+
     if mic.check_health() {
         return;
     }

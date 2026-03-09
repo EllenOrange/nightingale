@@ -30,6 +30,7 @@ pub struct LyricWord {
 const COUNTDOWN_DURATION: f64 = 3.0;
 const COUNTDOWN_GAP_THRESHOLD: f64 = 5.0;
 const LYRICS_LEAD: f64 = 0.15;
+const WORD_HIGHLIGHT_LEAD: f64 = 0.15;
 
 pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &UiTheme) {
     let state = LyricsState {
@@ -52,56 +53,63 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
             },
         ))
         .with_children(|root| {
-            root.spawn((
-                CountdownNode,
-                Node {
-                    position_type: PositionType::Absolute,
-                    top: Val::Px(-40.0),
-                    left: Val::Percent(50.0),
-                    margin: UiRect::left(Val::Px(-20.0)),
-                    width: Val::Px(40.0),
-                    height: Val::Px(40.0),
-                    border_radius: BorderRadius::all(Val::Percent(50.0)),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(Color::NONE),
-                Visibility::Hidden,
-                ZIndex(1),
-            ))
-            .with_children(|cd| {
-                cd.spawn((
-                    Text::new(""),
-                    TextFont {
-                        font_size: 22.0,
+            root.spawn(Node {
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            })
+            .with_children(|wrapper| {
+                wrapper.spawn((
+                    CountdownNode,
+                    Node {
+                        position_type: PositionType::Absolute,
+                        top: Val::Px(-36.0),
+                        left: Val::Px(-36.0),
+                        width: Val::Px(40.0),
+                        height: Val::Px(40.0),
+                        border_radius: BorderRadius::all(Val::Percent(50.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
                         ..default()
                     },
-                    TextColor(theme.countdown_color),
+                    BackgroundColor(Color::NONE),
+                    Visibility::Hidden,
+                    ZIndex(1),
+                ))
+                .with_children(|cd| {
+                    cd.spawn((
+                        Text::new(""),
+                        TextFont {
+                            font_size: 22.0,
+                            ..default()
+                        },
+                        TextColor(theme.countdown_color),
+                    ));
+                });
+
+                wrapper.spawn((
+                    CurrentLine,
+                    Node {
+                        max_width: Val::Vw(80.0),
+                        flex_direction: FlexDirection::Row,
+                        flex_wrap: FlexWrap::Wrap,
+                        flex_shrink: 0.0,
+                        justify_content: JustifyContent::Center,
+                        column_gap: Val::Px(8.0),
+                        padding: UiRect::new(
+                            Val::Px(20.0),
+                            Val::Px(20.0),
+                            Val::Px(10.0),
+                            Val::Px(10.0),
+                        ),
+                        border_radius: BorderRadius::all(Val::Px(8.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                    Visibility::Hidden,
                 ));
             });
-
-            root.spawn((
-                CurrentLine,
-                Node {
-                    max_width: Val::Vw(80.0),
-                    flex_direction: FlexDirection::Row,
-                    flex_wrap: FlexWrap::Wrap,
-                    flex_shrink: 0.0,
-                    justify_content: JustifyContent::Center,
-                    column_gap: Val::Px(8.0),
-                    padding: UiRect::new(
-                        Val::Px(20.0),
-                        Val::Px(20.0),
-                        Val::Px(10.0),
-                        Val::Px(10.0),
-                    ),
-                    border_radius: BorderRadius::all(Val::Px(8.0)),
-                    ..default()
-                },
-                BackgroundColor(Color::NONE),
-                Visibility::Hidden,
-            ));
 
             root.spawn((
                 NextLine,
@@ -229,10 +237,12 @@ pub fn update_lyrics(
             } else {
                 theme.unsung_color
             };
-            if current_time >= word.end {
+            let w_start = word.start - WORD_HIGHLIGHT_LEAD;
+            let w_end = word.end - WORD_HIGHLIGHT_LEAD;
+            if current_time >= w_end {
                 *color = TextColor(sung);
-            } else if current_time >= word.start {
-                let progress = (current_time - word.start) / (word.end - word.start);
+            } else if current_time >= w_start {
+                let progress = (current_time - w_start) / (w_end - w_start);
                 let (ur, ug, ub) = extract_rgb(unsung);
                 let r = ur + (sung_r - ur) * progress as f32;
                 let g = ug + (sung_g - ug) * progress as f32;
