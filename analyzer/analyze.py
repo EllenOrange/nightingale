@@ -182,6 +182,32 @@ def build_segments(all_words: list[dict]) -> list[dict]:
             dropped = segments.pop()
             print(f"[nightingale:LOG] Dropping low-confidence trailing segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
 
+    MAX_WORDS_PER_LINE = 12
+    MIN_SPLIT_SIZE = 4
+    split_segments = []
+    for seg in segments:
+        words = seg["words"]
+        if len(words) <= MAX_WORDS_PER_LINE:
+            split_segments.append(seg)
+            continue
+        remaining = words
+        while len(remaining) > MAX_WORDS_PER_LINE:
+            search_end = min(len(remaining), MAX_WORDS_PER_LINE + MIN_SPLIT_SIZE)
+            best_gap = -1.0
+            best_idx = search_end // 2
+            for j in range(MIN_SPLIT_SIZE, search_end):
+                gap = remaining[j]["start"] - remaining[j - 1]["end"]
+                if gap > best_gap:
+                    best_gap = gap
+                    best_idx = j
+            split_segments.append(_flush(remaining[:best_idx]))
+            remaining = remaining[best_idx:]
+        if remaining:
+            split_segments.append(_flush(remaining))
+    if len(split_segments) != len(segments):
+        print(f"[nightingale:LOG] Split long lines: {len(segments)} -> {len(split_segments)} segments (max {MAX_WORDS_PER_LINE} words/line)", flush=True)
+    segments = split_segments
+
     for seg in segments:
         if "_avg_score" in seg:
             del seg["_avg_score"]
@@ -287,6 +313,15 @@ def transcribe_voxtral(vocals_path: str, device: str) -> dict:
         for w in words if w["text"].strip()
     ]
 
+    if all_words:
+        last_token_end = max(w["end"] for w in all_words)
+        if last_token_end > 0:
+            scale = audio_duration / last_token_end
+            print(f"[nightingale:LOG] Calibrating timestamps: scale={scale:.4f} (token-based={last_token_end:.1f}s, actual={audio_duration:.1f}s)", flush=True)
+            for w in all_words:
+                w["start"] = round(w["start"] * scale, 3)
+                w["end"] = round(w["end"] * scale, 3)
+
     full_text = " ".join(w["word"] for w in all_words)
     try:
         language = detect_lang(full_text)
@@ -331,7 +366,12 @@ def transcribe_vocals(
 
     asr_options = {
         "beam_size": beam_size,
-        "initial_prompt": "Song lyrics:",
+        "initial_prompt": (
+            "Verse 1. I walk along the road, the wind is in my hair. "
+            "The sun is shining bright, without a single care. "
+            "Chorus. Oh, sing it loud, sing it clear. "
+            "Let the music fill the air, let the world hear."
+        ),
     }
 
     model = whisperx.load_model(

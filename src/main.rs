@@ -44,7 +44,8 @@ fn main() {
             .set(AssetPlugin {
                 unapproved_path_mode: UnapprovedPathMode::Deny,
                 ..default()
-            }),
+            })
+            .set(ImagePlugin::default_linear()),
     );
 
     load_internal_binary_asset!(
