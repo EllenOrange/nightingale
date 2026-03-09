@@ -142,6 +142,17 @@ BANNED_WORDS = {
     "amara.org",
 }
 
+HALLUCINATION_PHRASES = [
+    "продолжение следует",
+    "подписывайтесь на канал",
+    "thanks for watching",
+    "please subscribe",
+    "like and subscribe",
+]
+
+MIN_WORDS_PER_SEC = 0.5
+MIN_SEGMENT_DURATION = 5.0
+
 ATTRIBUTION_WORDS = {
     "субтитры", "субтитр", "подписи", "титры",
     "сделал", "сделала", "сделали",
@@ -485,6 +496,36 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
     return {"language": language, "segments": segments}
 
 
+def _is_bad_segment(seg: dict) -> bool:
+    """Detect segments that are hallucinations or suspiciously sparse."""
+    text = seg.get("text", "").strip()
+    if not text:
+        return True
+
+    duration = seg.get("end", 0) - seg.get("start", 0)
+    words = text.split()
+    word_count = len(words)
+
+    text_lower = text.lower()
+    for phrase in HALLUCINATION_PHRASES:
+        if phrase in text_lower:
+            return True
+
+    all_banned = True
+    for w in words:
+        clean = re.sub(r"[.,!?;:\"\']", "", w).lower()
+        if clean not in BANNED_WORDS and clean not in ATTRIBUTION_WORDS:
+            all_banned = False
+            break
+    if all_banned and word_count > 0:
+        return True
+
+    if duration >= MIN_SEGMENT_DURATION and word_count / max(duration, 0.1) < MIN_WORDS_PER_SEC:
+        return True
+
+    return False
+
+
 def _find_gaps(segments: list[dict], audio_duration: float, min_gap: float = 3.0) -> list[tuple[float, float]]:
     """Find time ranges not covered by any segment."""
     gaps = []
@@ -585,7 +626,23 @@ def transcribe_vocals(
         print(f"[nightingale:LOG] P1 Seg {i}: [{seg.get('start',0):.1f}-{seg.get('end',0):.1f}] ({duration:.1f}s, {words}w, {wps:.1f}w/s) {seg.get('text','')[:80]}", flush=True)
 
     covered = sum(s.get("end", 0) - s.get("start", 0) for s in raw_segments)
-    print(f"[nightingale:LOG] Pass 1 coverage: {covered:.1f}s / {duration_secs:.1f}s ({covered/duration_secs*100:.0f}%)", flush=True)
+    print(f"[nightingale:LOG] Pass 1 raw coverage: {covered:.1f}s / {duration_secs:.1f}s ({covered/duration_secs*100:.0f}%)", flush=True)
+
+    good_segments = []
+    bad_segments = []
+    for seg in raw_segments:
+        if _is_bad_segment(seg):
+            bad_segments.append(seg)
+        else:
+            good_segments.append(seg)
+
+    if bad_segments:
+        for seg in bad_segments:
+            dur = seg.get("end", 0) - seg.get("start", 0)
+            print(f"[nightingale:LOG] Discarded bad segment [{seg.get('start',0):.1f}-{seg.get('end',0):.1f}] ({dur:.1f}s): {seg.get('text','')[:80]}", flush=True)
+        print(f"[nightingale:LOG] Kept {len(good_segments)} good segments, discarded {len(bad_segments)} bad ones", flush=True)
+
+    raw_segments = good_segments
 
     gaps = _find_gaps(raw_segments, duration_secs, min_gap=1.5)
 
@@ -645,23 +702,26 @@ def transcribe_vocals(
             gap_segs = gap_result.get("segments", [])
             print(f"[nightingale:LOG]   -> whisperx returned {len(gap_segs)} segments", flush=True)
 
-            if not gap_segs:
-                print(f"[nightingale:LOG]   -> NOTHING recovered despite rms={rms:.5f}", flush=True)
             for seg in gap_segs:
                 seg["start"] = round(seg.get("start", 0) + slice_start, 3)
                 seg["end"] = round(seg.get("end", 0) + slice_start, 3)
+                if _is_bad_segment(seg):
+                    print(f"[nightingale:LOG]   -> discarded bad P2 segment: [{seg['start']:.1f}-{seg['end']:.1f}] {seg.get('text','')[:80]}", flush=True)
+                    continue
                 recovered_segments.append(seg)
                 print(f"[nightingale:LOG]   -> recovered: [{seg['start']:.1f}-{seg['end']:.1f}] {seg.get('text','')[:80]}", flush=True)
+
+            if not gap_segs or not any(not _is_bad_segment(s) for s in gap_segs):
+                print(f"[nightingale:LOG]   -> NOTHING usable recovered (rms={rms:.5f})", flush=True)
 
         del relaxed_model
 
         if recovered_segments:
             raw_segments.extend(recovered_segments)
             raw_segments.sort(key=lambda s: s.get("start", 0))
-            new_total = sum(len(s.get("text", "").split()) for s in raw_segments)
-            print(f"[nightingale:LOG] After pass 2: {len(raw_segments)} segments, ~{new_total} words (recovered {new_total - total_raw_words})", flush=True)
-        else:
-            print(f"[nightingale:LOG] Pass 2: no segments recovered from gaps", flush=True)
+
+        total_words_after = sum(len(s.get("text", "").split()) for s in raw_segments)
+        print(f"[nightingale:LOG] After pass 2: {len(raw_segments)} segments, ~{total_words_after} words", flush=True)
     else:
         covered = sum(s.get("end", 0) - s.get("start", 0) for s in raw_segments)
         print(f"[nightingale:LOG] Coverage: {covered:.1f}s / {duration_secs:.1f}s ({covered/duration_secs*100:.0f}%), no significant gaps", flush=True)
