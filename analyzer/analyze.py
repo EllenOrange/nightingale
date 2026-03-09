@@ -516,7 +516,7 @@ def _prepare_audio_for_nemo(vocals_path: str) -> str:
     return nemo_path
 
 
-def _transcribe_canary(vocals_path: str, device: str) -> list[dict]:
+def _transcribe_canary(vocals_path: str, device: str, language: str) -> list[dict]:
     """Transcribe with Canary-1B-Flash (multilingual), return list of {word, start, end}."""
     from nemo.collections.asr.models import EncDecMultiTaskModel
 
@@ -528,8 +528,14 @@ def _transcribe_canary(vocals_path: str, device: str) -> list[dict]:
         canary_model = canary_model.cuda()
     canary_model.eval()
 
-    progress(65, "Transcribing with Canary...")
-    output = canary_model.transcribe([nemo_audio], timestamps=True)
+    progress(65, f"Transcribing with Canary (lang={language})...")
+    output = canary_model.transcribe(
+        [nemo_audio],
+        source_lang=language,
+        target_lang=language,
+        batch_size=1,
+        timestamps=True,
+    )
 
     text = output[0].text if hasattr(output[0], "text") else str(output[0])
     print(f"[nightingale:LOG] Canary transcript: '{text[:200]}'", flush=True)
@@ -553,7 +559,7 @@ def transcribe_nemo(vocals_path: str, original_audio_path: str, device: str) -> 
     language = _detect_language_for_nemo(vocals_path, device)
 
     print(f"[nightingale:LOG] Using Canary-1B-Flash (lang={language})", flush=True)
-    all_words = _transcribe_canary(vocals_path, device)
+    all_words = _transcribe_canary(vocals_path, device, language)
 
     progress(75, f"NeMo transcription complete: {len(all_words)} words, lang={language}")
 
