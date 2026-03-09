@@ -183,21 +183,17 @@ def _remove_hallucinations(all_words: list[dict]) -> list[dict]:
 
 
 def build_segments(all_words: list[dict]) -> list[dict]:
-    """Group words into segments based on time gaps; filter low-confidence edges if scores exist."""
+    """Group words into segments based on time gaps."""
     MAX_WORD_GAP = 3.0
     MIN_SENTENCE_GAP = 0.05
     MIN_WORDS_PER_LINE = 3
-    EDGE_CONFIDENCE_THRESHOLD = 0.5
 
     def _flush(words):
-        scores = [wd["score"] for wd in words if "score" in wd]
-        avg_score = sum(scores) / len(scores) if scores else 0.0
         return {
             "text": " ".join(wd["word"] for wd in words),
             "start": words[0]["start"],
             "end": words[-1]["end"],
             "words": words,
-            "_avg_score": avg_score,
         }
 
     segments = []
@@ -247,17 +243,7 @@ def build_segments(all_words: list[dict]) -> list[dict]:
                 i += 1
 
     for seg in segments:
-        print(f"[nightingale:LOG] Segment [{seg['start']:.1f}-{seg['end']:.1f}] avg_score={seg['_avg_score']:.2f}: {seg['text'][:80]}", flush=True)
-
-    has_scores = any("score" in w for w in all_words)
-    if has_scores:
-        while segments and segments[0]["_avg_score"] < EDGE_CONFIDENCE_THRESHOLD:
-            dropped = segments.pop(0)
-            print(f"[nightingale:LOG] Dropping low-confidence leading segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
-
-        while segments and segments[-1]["_avg_score"] < EDGE_CONFIDENCE_THRESHOLD:
-            dropped = segments.pop()
-            print(f"[nightingale:LOG] Dropping low-confidence trailing segment (score={dropped['_avg_score']:.2f}): {dropped['text'][:60]}", flush=True)
+        print(f"[nightingale:LOG] Segment [{seg['start']:.1f}-{seg['end']:.1f}]: {seg['text'][:80]}", flush=True)
 
     MAX_WORDS_PER_LINE = 10
     MIN_SPLIT_SIZE = 4
@@ -284,10 +270,6 @@ def build_segments(all_words: list[dict]) -> list[dict]:
     if len(split_segments) != len(segments):
         print(f"[nightingale:LOG] Split long lines: {len(segments)} -> {len(split_segments)} segments (max {MAX_WORDS_PER_LINE} words/line)", flush=True)
     segments = split_segments
-
-    for seg in segments:
-        if "_avg_score" in seg:
-            del seg["_avg_score"]
 
     return segments
 
