@@ -138,35 +138,36 @@ def detect_language_multiwindow(model, audio, sample_rate=16000, window_secs=30)
 def build_segments(all_words: list[dict]) -> list[dict]:
     """Group words into segments based on time gaps; filter low-confidence edges if scores exist."""
     MAX_WORD_GAP = 3.0
+    SENTENCE_GAP = 0.3
     EDGE_CONFIDENCE_THRESHOLD = 0.5
+
+    def _flush(words):
+        scores = [wd["score"] for wd in words if "score" in wd]
+        avg_score = sum(scores) / len(scores) if scores else 0.0
+        return {
+            "text": " ".join(wd["word"] for wd in words),
+            "start": words[0]["start"],
+            "end": words[-1]["end"],
+            "words": words,
+            "_avg_score": avg_score,
+        }
 
     segments = []
     current_words = []
     for w in all_words:
-        if current_words and w["start"] - current_words[-1]["end"] > MAX_WORD_GAP:
-            print(f"[nightingale:LOG] Splitting segment at {w['start'] - current_words[-1]['end']:.1f}s gap", flush=True)
-            scores = [wd["score"] for wd in current_words if "score" in wd]
-            avg_score = sum(scores) / len(scores) if scores else 0.0
-            segments.append({
-                "text": " ".join(wd["word"] for wd in current_words),
-                "start": current_words[0]["start"],
-                "end": current_words[-1]["end"],
-                "words": current_words,
-                "_avg_score": avg_score,
-            })
-            current_words = []
+        if current_words:
+            gap = w["start"] - current_words[-1]["end"]
+            last_text = current_words[-1]["word"]
+            next_text = w["word"]
+            punctuation_end = last_text.rstrip().endswith((".", "!", "?"))
+            capital_start = next_text[:1].isupper()
+            if gap > MAX_WORD_GAP or (gap >= SENTENCE_GAP and (punctuation_end or capital_start)):
+                segments.append(_flush(current_words))
+                current_words = []
         current_words.append(w)
 
     if current_words:
-        scores = [wd["score"] for wd in current_words if "score" in wd]
-        avg_score = sum(scores) / len(scores) if scores else 0.0
-        segments.append({
-            "text": " ".join(wd["word"] for wd in current_words),
-            "start": current_words[0]["start"],
-            "end": current_words[-1]["end"],
-            "words": current_words,
-            "_avg_score": avg_score,
-        })
+        segments.append(_flush(current_words))
 
     for seg in segments:
         print(f"[nightingale:LOG] Segment [{seg['start']:.1f}-{seg['end']:.1f}] avg_score={seg['_avg_score']:.2f}: {seg['text'][:80]}", flush=True)
@@ -200,10 +201,17 @@ def transcribe_voxtral(vocals_path: str, device: str) -> dict:
     progress(55, "Loading Voxtral Realtime model...")
     processor = AutoProcessor.from_pretrained(REPO_ID)
 
-    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    if device == "cuda":
+        dtype = torch.bfloat16
+    elif device == "mps":
+        dtype = torch.float16
+    else:
+        dtype = torch.float32
+
     model = VoxtralRealtimeForConditionalGeneration.from_pretrained(
         REPO_ID, torch_dtype=dtype, device_map="auto"
     )
+    print(f"[nightingale:LOG] Voxtral model loaded on {model.device} with dtype={model.dtype}", flush=True)
 
     progress(60, "Loading audio for Voxtral...")
     waveform, sr = torchaudio.load(vocals_path)
@@ -215,19 +223,30 @@ def transcribe_voxtral(vocals_path: str, device: str) -> dict:
         waveform = resampler(waveform)
     audio_array = waveform.squeeze(0).numpy()
 
-    print(f"[nightingale:LOG] Audio loaded: {len(audio_array)} samples at {target_sr}Hz ({len(audio_array)/target_sr:.1f}s)", flush=True)
+    audio_duration = len(audio_array) / target_sr
+    max_tokens = int(audio_duration / SECS_PER_TOKEN) + 100
+    print(f"[nightingale:LOG] Audio loaded: {len(audio_array)} samples at {target_sr}Hz ({audio_duration:.1f}s), max_tokens={max_tokens}", flush=True)
 
-    progress(65, "Transcribing with Voxtral Realtime...")
+    progress(65, f"Transcribing with Voxtral Realtime ({audio_duration:.0f}s audio)...")
     inputs = processor(audio_array, return_tensors="pt")
     inputs = inputs.to(model.device, dtype=model.dtype)
 
     with torch.no_grad():
-        outputs = model.generate(**inputs)
+        outputs = model.generate(**inputs, max_new_tokens=max_tokens)
     token_ids = outputs[0]
 
     progress(75, "Extracting word timestamps from token positions...")
 
     special_ids = set(processor.tokenizer.all_special_ids)
+
+    token_offset = 0
+    for t in token_ids:
+        if t.item() in special_ids:
+            token_offset += 1
+        else:
+            break
+
+    print(f"[nightingale:LOG] Token sequence: {len(token_ids)} total, {token_offset} leading special tokens skipped", flush=True)
 
     words = []
     current_word = {"text": "", "start": None, "end": None}
@@ -241,8 +260,9 @@ def transcribe_voxtral(vocals_path: str, device: str) -> dict:
             continue
 
         token_text = processor.tokenizer.decode(tid)
-        time_start = round(i * SECS_PER_TOKEN, 3)
-        time_end = round((i + 1) * SECS_PER_TOKEN, 3)
+        pos = i - token_offset
+        time_start = round(pos * SECS_PER_TOKEN, 3)
+        time_end = round((pos + 1) * SECS_PER_TOKEN, 3)
 
         is_word_start = token_text.startswith((" ", "\u2581")) or not current_word["text"]
 
