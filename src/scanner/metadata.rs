@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use bevy::prelude::*;
 use lofty::prelude::*;
@@ -16,7 +17,7 @@ pub struct Song {
     pub artist: String,
     pub album: String,
     pub duration_secs: f64,
-    pub album_art: Option<Vec<u8>>,
+    pub album_art: Option<Arc<Vec<u8>>>,
     pub analysis_status: AnalysisStatus,
 }
 
@@ -64,7 +65,7 @@ impl Song {
     }
 }
 
-fn read_metadata(path: &Path) -> (String, String, String, f64, Option<Vec<u8>>) {
+fn read_metadata(path: &Path) -> (String, String, String, f64, Option<Arc<Vec<u8>>>) {
     let tagged = match lofty::read_from_path(path) {
         Ok(t) => t,
         Err(_) => return (String::new(), String::new(), String::new(), 0.0, None),
@@ -90,7 +91,7 @@ fn read_metadata(path: &Path) -> (String, String, String, f64, Option<Vec<u8>>) 
     let artist = tag.artist().map(|s| s.to_string()).unwrap_or_default();
     let album = tag.album().map(|s| s.to_string()).unwrap_or_default();
 
-    let album_art = tag.pictures().first().map(|pic| pic.data().to_vec());
+    let album_art = tag.pictures().first().map(|pic| Arc::new(pic.data().to_vec()));
 
     (title, artist, album, duration_secs, album_art)
 }

@@ -51,11 +51,15 @@ pub struct MicrophoneCapture {
     last_checked_count: u64,
     stale_ticks: u32,
     shutdown: Arc<AtomicBool>,
+    pitch_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Drop for MicrophoneCapture {
     fn drop(&mut self) {
         self.shutdown.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.pitch_thread.take() {
+            let _ = handle.join();
+        }
     }
 }
 
@@ -171,7 +175,7 @@ fn select_device(host: &cpal::Host, preferred: Option<&str>) -> Option<cpal::Dev
 
 pub fn start_microphone(preferred: Option<&str>) -> MicrophoneCapture {
     let shutdown = Arc::new(AtomicBool::new(false));
-    let (shared, stream, name, error_flag, counter) =
+    let (shared, stream, name, error_flag, counter, pitch_thread) =
         try_build_stream(preferred, Arc::clone(&shutdown));
 
     let shared = shared.unwrap_or_else(|| {
@@ -189,6 +193,7 @@ pub fn start_microphone(preferred: Option<&str>) -> MicrophoneCapture {
         last_checked_count: 0,
         stale_ticks: 0,
         shutdown,
+        pitch_thread,
     }
 }
 
@@ -201,6 +206,7 @@ fn try_build_stream(
     String,
     Arc<AtomicBool>,
     Arc<AtomicU64>,
+    Option<std::thread::JoinHandle<()>>,
 ) {
     let error_flag = Arc::new(AtomicBool::new(false));
     let sample_counter = Arc::new(AtomicU64::new(0));
@@ -211,7 +217,7 @@ fn try_build_stream(
     let host = cpal::default_host();
     let device = match select_device(&host, preferred) {
         Some(d) => d,
-        None => return (None, None, String::new(), ret_err, ret_ctr),
+        None => return (None, None, String::new(), ret_err, ret_ctr, None),
     };
     let name = device_display_name(&device);
     let bt = is_bluetooth(&device);
@@ -228,7 +234,7 @@ fn try_build_stream(
         Ok(c) => c,
         Err(e) => {
             warn!("Cannot get default mic config: {e}");
-            return (None, None, name, ret_err, ret_ctr);
+            return (None, None, name, ret_err, ret_ctr, None);
         }
     };
 
@@ -249,7 +255,7 @@ fn try_build_stream(
 
     let counter_cb = Arc::clone(&sample_counter);
 
-    let push_samples = move |data: &[f32]| {
+    let push_samples: Arc<dyn Fn(&[f32]) + Send + Sync> = Arc::new(move |data: &[f32]| {
         if let Ok(mut lock) = shared_cb.try_lock() {
             let ch = channels as usize;
             for chunk in data.chunks(ch) {
@@ -261,7 +267,7 @@ fn try_build_stream(
             }
         }
         counter_cb.fetch_add(data.len() as u64, Ordering::Relaxed);
-    };
+    });
 
     let err_flag_cb = Arc::clone(&error_flag);
     let make_err_cb = move || {
@@ -274,33 +280,46 @@ fn try_build_stream(
 
     use cpal::SampleFormat;
     let stream = match sample_format {
-        SampleFormat::F32 => device.build_input_stream(
-            &config,
-            move |data: &[f32], _: &cpal::InputCallbackInfo| push_samples(data),
-            make_err_cb(),
-            None,
-        ),
-        SampleFormat::I16 => device.build_input_stream(
-            &config,
-            move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                let floats: Vec<f32> = data.iter().map(|&s| s as f32 / i16::MAX as f32).collect();
-                push_samples(&floats);
-            },
-            make_err_cb(),
-            None,
-        ),
-        SampleFormat::I32 => device.build_input_stream(
-            &config,
-            move |data: &[i32], _: &cpal::InputCallbackInfo| {
-                let floats: Vec<f32> = data.iter().map(|&s| s as f32 / i32::MAX as f32).collect();
-                push_samples(&floats);
-            },
-            make_err_cb(),
-            None,
-        ),
+        SampleFormat::F32 => {
+            let push = push_samples.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| push(data),
+                make_err_cb(),
+                None,
+            )
+        }
+        SampleFormat::I16 => {
+            let push = push_samples.clone();
+            let mut float_buf: Vec<f32> = Vec::new();
+            device.build_input_stream(
+                &config,
+                move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                    float_buf.clear();
+                    float_buf.extend(data.iter().map(|&s| s as f32 / i16::MAX as f32));
+                    push(&float_buf);
+                },
+                make_err_cb(),
+                None,
+            )
+        }
+        SampleFormat::I32 => {
+            let push = push_samples.clone();
+            let mut float_buf: Vec<f32> = Vec::new();
+            device.build_input_stream(
+                &config,
+                move |data: &[i32], _: &cpal::InputCallbackInfo| {
+                    float_buf.clear();
+                    float_buf.extend(data.iter().map(|&s| s as f32 / i32::MAX as f32));
+                    push(&float_buf);
+                },
+                make_err_cb(),
+                None,
+            )
+        }
         other => {
             warn!("Unsupported mic sample format: {other:?}");
-            return (Some(shared), None, name, error_flag, sample_counter);
+            return (Some(shared), None, name, error_flag, sample_counter, None);
         }
     };
 
@@ -308,22 +327,22 @@ fn try_build_stream(
         Ok(s) => s,
         Err(e) => {
             warn!("Failed to build mic stream: {e}");
-            return (Some(shared), None, name, error_flag, sample_counter);
+            return (Some(shared), None, name, error_flag, sample_counter, None);
         }
     };
 
     if let Err(e) = stream.play() {
         warn!("Failed to start mic stream: {e}");
-        return (Some(shared), None, name, error_flag, sample_counter);
+        return (Some(shared), None, name, error_flag, sample_counter, None);
     }
 
     let detect_counter = Arc::clone(&sample_counter);
     let detect_shutdown = Arc::clone(&shutdown);
-    std::thread::spawn(move || {
+    let pitch_thread = std::thread::spawn(move || {
         pitch_detection_loop(shared_detect, detect_counter, detect_shutdown);
     });
 
-    (Some(shared), Some(stream), name, error_flag, sample_counter)
+    (Some(shared), Some(stream), name, error_flag, sample_counter, Some(pitch_thread))
 }
 
 fn pitch_detection_loop(

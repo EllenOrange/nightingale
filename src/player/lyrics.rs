@@ -53,7 +53,6 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
         ))
         .with_children(|root| {
             root.spawn(Node {
-                width: Val::Percent(100.0),
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
                 ..default()
@@ -63,8 +62,8 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
                     CountdownNode,
                     Node {
                         position_type: PositionType::Absolute,
-                        top: Val::Px(-20.0),
-                        left: Val::Px(-20.0),
+                        top: Val::Px(-36.0),
+                        left: Val::Px(-36.0),
                         width: Val::Px(40.0),
                         height: Val::Px(40.0),
                         border_radius: BorderRadius::all(Val::Percent(50.0)),
@@ -90,6 +89,7 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
                 wrapper.spawn((
                     CurrentLine,
                     Node {
+                        max_width: Val::Vw(80.0),
                         flex_direction: FlexDirection::Row,
                         flex_wrap: FlexWrap::Wrap,
                         justify_content: JustifyContent::Center,
@@ -156,7 +156,7 @@ pub fn update_lyrics(
         return;
     }
 
-    let seg_idx = find_current_segment(&lyrics.transcript.segments, current_time);
+    let seg_idx = find_current_segment(&lyrics.transcript.segments, current_time, lyrics.current_segment);
 
     if seg_idx != lyrics.current_segment {
         lyrics.current_segment = seg_idx;
@@ -272,8 +272,14 @@ pub fn first_segment_start(lyrics: &LyricsState) -> f64 {
         .unwrap_or(0.0)
 }
 
-fn find_current_segment(segments: &[Segment], time: f64) -> usize {
-    for (i, seg) in segments.iter().enumerate() {
+fn find_current_segment(segments: &[Segment], time: f64, hint: usize) -> usize {
+    let start = if hint < segments.len() && time >= segments[hint].start - LYRICS_LEAD {
+        hint
+    } else {
+        0
+    };
+    for i in start..segments.len() {
+        let seg = &segments[i];
         if time < seg.end + 0.5 {
             if i + 1 < segments.len() && time >= segments[i + 1].start - LYRICS_LEAD {
                 return i + 1;

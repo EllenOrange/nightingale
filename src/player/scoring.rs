@@ -28,17 +28,19 @@ const BAD_COLOR: Srgba = Srgba::new(0.9, 0.2, 0.2, 1.0);
 pub struct VocalsBuffer {
     pub samples: Vec<f32>,
     pub sample_rate: u32,
+    scratch: Vec<f32>,
 }
 
 impl VocalsBuffer {
-    pub fn extract_window(&self, time_secs: f64, window_size: usize) -> Option<Vec<f32>> {
+    pub fn extract_window(&mut self, time_secs: f64, window_size: usize) -> Option<&[f32]> {
         let sample_idx = (time_secs * self.sample_rate as f64) as usize;
         if sample_idx + window_size > self.samples.len() {
             return None;
         }
-        Some(self.samples[sample_idx..sample_idx + window_size].to_vec())
+        self.scratch.clear();
+        self.scratch.extend_from_slice(&self.samples[sample_idx..sample_idx + window_size]);
+        Some(&self.scratch)
     }
-
 }
 
 pub fn load_vocals_buffer(path: &Path) -> Option<VocalsBuffer> {
@@ -88,6 +90,7 @@ pub fn load_vocals_buffer(path: &Path) -> Option<VocalsBuffer> {
     Some(VocalsBuffer {
         samples: mono,
         sample_rate,
+        scratch: Vec::with_capacity(2048),
     })
 }
 
@@ -214,7 +217,7 @@ pub fn update_pitch_scoring(
     karaoke: Option<Res<KaraokeAudio>>,
     audio_instances: Res<Assets<AudioInstance>>,
     mic: Option<Res<MicrophoneCapture>>,
-    vocals: Option<Res<VocalsBuffer>>,
+    mut vocals: Option<ResMut<VocalsBuffer>>,
     lyrics: Option<Res<LyricsState>>,
     mut pitch_state: Option<ResMut<PitchState>>,
     mut scoring: Option<ResMut<ScoringState>>,
@@ -235,9 +238,10 @@ pub fn update_pitch_scoring(
     }
 
     let ref_time = (current_time - MIC_LATENCY_COMPENSATION).max(0.0);
-    let ref_pitch = vocals.as_ref().and_then(|v| {
+    let ref_pitch = vocals.as_mut().and_then(|v| {
+        let sr = v.sample_rate;
         let window = v.extract_window(ref_time, 2048)?;
-        detect_pitch_from_samples(&window, v.sample_rate)
+        detect_pitch_from_samples(window, sr)
     });
 
     let user_pitch = mic.latest_pitch();
@@ -253,14 +257,14 @@ pub fn update_pitch_scoring(
     scoring.last_time = current_time;
 
     let in_word = lyrics.as_ref().is_some_and(|l| {
-        l.transcript.segments.iter().any(|seg| {
-            if current_time < seg.start || current_time > seg.end {
-                return false;
-            }
-            seg.words
-                .iter()
-                .any(|w| current_time >= w.start && current_time <= w.end)
-        })
+        let idx = l.current_segment;
+        if idx >= l.transcript.segments.len() {
+            return false;
+        }
+        let seg = &l.transcript.segments[idx];
+        current_time >= seg.start
+            && current_time <= seg.end
+            && seg.words.iter().any(|w| current_time >= w.start && current_time <= w.end)
     });
 
     if in_word && user_pitch.is_some() {
@@ -279,6 +283,7 @@ pub fn draw_pitch_waves(
     pitch_state: Option<Res<PitchState>>,
     mic: Option<Res<MicrophoneCapture>>,
     windows: Query<&Window>,
+    mut buf: Local<Vec<(Vec2, Color)>>,
 ) {
     let Some(state) = pitch_state else { return };
     let Some(mic) = mic else { return };
@@ -309,12 +314,12 @@ pub fn draw_pitch_waves(
         0.25 + 0.75 * (i as f32 / len.saturating_sub(1).max(1) as f32)
     };
 
-    let mut ref_run: Vec<(Vec2, Color)> = Vec::new();
+    buf.clear();
     for i in 0..len {
         match state.ref_pitches[i] {
             Some(hz) => {
                 let a = REF_LINE_COLOR.alpha * age_alpha(i);
-                ref_run.push((
+                buf.push((
                     Vec2::new(x_for(i), semi_to_y(freq_to_semitone(hz))),
                     Color::srgba(
                         REF_LINE_COLOR.red,
@@ -325,14 +330,14 @@ pub fn draw_pitch_waves(
                 ));
             }
             None => {
-                flush_run(&mut gizmos, &mut ref_run);
+                flush_run(&mut gizmos, &mut buf);
             }
         }
     }
-    flush_run(&mut gizmos, &mut ref_run);
+    flush_run(&mut gizmos, &mut buf);
 
     for &y_off in &[-3.0_f32, 3.0, -1.5, 1.5, 0.0] {
-        let mut run: Vec<(Vec2, Color)> = Vec::new();
+        buf.clear();
         for i in 0..len {
             match state.user_pitches[i] {
                 Some(user_hz) => {
@@ -355,17 +360,17 @@ pub fn draw_pitch_waves(
                         (0.3 + sim * 0.7) * age
                     };
 
-                    run.push((
+                    buf.push((
                         Vec2::new(x_for(i), semi_to_y(display_semi) + y_off),
                         Color::srgba(base.red, base.green, base.blue, alpha),
                     ));
                 }
                 None => {
-                    flush_run(&mut gizmos, &mut run);
+                    flush_run(&mut gizmos, &mut buf);
                 }
             }
         }
-        flush_run(&mut gizmos, &mut run);
+        flush_run(&mut gizmos, &mut buf);
     }
 }
 

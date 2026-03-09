@@ -51,7 +51,8 @@ pub struct ThemeToggleIcon;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsAction {
     ToggleFullscreen,
-    ToggleModel,
+    ModelPrev,
+    ModelNext,
     BeamUp,
     BeamDown,
     BatchUp,
@@ -68,17 +69,16 @@ pub struct SettingsButton {
     pub action: SettingsAction,
 }
 
-#[derive(Component)]
-pub struct SettingsFullscreenText;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsField {
+    Model,
+    Beam,
+    Batch,
+    Fullscreen,
+}
 
 #[derive(Component)]
-pub struct SettingsModelText;
-
-#[derive(Component)]
-pub struct SettingsBeamText;
-
-#[derive(Component)]
-pub struct SettingsBatchText;
+pub struct SettingsValueText(pub SettingsField);
 
 #[derive(Component)]
 pub struct SidebarButton {
@@ -102,15 +102,18 @@ pub fn build_song_card(
     art_handle: Option<Handle<Image>>,
     theme: &UiTheme,
     icon_font: &IconFont,
+    visible: bool,
 ) {
     let (badge_text, badge_color) = badge_info(&song.analysis_status, theme);
     let duration_str = format_duration(song.duration_secs);
+    let display = if visible { Display::Flex } else { Display::None };
 
     parent
         .spawn((
             SongCard { song_index: index },
             Button,
             Node {
+                display,
                 width: Val::Percent(100.0),
                 min_height: Val::Px(72.0),
                 padding: UiRect::all(Val::Px(16.0)),
@@ -335,28 +338,3 @@ pub fn format_duration(secs: f64) -> String {
     format!("{m}:{s:02}")
 }
 
-pub fn populate_song_list(
-    commands: &mut Commands,
-    list_entity: Entity,
-    songs: &[Song],
-    query: &str,
-    art_handles: &[Option<Handle<Image>>],
-    theme: &UiTheme,
-    icon_font: &IconFont,
-) {
-    commands.entity(list_entity).despawn_children();
-    let lower = query.to_lowercase();
-    commands.entity(list_entity).with_children(|list| {
-        for (i, song) in songs.iter().enumerate() {
-            if !lower.is_empty() {
-                let matches = song.display_title().to_lowercase().contains(&lower)
-                    || song.display_artist().to_lowercase().contains(&lower);
-                if !matches {
-                    continue;
-                }
-            }
-            let art = art_handles.get(i).and_then(|h| h.clone());
-            build_song_card(list, song, i, art, theme, icon_font);
-        }
-    });
-}

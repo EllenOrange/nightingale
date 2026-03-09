@@ -4,8 +4,10 @@ pub mod transcript;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use bevy::app::AppExit;
 use bevy::prelude::*;
 
 use cache::CacheDir;
@@ -16,7 +18,8 @@ pub struct AnalyzerPlugin;
 impl Plugin for AnalyzerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AnalysisQueue>()
-            .add_systems(Update, (process_queue, poll_active_job));
+            .add_systems(Update, (process_queue, poll_active_job))
+            .add_systems(Last, kill_analyzer_on_exit);
     }
 }
 
@@ -35,6 +38,8 @@ pub struct ProgressInfo {
 pub struct ActiveJob {
     pub song_index: usize,
     pub progress: Arc<Mutex<ProgressInfo>>,
+    pub child_pid: Arc<AtomicU32>,
+    pub thread_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 #[derive(Resource, Default)]
@@ -109,18 +114,20 @@ fn spawn_analyzer(
     whisper_model: String,
     beam_size: u32,
     batch_size: u32,
-) -> Arc<Mutex<ProgressInfo>> {
+) -> (Arc<Mutex<ProgressInfo>>, Arc<AtomicU32>, std::thread::JoinHandle<()>) {
     let progress = Arc::new(Mutex::new(ProgressInfo {
         percent: 0,
         message: "Starting analyzer...".into(),
         finished: None,
     }));
+    let child_pid = Arc::new(AtomicU32::new(0));
 
     let progress_clone = Arc::clone(&progress);
+    let pid_clone = Arc::clone(&child_pid);
     let script = find_analyzer_script();
     let python = find_python();
 
-    std::thread::spawn(move || {
+    let thread_handle = std::thread::spawn(move || {
         let child = Command::new(&python)
             .arg(&script)
             .arg(&song_path)
@@ -139,6 +146,7 @@ fn spawn_analyzer(
 
         match child {
             Ok(mut child) => {
+                pid_clone.store(child.id(), Ordering::Relaxed);
                 use std::io::{BufRead, BufReader};
 
                 let stderr_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
@@ -203,7 +211,7 @@ fn spawn_analyzer(
         }
     });
 
-    progress
+    (progress, child_pid, thread_handle)
 }
 
 fn process_queue(
@@ -226,7 +234,7 @@ fn process_queue(
         song.file_hash
     );
 
-    let progress = spawn_analyzer(
+    let (progress, child_pid, thread_handle) = spawn_analyzer(
         song.path.clone(),
         cache.path.clone(),
         song.file_hash.clone(),
@@ -240,6 +248,8 @@ fn process_queue(
     queue.active = Some(ActiveJob {
         song_index,
         progress,
+        child_pid,
+        thread_handle: Some(thread_handle),
     });
 }
 
@@ -260,8 +270,13 @@ fn poll_active_job(
         info
     };
 
-    let song_index = queue.active.as_ref().unwrap().song_index;
+    let mut active = queue.active.take().unwrap();
+    let song_index = active.song_index;
     let success = finished_info.finished.unwrap();
+
+    if let Some(handle) = active.thread_handle.take() {
+        let _ = handle.join();
+    }
 
     if success && cache.transcript_exists(&library.songs[song_index].file_hash) {
         info!("Analysis complete for: {}", library.songs[song_index].path.display());
@@ -271,6 +286,31 @@ fn poll_active_job(
         library.songs[song_index].analysis_status =
             AnalysisStatus::Failed(finished_info.message);
     }
+}
 
-    queue.active = None;
+fn kill_analyzer_on_exit(
+    mut exit_events: MessageReader<AppExit>,
+    queue: Res<AnalysisQueue>,
+) {
+    if exit_events.read().next().is_none() {
+        return;
+    }
+    if let Some(ref active) = queue.active {
+        let pid = active.child_pid.load(Ordering::Relaxed);
+        if pid != 0 {
+            info!("Killing analyzer subprocess (pid={pid})");
+            #[cfg(unix)]
+            {
+                let _ = Command::new("kill")
+                    .args(["-TERM", &pid.to_string()])
+                    .spawn();
+            }
+            #[cfg(windows)]
+            {
+                let _ = Command::new("taskkill")
+                    .args(["/PID", &pid.to_string(), "/F"])
+                    .spawn();
+            }
+        }
+    }
 }

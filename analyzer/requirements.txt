@@ -2,3 +2,7 @@ demucs>=4.0.0
 whisperx>=3.3.0
 torch>=2.0.0
 torchaudio>=2.0.0
+transformers>=5.2.0
+accelerate
+langdetect
+mistral-common[audio]
