@@ -36,7 +36,7 @@ pub fn build_sidebar(
         sidebar.spawn((
             ImageNode::new(logo),
             Node {
-                width: Val::Px(180.0),
+                width: Val::Px(196.0),
                 margin: UiRect::bottom(Val::Px(20.0)),
                 ..default()
             },
