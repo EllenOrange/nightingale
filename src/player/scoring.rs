@@ -4,22 +4,20 @@ use std::path::Path;
 use bevy::prelude::*;
 
 use super::audio;
-use super::lyrics::LyricsState;
 use super::microphone::{MicrophoneCapture, detect_pitch_from_samples};
 use audio::KaraokeAudio;
 use bevy_kira_audio::AudioInstance;
 
 const PITCH_BUFFER_SIZE: usize = 80;
-const DISPLAY_WIDTH: f32 = 480.0;
-const DISPLAY_HEIGHT: f32 = 56.0;
-const DISPLAY_TOP_OFFSET: f32 = 55.0;
+pub const DISPLAY_WIDTH: f32 = 480.0;
+pub const DISPLAY_HEIGHT: f32 = 56.0;
+pub const DISPLAY_TOP_OFFSET: f32 = 55.0;
 const PUSH_INTERVAL: f64 = 0.05;
 const SMOOTHING: f32 = 0.55;
 
 const SEMITONE_TOLERANCE: f32 = 6.0;
 const MIC_LATENCY_COMPENSATION: f64 = 0.08;
 
-const REF_LINE_COLOR: Srgba = Srgba::new(0.4, 0.6, 1.0, 0.3);
 const GOOD_COLOR: Srgba = Srgba::new(0.2, 0.9, 0.3, 1.0);
 const OK_COLOR: Srgba = Srgba::new(0.95, 0.8, 0.1, 1.0);
 const BAD_COLOR: Srgba = Srgba::new(0.9, 0.2, 0.2, 1.0);
@@ -92,6 +90,22 @@ pub fn load_vocals_buffer(path: &Path) -> Option<VocalsBuffer> {
         sample_rate,
         scratch: Vec::with_capacity(2048),
     })
+}
+
+pub fn compute_singable_time(vocals: &VocalsBuffer) -> f64 {
+    let window_size = 2048_usize;
+    let hop = window_size / 2;
+    let hop_secs = hop as f64 / vocals.sample_rate as f64;
+    let mut total = 0.0;
+    let mut offset = 0;
+    while offset + window_size <= vocals.samples.len() {
+        let window = &vocals.samples[offset..offset + window_size];
+        if detect_pitch_from_samples(window, vocals.sample_rate).is_some() {
+            total += hop_secs;
+        }
+        offset += hop;
+    }
+    total
 }
 
 #[derive(Resource)]
@@ -218,7 +232,6 @@ pub fn update_pitch_scoring(
     audio_instances: Res<Assets<AudioInstance>>,
     mic: Option<Res<MicrophoneCapture>>,
     mut vocals: Option<ResMut<VocalsBuffer>>,
-    lyrics: Option<Res<LyricsState>>,
     mut pitch_state: Option<ResMut<PitchState>>,
     mut scoring: Option<ResMut<ScoringState>>,
 ) {
@@ -256,18 +269,7 @@ pub fn update_pitch_scoring(
     let dt = (current_time - scoring.last_time).clamp(0.0, 0.1);
     scoring.last_time = current_time;
 
-    let in_word = lyrics.as_ref().is_some_and(|l| {
-        let idx = l.current_segment;
-        if idx >= l.transcript.segments.len() {
-            return false;
-        }
-        let seg = &l.transcript.segments[idx];
-        current_time >= seg.start
-            && current_time <= seg.end
-            && seg.words.iter().any(|w| current_time >= w.start && current_time <= w.end)
-    });
-
-    if in_word && user_pitch.is_some() {
+    if ref_pitch.is_some() && user_pitch.is_some() {
         scoring.earned += similarity as f64 * dt;
     }
 }
@@ -283,6 +285,7 @@ pub fn draw_pitch_waves(
     pitch_state: Option<Res<PitchState>>,
     mic: Option<Res<MicrophoneCapture>>,
     windows: Query<&Window>,
+    theme: Res<crate::ui::UiTheme>,
     mut buf: Local<Vec<(Vec2, Color)>>,
 ) {
     let Some(state) = pitch_state else { return };
@@ -314,19 +317,17 @@ pub fn draw_pitch_waves(
         0.25 + 0.75 * (i as f32 / len.saturating_sub(1).max(1) as f32)
     };
 
+    let ref_color = theme.pitch_ref_line;
+    let user_base = theme.pitch_user_base;
+
     buf.clear();
     for i in 0..len {
         match state.ref_pitches[i] {
             Some(hz) => {
-                let a = REF_LINE_COLOR.alpha * age_alpha(i);
+                let a = ref_color.alpha * age_alpha(i);
                 buf.push((
                     Vec2::new(x_for(i), semi_to_y(freq_to_semitone(hz))),
-                    Color::srgba(
-                        REF_LINE_COLOR.red,
-                        REF_LINE_COLOR.green,
-                        REF_LINE_COLOR.blue,
-                        a,
-                    ),
+                    Color::srgba(ref_color.red, ref_color.green, ref_color.blue, a),
                 ));
             }
             None => {
@@ -336,42 +337,35 @@ pub fn draw_pitch_waves(
     }
     flush_run(&mut gizmos, &mut buf);
 
-    for &y_off in &[-3.0_f32, 3.0, -1.5, 1.5, 0.0] {
-        buf.clear();
-        for i in 0..len {
-            match state.user_pitches[i] {
-                Some(user_hz) => {
-                    let user_semi = freq_to_semitone(user_hz);
-                    let display_semi = match state.ref_pitches[i] {
-                        Some(ref_hz) => {
-                            snap_to_ref_octave(freq_to_semitone(ref_hz), user_semi)
-                        }
-                        None => user_semi,
-                    };
+    buf.clear();
+    for i in 0..len {
+        match state.user_pitches[i] {
+            Some(user_hz) => {
+                let user_semi = freq_to_semitone(user_hz);
+                let display_semi = match state.ref_pitches[i] {
+                    Some(ref_hz) => {
+                        snap_to_ref_octave(freq_to_semitone(ref_hz), user_semi)
+                    }
+                    None => user_semi,
+                };
 
-                    let sim = state.similarities[i];
-                    let age = age_alpha(i);
-                    let base = similarity_to_color(sim);
-                    let alpha = if y_off.abs() > 2.0 {
-                        sim * 0.15 * age
-                    } else if y_off.abs() > 0.5 {
-                        sim * 0.3 * age
-                    } else {
-                        (0.3 + sim * 0.7) * age
-                    };
+                let sim = state.similarities[i];
+                let age = age_alpha(i);
+                let prox = similarity_to_color(sim);
+                let base = lerp_srgba(user_base, prox, sim);
+                let alpha = (0.3 + sim * 0.7) * age;
 
-                    buf.push((
-                        Vec2::new(x_for(i), semi_to_y(display_semi) + y_off),
-                        Color::srgba(base.red, base.green, base.blue, alpha),
-                    ));
-                }
-                None => {
-                    flush_run(&mut gizmos, &mut buf);
-                }
+                buf.push((
+                    Vec2::new(x_for(i), semi_to_y(display_semi)),
+                    Color::srgba(base.red, base.green, base.blue, alpha),
+                ));
+            }
+            None => {
+                flush_run(&mut gizmos, &mut buf);
             }
         }
-        flush_run(&mut gizmos, &mut buf);
     }
+    flush_run(&mut gizmos, &mut buf);
 }
 
 fn flush_run(gizmos: &mut Gizmos, run: &mut Vec<(Vec2, Color)>) {

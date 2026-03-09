@@ -2,6 +2,7 @@ pub mod audio;
 pub mod background;
 pub mod lyrics;
 pub mod microphone;
+pub mod results;
 pub mod scoring;
 pub mod video_bg;
 
@@ -11,6 +12,7 @@ use bevy_kira_audio::AudioInstance;
 use crate::analyzer::cache::CacheDir;
 use crate::analyzer::transcript::Transcript;
 use crate::analyzer::PlayTarget;
+use crate::profile::ProfileStore;
 use crate::scanner::metadata::SongLibrary;
 use crate::states::AppState;
 use crate::ui::UiTheme;
@@ -23,23 +25,36 @@ use video_bg::{ActiveVideoFlavor, VideoBackground, VideoSprite};
 use lyrics::{
     CountdownNode, CurrentLine, LyricWord, LyricsRoot, LyricsState, NextLine, setup_lyrics,
 };
+use results::{PauseOverlay, ResultsOverlay};
 use scoring::{MicStatusText, ScoreText};
 
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppState::Playing), enter_playing)
+        app.add_systems(Startup, configure_gizmos)
+            .add_systems(OnEnter(AppState::Playing), enter_playing)
             .add_systems(
                 Update,
                 (
+                    check_song_finished,
                     player_update,
                     handle_escape,
                     handle_guide_volume,
-                    handle_theme_switch,
-                    handle_flavor_switch,
                 )
                     .run_if(in_state(AppState::Playing)),
+            )
+            .add_systems(
+                Update,
+                handle_theme_switch
+                    .run_if(in_state(AppState::Playing))
+                    .run_if(no_player_overlay),
+            )
+            .add_systems(
+                Update,
+                handle_flavor_switch
+                    .run_if(in_state(AppState::Playing))
+                    .run_if(no_player_overlay),
             )
             .add_systems(
                 Update,
@@ -50,11 +65,21 @@ impl Plugin for PlayerPlugin {
                     scoring::update_pitch_scoring,
                     scoring::draw_pitch_waves,
                     scoring::update_score_text,
+                    update_pitch_backdrop,
                     (
                         video_bg::update_video_frame,
                         video_bg::fit_video_to_window,
                     )
                         .run_if(resource_exists::<VideoBackground>),
+                )
+                    .run_if(in_state(AppState::Playing))
+                    .run_if(no_player_overlay),
+            )
+            .add_systems(
+                Update,
+                (
+                    results::handle_results_input,
+                    results::handle_pause_input,
                 )
                     .run_if(in_state(AppState::Playing)),
             )
@@ -73,6 +98,9 @@ struct ThemeText;
 
 #[derive(Component)]
 struct PixabayCreditText;
+
+#[derive(Component)]
+struct PitchBackdrop;
 
 #[derive(Component)]
 struct SkipIntroButton;
@@ -145,13 +173,6 @@ fn enter_playing(
 
     transcript.split_long_segments(8);
 
-    let total_singable: f64 = transcript
-        .segments
-        .iter()
-        .flat_map(|s| s.words.iter())
-        .map(|w| (w.end - w.start).max(0.0))
-        .sum();
-
     let saved_guide = config.guide_volume.unwrap_or(0.0);
     setup_audio(
         &mut commands,
@@ -179,9 +200,13 @@ fn enter_playing(
     }
 
     let vocals_path = cache.vocals_path(hash);
-    if let Some(vocals_buf) = scoring::load_vocals_buffer(&vocals_path) {
+    let total_singable = if let Some(vocals_buf) = scoring::load_vocals_buffer(&vocals_path) {
+        let t = scoring::compute_singable_time(&vocals_buf);
         commands.insert_resource(vocals_buf);
-    }
+        t
+    } else {
+        0.0
+    };
 
     let mut mic_capture =
         microphone::start_microphone(config.preferred_mic.as_deref());
@@ -350,6 +375,61 @@ fn enter_playing(
         },
         TextColor(Color::srgba(1.0, 1.0, 1.0, 0.3)),
     ));
+
+    let backdrop_pad = 12.0;
+    commands.spawn((
+        PlayerHud,
+        PitchBackdrop,
+        Sprite {
+            color: ui_theme.lyric_backdrop,
+            custom_size: Some(Vec2::new(
+                scoring::DISPLAY_WIDTH + backdrop_pad * 2.0,
+                scoring::DISPLAY_HEIGHT + backdrop_pad * 2.0,
+            )),
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(0.0, 0.0, 5.0)),
+        Visibility::Hidden,
+    ));
+}
+
+fn configure_gizmos(mut store: ResMut<GizmoConfigStore>) {
+    let (config, _) = store.config_mut::<DefaultGizmoConfigGroup>();
+
+    config.line.width = 8.0;
+}
+
+pub fn no_player_overlay(
+    results_q: Query<(), With<ResultsOverlay>>,
+    pause_q: Query<(), With<PauseOverlay>>,
+) -> bool {
+    results_q.is_empty() && pause_q.is_empty()
+}
+
+fn update_pitch_backdrop(
+    mic: Option<Res<microphone::MicrophoneCapture>>,
+    windows: Query<&Window>,
+    mut query: Query<(&mut Transform, &mut Visibility), With<PitchBackdrop>>,
+) {
+    let Ok((mut transform, mut vis)) = query.single_mut() else {
+        return;
+    };
+
+    let mic_active = mic.as_ref().is_some_and(|m| m.active);
+    *vis = if mic_active {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+
+    if mic_active {
+        if let Ok(window) = windows.single() {
+            let half_h = window.height() / 2.0;
+            let center_y = half_h - scoring::DISPLAY_TOP_OFFSET;
+            transform.translation.x = 0.0;
+            transform.translation.y = center_y;
+        }
+    }
 }
 
 fn format_guide_text(volume: f64) -> String {
@@ -374,11 +454,72 @@ fn format_mic_text(active: bool, device_name: &str) -> String {
     }
 }
 
+fn transition_on_song_end(
+    commands: &mut Commands,
+    next_state: &mut ResMut<NextState<AppState>>,
+    profiles: &mut ProfileStore,
+    target: &PlayTarget,
+    library: &SongLibrary,
+    scoring_state: &Option<Res<scoring::ScoringState>>,
+    theme: &UiTheme,
+    asset_server: &AssetServer,
+    audio: &bevy_kira_audio::Audio,
+) {
+    if profiles.active.is_some() {
+        let song = &library.songs[target.song_index];
+        let score = scoring_state.as_ref().map(|s| s.score()).unwrap_or(0);
+        let result = results::SongResult {
+            song_title: song.display_title().to_string(),
+            song_artist: song.display_artist().to_string(),
+            song_hash: song.file_hash.clone(),
+            score,
+        };
+        results::spawn_results_overlay(commands, &result, profiles, theme, asset_server, audio);
+        commands.insert_resource(result);
+    } else {
+        next_state.set(AppState::Menu);
+    }
+}
+
 fn format_theme_text(theme: &ActiveTheme, flavor: &ActiveVideoFlavor) -> String {
     if theme.is_video() {
         format!("Theme: Video — {} [T/F]", flavor.flavor().name())
     } else {
         format!("Theme: {} [T]", theme.name())
+    }
+}
+
+fn check_song_finished(
+    mut commands: Commands,
+    karaoke: Option<Res<KaraokeAudio>>,
+    audio_instances: Res<Assets<AudioInstance>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut profiles: ResMut<ProfileStore>,
+    target: Res<PlayTarget>,
+    library: Res<SongLibrary>,
+    scoring_state: Option<Res<scoring::ScoringState>>,
+    results_q: Query<(), With<ResultsOverlay>>,
+    pause_q: Query<(), With<PauseOverlay>>,
+    theme: Res<UiTheme>,
+    asset_server: Res<AssetServer>,
+    audio: Res<bevy_kira_audio::Audio>,
+) {
+    if !results_q.is_empty() || !pause_q.is_empty() {
+        return;
+    }
+    let Some(karaoke) = karaoke else { return };
+    if audio::is_finished(&karaoke, &audio_instances) {
+        transition_on_song_end(
+            &mut commands,
+            &mut next_state,
+            &mut profiles,
+            &target,
+            &library,
+            &scoring_state,
+            &theme,
+            &asset_server,
+            &audio,
+        );
     }
 }
 
@@ -403,18 +544,22 @@ fn player_update(
     word_query: Query<(&LyricWord, &mut TextColor)>,
     mut commands: Commands,
     mut audio_instances: ResMut<Assets<AudioInstance>>,
-    mut next_state: ResMut<NextState<AppState>>,
     mut intro_node: Query<&mut Node, (With<SkipIntroButton>, Without<SkipOutroButton>)>,
     mut outro_node: Query<&mut Node, (With<SkipOutroButton>, Without<SkipIntroButton>)>,
     ui_theme: Res<UiTheme>,
+    results_q: Query<(), With<ResultsOverlay>>,
+    pause_q: Query<(), With<PauseOverlay>>,
 ) {
+    if !results_q.is_empty() || !pause_q.is_empty() {
+        return;
+    }
+
     start_playback(&mut karaoke, &audio, &time);
     update_vocals_volume(&karaoke, &mut audio_instances);
 
     let current_time = audio::playback_time(&karaoke, &audio_instances);
 
     if audio::is_finished(&karaoke, &audio_instances) {
-        next_state.set(AppState::Menu);
         return;
     }
 
@@ -452,6 +597,7 @@ fn player_update(
 }
 
 fn handle_skip_buttons(
+    mut commands: Commands,
     mut intro_query: Query<
         (&Interaction, &mut BackgroundColor),
         (
@@ -472,13 +618,26 @@ fn handle_skip_buttons(
     karaoke: Option<ResMut<KaraokeAudio>>,
     mut audio_instances: ResMut<Assets<AudioInstance>>,
     mut next_state: ResMut<NextState<AppState>>,
+    mut profiles: ResMut<ProfileStore>,
+    target: Res<PlayTarget>,
+    library: Res<SongLibrary>,
+    scoring_state: Option<Res<scoring::ScoringState>>,
+    results_q: Query<(), With<ResultsOverlay>>,
+    pause_q: Query<(), With<PauseOverlay>>,
+    theme: Res<UiTheme>,
+    asset_server: Res<AssetServer>,
+    audio: Res<bevy_kira_audio::Audio>,
 ) {
+    if !results_q.is_empty() || !pause_q.is_empty() {
+        return;
+    }
+
     for (interaction, mut bg) in &mut intro_query {
         match interaction {
             Interaction::Pressed => {
                 if let (Some(lyrics), Some(karaoke)) = (&lyrics_state, &karaoke) {
-                    let target = (lyrics::first_segment_start(lyrics) - 3.0).max(0.0);
-                    audio::seek_to(karaoke, &mut audio_instances, target);
+                    let seek_target = (lyrics::first_segment_start(lyrics) - 3.0).max(0.0);
+                    audio::seek_to(karaoke, &mut audio_instances, seek_target);
                 }
             }
             Interaction::Hovered => {
@@ -493,7 +652,17 @@ fn handle_skip_buttons(
     for (interaction, mut bg) in &mut outro_query {
         match interaction {
             Interaction::Pressed => {
-                next_state.set(AppState::Menu);
+                transition_on_song_end(
+                    &mut commands,
+                    &mut next_state,
+                    &mut profiles,
+                    &target,
+                    &library,
+                    &scoring_state,
+                    &theme,
+                    &asset_server,
+                    &audio,
+                );
             }
             Interaction::Hovered => {
                 *bg = BackgroundColor(SKIP_BTN_HOVER);
@@ -511,7 +680,12 @@ fn handle_mic_toggle(
     mic: Option<ResMut<microphone::MicrophoneCapture>>,
     mut mic_text_query: Query<&mut Text, With<MicStatusText>>,
     mut config: ResMut<crate::config::AppConfig>,
+    results_q: Query<(), With<ResultsOverlay>>,
+    pause_q: Query<(), With<PauseOverlay>>,
 ) {
+    if !results_q.is_empty() || !pause_q.is_empty() {
+        return;
+    }
     let Some(mut mic) = mic else { return };
 
     if keyboard.just_pressed(KeyCode::KeyM) {
@@ -602,11 +776,24 @@ fn check_mic_health(
 
 fn handle_escape(
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut next_state: ResMut<NextState<AppState>>,
+    mut commands: Commands,
+    results_q: Query<(), With<ResultsOverlay>>,
+    pause_q: Query<(), With<PauseOverlay>>,
+    karaoke: Option<Res<KaraokeAudio>>,
+    mut audio_instances: ResMut<Assets<AudioInstance>>,
+    theme: Res<UiTheme>,
+    asset_server: Res<AssetServer>,
 ) {
-    if keyboard.just_pressed(KeyCode::Escape) {
-        next_state.set(AppState::Menu);
+    if !keyboard.just_pressed(KeyCode::Escape) {
+        return;
     }
+    if !results_q.is_empty() || !pause_q.is_empty() {
+        return;
+    }
+    if let Some(karaoke) = &karaoke {
+        audio::pause_audio(karaoke, &mut audio_instances);
+    }
+    results::spawn_pause_overlay(&mut commands, &theme, &asset_server);
 }
 
 fn handle_guide_volume(
@@ -614,7 +801,12 @@ fn handle_guide_volume(
     mut karaoke: Option<ResMut<KaraokeAudio>>,
     mut config: ResMut<crate::config::AppConfig>,
     mut query: Query<&mut Text, With<GuideVolumeText>>,
+    results_q: Query<(), With<ResultsOverlay>>,
+    pause_q: Query<(), With<PauseOverlay>>,
 ) {
+    if !results_q.is_empty() || !pause_q.is_empty() {
+        return;
+    }
     let Some(ref mut karaoke) = karaoke else {
         return;
     };
@@ -738,6 +930,8 @@ fn exit_playing(
     lyrics_query: Query<Entity, With<LyricsRoot>>,
     bg_query: Query<Entity, With<BackgroundQuad>>,
     video_query: Query<Entity, With<VideoSprite>>,
+    results_query: Query<Entity, With<ResultsOverlay>>,
+    pause_query: Query<Entity, With<PauseOverlay>>,
 ) {
     cleanup_audio(&mut commands, &audio);
 
@@ -754,10 +948,18 @@ fn exit_playing(
         commands.entity(entity).despawn();
     }
 
+    for entity in &results_query {
+        commands.entity(entity).despawn();
+    }
+    for entity in &pause_query {
+        commands.entity(entity).despawn();
+    }
+
     video_bg::despawn_video_background(&mut commands, &video_query);
 
     commands.remove_resource::<microphone::MicrophoneCapture>();
     commands.remove_resource::<scoring::VocalsBuffer>();
     commands.remove_resource::<scoring::PitchState>();
     commands.remove_resource::<scoring::ScoringState>();
+    commands.remove_resource::<results::SongResult>();
 }

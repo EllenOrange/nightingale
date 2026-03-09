@@ -22,6 +22,8 @@ pub struct UiTheme {
     pub card_hover: Color,
     pub sidebar_btn: Color,
     pub sidebar_btn_hover: Color,
+    pub popup_btn: Color,
+    pub popup_btn_hover: Color,
     pub badge_ready: Color,
     pub badge_not_analyzed: Color,
     pub badge_queued: Color,
@@ -38,6 +40,8 @@ pub struct UiTheme {
     pub hud_primary: Color,
     pub hud_secondary: Color,
     pub hud_dim: Color,
+    pub pitch_ref_line: Srgba,
+    pub pitch_user_base: Srgba,
 }
 
 impl UiTheme {
@@ -57,6 +61,8 @@ impl UiTheme {
             card_hover: Color::srgb(0.16, 0.16, 0.22),
             sidebar_btn: Color::srgb(0.11, 0.11, 0.17),
             sidebar_btn_hover: Color::srgb(0.18, 0.18, 0.25),
+            popup_btn: Color::srgb(0.16, 0.16, 0.22),
+            popup_btn_hover: Color::srgb(0.21, 0.21, 0.28),
             badge_ready: Color::srgb(0.18, 0.68, 0.28),
             badge_not_analyzed: Color::srgb(0.45, 0.45, 0.50),
             badge_queued: Color::srgb(0.68, 0.53, 0.08),
@@ -73,6 +79,8 @@ impl UiTheme {
             hud_primary: Color::WHITE,
             hud_secondary: Color::srgba(1.0, 1.0, 1.0, 0.6),
             hud_dim: Color::srgba(1.0, 1.0, 1.0, 0.5),
+            pitch_ref_line: Srgba::new(0.5, 0.7, 1.0, 0.45),
+            pitch_user_base: Srgba::new(0.85, 0.85, 1.0, 1.0),
         }
     }
 
@@ -92,6 +100,8 @@ impl UiTheme {
             card_hover: Color::srgb(0.94, 0.94, 0.97),
             sidebar_btn: Color::srgb(0.96, 0.96, 0.98),
             sidebar_btn_hover: Color::srgb(0.88, 0.88, 0.92),
+            popup_btn: Color::srgb(0.93, 0.93, 0.96),
+            popup_btn_hover: Color::srgb(0.88, 0.88, 0.92),
             badge_ready: Color::srgb(0.15, 0.62, 0.25),
             badge_not_analyzed: Color::srgb(0.62, 0.62, 0.66),
             badge_queued: Color::srgb(0.72, 0.58, 0.12),
@@ -108,6 +118,8 @@ impl UiTheme {
             hud_primary: Color::WHITE,
             hud_secondary: Color::srgba(1.0, 1.0, 1.0, 0.6),
             hud_dim: Color::srgba(1.0, 1.0, 1.0, 0.5),
+            pitch_ref_line: Srgba::new(0.2, 0.35, 0.75, 0.5),
+            pitch_user_base: Srgba::new(0.1, 0.1, 0.25, 1.0),
         }
     }
 

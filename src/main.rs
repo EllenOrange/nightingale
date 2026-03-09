@@ -2,6 +2,7 @@ mod analyzer;
 mod config;
 mod menu;
 mod player;
+pub mod profile;
 mod scanner;
 mod states;
 pub mod ui;
@@ -14,6 +15,7 @@ use bevy_kira_audio::AudioPlugin;
 use analyzer::cache::CacheDir;
 use config::AppConfig;
 use player::background::BackgroundPlugin;
+use profile::ProfileStore;
 use scanner::metadata::SongLibrary;
 use states::AppState;
 use ui::UiTheme;
@@ -65,6 +67,8 @@ fn main() {
     };
     let ui_theme = UiTheme::from_config(&config);
 
+    let profile_store = ProfileStore::load();
+
     app.add_plugins(AudioPlugin)
         .add_plugins(BackgroundPlugin)
         .init_state::<AppState>()
@@ -74,6 +78,7 @@ fn main() {
         .insert_resource(bg_theme)
         .insert_resource(video_flavor)
         .insert_resource(ui_theme)
+        .insert_resource(profile_store)
         .add_systems(Startup, setup_camera)
         .add_systems(Update, toggle_fullscreen)
         .add_plugins(scanner::ScannerPlugin)

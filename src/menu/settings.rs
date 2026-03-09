@@ -122,7 +122,7 @@ fn spawn_settings_row(
                         border_radius: BorderRadius::all(Val::Px(6.0)),
                         ..default()
                     },
-                    BackgroundColor(theme.card_bg),
+                    BackgroundColor(theme.popup_btn),
                 ))
                 .with_children(|row| {
                     row.spawn((
@@ -178,6 +178,11 @@ fn spawn_settings_btn(
         UiRect::new(Val::Px(10.0), Val::Px(10.0), Val::Px(5.0), Val::Px(5.0))
     };
     let font_size = if wide { 14.0 } else { 13.0 };
+    let bg = if wide {
+        theme.popup_btn
+    } else {
+        theme.popup_btn_hover
+    };
     parent
         .spawn((
             SettingsButton { action },
@@ -191,7 +196,7 @@ fn spawn_settings_btn(
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(theme.sidebar_btn),
+            BackgroundColor(bg),
         ))
         .with_children(|btn| {
             ui::spawn_label(btn, label, font_size, theme.text_primary);
@@ -298,10 +303,20 @@ pub fn handle_settings_click(
                 }
             }
             Interaction::Hovered => {
-                *bg = BackgroundColor(theme.sidebar_btn_hover);
+                *bg = match settings_btn.action {
+                    SettingsAction::RestoreDefaults | SettingsAction::Close => {
+                        BackgroundColor(theme.popup_btn_hover)
+                    }
+                    _ => BackgroundColor(theme.accent),
+                };
             }
             Interaction::None => {
-                *bg = BackgroundColor(theme.sidebar_btn);
+                *bg = match settings_btn.action {
+                    SettingsAction::RestoreDefaults | SettingsAction::Close => {
+                        BackgroundColor(theme.popup_btn)
+                    }
+                    _ => BackgroundColor(theme.popup_btn_hover),
+                };
             }
         }
     }

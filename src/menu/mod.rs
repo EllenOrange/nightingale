@@ -1,4 +1,5 @@
 pub mod folder;
+pub mod profile;
 pub mod settings;
 pub mod sidebar;
 pub mod song_card;
@@ -13,6 +14,7 @@ use bevy::prelude::*;
 use crate::analyzer::cache::CacheDir;
 use crate::analyzer::{AnalysisQueue, PlayTarget};
 use crate::scanner::metadata::{AnalysisStatus, SongLibrary};
+use crate::profile::ProfileStore;
 use crate::states::AppState;
 use crate::ui::UiTheme;
 use song_card::*;
@@ -35,10 +37,17 @@ impl Plugin for MenuPlugin {
                     update_status_badges,
                     sidebar::handle_sidebar_click,
                     settings::handle_settings_click,
+                    profile::handle_profile_click,
                     folder::poll_folder_result,
                     folder::poll_rescan,
                 )
                     .run_if(in_state(AppState::Menu)),
+            )
+            .add_systems(
+                Update,
+                profile::handle_profile_input
+                    .run_if(in_state(AppState::Menu))
+                    .run_if(resource_exists::<profile::ProfileInputState>),
             )
             .add_systems(Update, send_scroll_events)
             .add_observer(on_scroll_handler)
@@ -60,9 +69,10 @@ struct AlbumArtCache {
 pub struct IconFont(pub Handle<Font>);
 
 pub const FA_REFRESH: &str = "\u{f021}";
-pub const FA_SUN: &str = "\u{f185}";
+pub const FA_SUN: &str = "\u{f0eb}";
 pub const FA_MOON: &str = "\u{f186}";
 pub const FA_SPINNER: &str = "\u{f1ce}";
+pub const FA_USER: &str = "\u{f007}";
 
 #[derive(Component)]
 struct MenuRoot;
@@ -112,6 +122,7 @@ fn build_menu(
     theme: Res<UiTheme>,
     config: Res<crate::config::AppConfig>,
     asset_server: Res<AssetServer>,
+    profiles: Res<ProfileStore>,
 ) {
     let has_folder = config.last_folder.as_ref().is_some_and(|f| f.is_dir());
 
@@ -131,8 +142,8 @@ fn build_menu(
             BackgroundColor(theme.bg),
         ))
         .with_children(|root| {
-            sidebar::build_sidebar(root, &theme, has_folder, logo_handle, &icon_font);
-            build_main_area(root, &library, &menu_state, &art_cache, &theme, &icon_font);
+            sidebar::build_sidebar(root, &theme, has_folder, logo_handle, &icon_font, &profiles);
+            build_main_area(root, &library, &menu_state, &art_cache, &theme, &icon_font, &profiles);
         });
 }
 
@@ -143,6 +154,7 @@ fn build_main_area(
     art_cache: &AlbumArtCache,
     theme: &UiTheme,
     icon_font: &IconFont,
+    profiles: &ProfileStore,
 ) {
     root.spawn(Node {
         flex_grow: 1.0,
@@ -226,12 +238,15 @@ fn build_main_area(
         ))
         .with_children(|list| {
             let query = menu_state.search_query.to_lowercase();
+            let active_profile = profiles.active.as_deref();
             for (i, song) in library.songs.iter().enumerate() {
                 let visible = query.is_empty()
                     || song.display_title().to_lowercase().contains(&query)
                     || song.display_artist().to_lowercase().contains(&query);
                 let art = art_cache.handles.get(i).and_then(|h| h.clone());
-                build_song_card(list, song, i, art, theme, icon_font, visible);
+                let best = active_profile
+                    .and_then(|p| profiles.best_score(&song.file_hash, p));
+                build_song_card(list, song, i, art, theme, icon_font, visible, best);
             }
         });
     });
@@ -290,8 +305,9 @@ fn handle_song_click(
     mut queue: ResMut<AnalysisQueue>,
     theme: Res<UiTheme>,
     overlay_query: Query<(), With<SettingsOverlay>>,
+    profile_overlay_query: Query<(), With<ProfileOverlay>>,
 ) {
-    if !overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() {
         return;
     }
     for (interaction, song_card, mut bg, mut border) in &mut interaction_query {
@@ -332,8 +348,9 @@ fn handle_reanalyze_click(
     cache: Res<CacheDir>,
     theme: Res<UiTheme>,
     overlay_query: Query<(), With<SettingsOverlay>>,
+    profile_overlay_query: Query<(), With<ProfileOverlay>>,
 ) {
-    if !overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() {
         return;
     }
     for (interaction, btn, mut bg) in &mut interaction_query {
@@ -368,8 +385,9 @@ fn handle_search_input(
     library: Res<SongLibrary>,
     mut card_query: Query<(&SongCard, &mut Node)>,
     overlay_query: Query<(), With<SettingsOverlay>>,
+    profile_overlay_query: Query<(), With<ProfileOverlay>>,
 ) {
-    if !overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() {
         return;
     }
     let mut changed = false;
@@ -601,6 +619,7 @@ fn cleanup_menu(
     mut commands: Commands,
     query: Query<Entity, With<MenuRoot>>,
     settings_query: Query<Entity, With<SettingsOverlay>>,
+    profile_query: Query<Entity, With<ProfileOverlay>>,
 ) {
     for entity in &query {
         commands.entity(entity).despawn();
@@ -608,6 +627,11 @@ fn cleanup_menu(
     for entity in &settings_query {
         commands.entity(entity).despawn();
     }
+    for entity in &profile_query {
+        commands.entity(entity).despawn();
+    }
     commands.remove_resource::<AlbumArtCache>();
     commands.remove_resource::<IconFont>();
+    commands.remove_resource::<profile::ProfileInputState>();
+    commands.remove_resource::<profile::PendingDeleteProfile>();
 }

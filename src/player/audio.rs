@@ -131,6 +131,32 @@ pub fn seek_to(
     }
 }
 
+pub fn pause_audio(karaoke: &KaraokeAudio, audio_instances: &mut Assets<AudioInstance>) {
+    if let Some(ref handle) = karaoke.instrumental_instance {
+        if let Some(instance) = audio_instances.get_mut(handle) {
+            instance.pause(default());
+        }
+    }
+    if let Some(ref handle) = karaoke.vocals_instance {
+        if let Some(instance) = audio_instances.get_mut(handle) {
+            instance.pause(default());
+        }
+    }
+}
+
+pub fn resume_audio(karaoke: &KaraokeAudio, audio_instances: &mut Assets<AudioInstance>) {
+    if let Some(ref handle) = karaoke.instrumental_instance {
+        if let Some(instance) = audio_instances.get_mut(handle) {
+            instance.resume(default());
+        }
+    }
+    if let Some(ref handle) = karaoke.vocals_instance {
+        if let Some(instance) = audio_instances.get_mut(handle) {
+            instance.resume(default());
+        }
+    }
+}
+
 pub fn cleanup_audio(commands: &mut Commands, audio: &Res<Audio>) {
     audio.stop();
     commands.remove_resource::<KaraokeAudio>();

@@ -45,7 +45,9 @@ impl Plugin for BackgroundPlugin {
         .init_resource::<ActiveTheme>()
         .add_systems(
             Update,
-            tick_material_time.run_if(in_state(AppState::Playing)),
+            tick_material_time
+                .run_if(in_state(AppState::Playing))
+                .run_if(super::no_player_overlay),
         );
     }
 }

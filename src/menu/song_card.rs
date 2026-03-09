@@ -42,6 +42,7 @@ pub enum SidebarAction {
     ChangeFolder,
     Settings,
     ToggleTheme,
+    Profile,
     Exit,
 }
 
@@ -93,7 +94,38 @@ pub struct ReanalyzeButton {
 #[derive(Component)]
 pub struct EmptyStateRoot;
 
+#[derive(Component)]
+pub struct ProfileOverlay;
+
+#[derive(Component)]
+pub struct ProfileNameInput;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileAction {
+    Create,
+    Switch(usize),
+    Delete(usize),
+    ConfirmDelete,
+    CancelDelete,
+    NewProfile,
+    Close,
+}
+
+#[derive(Component)]
+pub struct ProfileButton {
+    pub action: ProfileAction,
+}
+
+#[derive(Component)]
+pub struct ProfileLabelText;
+
+#[derive(Component)]
+pub struct ProfileNameLabel;
+
 use crate::scanner::metadata::AnalysisStatus;
+
+const FA_STAR: &str = "\u{f005}";
+const FA_STAR_HALF: &str = "\u{f5c0}";
 
 pub fn build_song_card(
     parent: &mut ChildSpawnerCommands,
@@ -103,6 +135,7 @@ pub fn build_song_card(
     theme: &UiTheme,
     icon_font: &IconFont,
     visible: bool,
+    best_score: Option<u32>,
 ) {
     let (badge_text, badge_color) = badge_info(&song.analysis_status, theme);
     let duration_str = format_duration(song.duration_secs);
@@ -128,7 +161,7 @@ pub fn build_song_card(
         ))
         .with_children(|card| {
             spawn_album_art(card, index, art_handle, theme, icon_font);
-            spawn_song_info(card, song, theme);
+            spawn_song_info(card, song, theme, best_score, icon_font);
 
             card.spawn((
                 Text::new(duration_str),
@@ -179,6 +212,63 @@ pub fn build_song_card(
                     TextColor(theme.text_primary),
                 ));
             });
+        });
+}
+
+fn spawn_mini_stars(
+    parent: &mut ChildSpawnerCommands,
+    score: u32,
+    theme: &UiTheme,
+    icon_font: &IconFont,
+) {
+    let half_stars = (score as f64 / 100.0).round().min(10.0) as u32;
+    let filled = half_stars / 2;
+    let has_half = half_stars % 2 == 1;
+    let empty = 5 - filled - if has_half { 1 } else { 0 };
+
+    let star_filled = theme.accent;
+    let star_empty = theme.text_dim.with_alpha(0.2);
+
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            column_gap: Val::Px(2.0),
+            ..default()
+        })
+        .with_children(|row| {
+            for _ in 0..filled {
+                row.spawn((
+                    Text::new(FA_STAR),
+                    TextFont {
+                        font: icon_font.0.clone(),
+                        font_size: 10.0,
+                        ..default()
+                    },
+                    TextColor(star_filled),
+                ));
+            }
+            if has_half {
+                row.spawn((
+                    Text::new(FA_STAR_HALF),
+                    TextFont {
+                        font: icon_font.0.clone(),
+                        font_size: 10.0,
+                        ..default()
+                    },
+                    TextColor(star_filled),
+                ));
+            }
+            for _ in 0..empty {
+                row.spawn((
+                    Text::new(FA_STAR),
+                    TextFont {
+                        font: icon_font.0.clone(),
+                        font_size: 10.0,
+                        ..default()
+                    },
+                    TextColor(star_empty),
+                ));
+            }
         });
 }
 
@@ -272,7 +362,13 @@ fn spawn_album_art(
     });
 }
 
-fn spawn_song_info(card: &mut ChildSpawnerCommands, song: &Song, theme: &UiTheme) {
+fn spawn_song_info(
+    card: &mut ChildSpawnerCommands,
+    song: &Song,
+    theme: &UiTheme,
+    best_score: Option<u32>,
+    icon_font: &IconFont,
+) {
     card.spawn(Node {
         flex_direction: FlexDirection::Column,
         flex_grow: 1.0,
@@ -298,6 +394,9 @@ fn spawn_song_info(card: &mut ChildSpawnerCommands, song: &Song, theme: &UiTheme
             },
             TextColor(theme.text_secondary),
         ));
+        if let Some(score) = best_score {
+            spawn_mini_stars(info, score, theme, icon_font);
+        }
     });
 }
 

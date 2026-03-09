@@ -122,6 +122,7 @@ fn is_virtual_device(device: &cpal::Device) -> bool {
         "loopback",
         "virtual",
         "null",
+        "zoom"
     ];
     virtual_patterns.iter().any(|p| name.contains(p))
 }

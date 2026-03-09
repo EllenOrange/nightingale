@@ -7,8 +7,9 @@ use bevy::prelude::*;
 use super::folder::{PendingFolderPick, PendingRescan};
 use super::settings::spawn_settings_popup;
 use super::song_card::*;
-use super::{IconFont, FA_MOON, FA_SUN};
+use super::{IconFont, FA_MOON, FA_SUN, FA_USER};
 use crate::analyzer::cache::CacheDir;
+use crate::profile::ProfileStore;
 use crate::scanner::metadata::Song;
 use crate::states::AppState;
 use crate::ui::{self, UiTheme};
@@ -19,6 +20,7 @@ pub fn build_sidebar(
     has_folder: bool,
     logo: Handle<Image>,
     icon_font: &IconFont,
+    profiles: &ProfileStore,
 ) {
     root.spawn((
         Node {
@@ -62,6 +64,28 @@ pub fn build_sidebar(
             ..default()
         });
 
+        let profile_icon_color = if profiles.active.is_some() {
+            theme.accent
+        } else {
+            theme.text_primary
+        };
+
+        if let Some(ref name) = profiles.active {
+            sidebar.spawn((
+                ProfileNameLabel,
+                Text::new(name.as_str()),
+                TextFont {
+                    font_size: 12.0,
+                    ..default()
+                },
+                TextColor(theme.accent),
+                Node {
+                    margin: UiRect::bottom(Val::Px(2.0)),
+                    ..default()
+                },
+            ));
+        }
+
         sidebar
             .spawn(Node {
                 width: Val::Percent(100.0),
@@ -77,11 +101,12 @@ pub fn build_sidebar(
                 } else {
                     FA_MOON
                 };
+                spawn_icon_btn(row, theme_glyph, SidebarAction::ToggleTheme, theme, icon_font, ThemeToggleIcon);
+
                 row.spawn((
                     SidebarButton {
-                        action: SidebarAction::ToggleTheme,
+                        action: SidebarAction::Profile,
                     },
-                    ThemeToggleIcon,
                     Button,
                     Node {
                         width: Val::Px(40.0),
@@ -96,19 +121,56 @@ pub fn build_sidebar(
                 ))
                 .with_children(|btn| {
                     btn.spawn((
-                        Text::new(theme_glyph),
+                        Text::new(FA_USER),
                         TextFont {
                             font: icon_font.0.clone(),
                             font_size: 16.0,
                             ..default()
                         },
-                        TextColor(theme.text_primary),
+                        TextColor(profile_icon_color),
                     ));
                 });
             });
 
         spawn_sidebar_button(sidebar, "Exit", SidebarAction::Exit, theme, true);
     });
+}
+
+fn spawn_icon_btn(
+    parent: &mut ChildSpawnerCommands,
+    glyph: &str,
+    action: SidebarAction,
+    theme: &UiTheme,
+    icon_font: &IconFont,
+    marker: impl Component,
+) {
+    parent
+        .spawn((
+            SidebarButton { action },
+            marker,
+            Button,
+            Node {
+                width: Val::Px(40.0),
+                height: Val::Px(40.0),
+                flex_shrink: 0.0,
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(theme.sidebar_btn),
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(glyph),
+                TextFont {
+                    font: icon_font.0.clone(),
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(theme.text_primary),
+            ));
+        });
 }
 
 fn spawn_sidebar_button(
@@ -156,9 +218,12 @@ pub fn handle_sidebar_click(
     mut theme: ResMut<UiTheme>,
     cache: Res<CacheDir>,
     overlay_query: Query<(), With<SettingsOverlay>>,
+    profile_overlay_query: Query<(), With<ProfileOverlay>>,
+    profiles: Res<ProfileStore>,
     mut next_state: ResMut<NextState<AppState>>,
+    asset_server: Res<AssetServer>,
 ) {
-    if !overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() {
         return;
     }
     for (interaction, sidebar_btn, mut bg) in &mut interaction_query {
@@ -209,6 +274,14 @@ pub fn handle_sidebar_click(
                 }
                 SidebarAction::Settings => {
                     spawn_settings_popup(&mut commands, &theme, &config);
+                }
+                SidebarAction::Profile => {
+                    super::profile::spawn_profile_popup(
+                        &mut commands,
+                        &theme,
+                        &profiles,
+                        &asset_server,
+                    );
                 }
                 SidebarAction::ToggleTheme => {
                     theme.toggle();
