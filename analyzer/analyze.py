@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Nightingale Song Analyzer
-Separates vocals/instrumentals with Demucs and transcribes lyrics with WhisperX or Voxtral Realtime.
+Separates vocals/instrumentals with Demucs and transcribes lyrics with WhisperX.
 
 Usage:
     python analyze.py <audio_path> <output_dir> [--hash <file_hash>]
@@ -335,78 +335,6 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
     return {"language": language, "segments": segments}
 
 
-def transcribe_voxtral(vocals_path: str, original_audio_path: str, device: str) -> dict:
-    """Transcribe vocals with Voxtral Realtime, align with WhisperX for precise timestamps."""
-    import whisperx
-    from transformers import VoxtralRealtimeForConditionalGeneration, AutoProcessor
-    import torchaudio
-
-    SECS_PER_TOKEN = 0.08
-    REPO_ID = "mistralai/Voxtral-Mini-4B-Realtime-2602"
-
-    compute_type = "float16" if device == "cuda" else "float32"
-    whisperx_device = "cpu" if device == "mps" else device
-
-    progress(52, "Loading WhisperX model for language detection...")
-    audio = whisperx.load_audio(vocals_path)
-    whisperx_model = whisperx.load_model(
-        "large-v3-turbo", whisperx_device, compute_type=compute_type, task="transcribe",
-    )
-
-    progress(55, "Detecting language from vocals (multi-window)...")
-    language = detect_language_multiwindow(whisperx_model, audio)
-    print(f"[nightingale:LOG] Detected language: '{language}'", flush=True)
-    del whisperx_model
-
-    progress(58, "Loading Voxtral Realtime model...")
-    processor = AutoProcessor.from_pretrained(REPO_ID)
-
-    if device == "cuda":
-        dtype = torch.bfloat16
-    elif device == "mps":
-        dtype = torch.float16
-    else:
-        dtype = torch.float32
-
-    model = VoxtralRealtimeForConditionalGeneration.from_pretrained(
-        REPO_ID, torch_dtype=dtype, device_map="auto"
-    )
-    print(f"[nightingale:LOG] Voxtral model loaded on {model.device} with dtype={model.dtype}", flush=True)
-
-    progress(62, "Loading audio for Voxtral...")
-    waveform, sr = torchaudio.load(vocals_path)
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-    target_sr = processor.feature_extractor.sampling_rate
-    if sr != target_sr:
-        resampler = torchaudio.transforms.Resample(sr, target_sr)
-        waveform = resampler(waveform)
-    audio_array = waveform.squeeze(0).numpy()
-
-    audio_duration = len(audio_array) / target_sr
-    max_tokens = int(audio_duration / SECS_PER_TOKEN) + 100
-    print(f"[nightingale:LOG] Audio loaded: {len(audio_array)} samples at {target_sr}Hz ({audio_duration:.1f}s), max_tokens={max_tokens}", flush=True)
-
-    progress(65, f"Transcribing with Voxtral Realtime ({audio_duration:.0f}s audio)...")
-    inputs = processor(audio_array, return_tensors="pt")
-    inputs = inputs.to(model.device, dtype=model.dtype)
-
-    with torch.no_grad():
-        outputs = model.generate(**inputs, max_new_tokens=max_tokens)
-
-    full_text = processor.batch_decode(outputs, skip_special_tokens=True)[0].strip()
-    del model, processor, inputs, outputs
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    print(f"[nightingale:LOG] Voxtral transcription ({len(full_text.split())} words): {full_text[:200]}", flush=True)
-
-    progress(75, "Preparing segments for alignment...")
-    raw_segments = [{"text": full_text, "start": 0.0, "end": audio_duration}]
-
-    return align_and_build_segments(raw_segments, audio, language, device)
-
-
 def transcribe_vocals(
     vocals_path: str,
     original_audio_path: str,
@@ -475,7 +403,7 @@ def main():
     parser.add_argument("audio_path", help="Path to the audio file")
     parser.add_argument("output_dir", help="Directory to write output files")
     parser.add_argument("--hash", dest="file_hash", help="Pre-computed file hash (skip computing)")
-    parser.add_argument("--model", default="large-v3-turbo", help="Model name (large-v3, large-v3-turbo, voxtral-realtime)")
+    parser.add_argument("--model", default="large-v3-turbo", help="Model name (large-v3, large-v3-turbo)")
     parser.add_argument("--beam-size", type=int, default=5, help="Beam size for decoding")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size for transcription")
     args = parser.parse_args()
@@ -515,15 +443,12 @@ def main():
             shutil.move(instrumental_path, final_instrumental)
         vocals_path = final_vocals
 
-    if args.model == "voxtral-realtime":
-        transcript = transcribe_voxtral(vocals_path, audio_path, device)
-    else:
-        transcript = transcribe_vocals(
-            vocals_path, audio_path, device,
-            model_name=args.model,
-            beam_size=args.beam_size,
-            batch_size=args.batch_size,
-        )
+    transcript = transcribe_vocals(
+        vocals_path, audio_path, device,
+        model_name=args.model,
+        beam_size=args.beam_size,
+        batch_size=args.batch_size,
+    )
 
     progress(95, "Writing transcript...")
     with open(transcript_path, "w", encoding="utf-8") as f:
