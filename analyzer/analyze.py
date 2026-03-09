@@ -162,8 +162,10 @@ ATTRIBUTION_WORDS = {
     "подготовил", "подготовила", "подготовили",
     "редактировал", "редактировала", "редактировали",
     "выполнил", "выполнила", "выполнили",
+    "редактор", "корректор", "переводчик",
     "subtitles", "subtitle", "captions", "caption",
     "transcribed", "transcript", "transcription",
+    "editor", "translator", "proofreader",
 }
 
 
@@ -496,30 +498,37 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
     return {"language": language, "segments": segments}
 
 
-def _is_bad_segment(seg: dict) -> bool:
-    """Detect segments that are hallucinations or suspiciously sparse."""
+def _is_hallucination(seg: dict) -> bool:
+    """Check if segment text is a known hallucination or attribution."""
     text = seg.get("text", "").strip()
     if not text:
         return True
-
-    duration = seg.get("end", 0) - seg.get("start", 0)
-    words = text.split()
-    word_count = len(words)
 
     text_lower = text.lower()
     for phrase in HALLUCINATION_PHRASES:
         if phrase in text_lower:
             return True
 
+    words = text.split()
     all_banned = True
     for w in words:
         clean = re.sub(r"[.,!?;:\"\']", "", w).lower()
         if clean not in BANNED_WORDS and clean not in ATTRIBUTION_WORDS:
             all_banned = False
             break
-    if all_banned and word_count > 0:
+    if all_banned and len(words) > 0:
         return True
 
+    return False
+
+
+def _is_bad_segment(seg: dict) -> bool:
+    """Detect segments that are hallucinations or suspiciously sparse (pass 1)."""
+    if _is_hallucination(seg):
+        return True
+
+    duration = seg.get("end", 0) - seg.get("start", 0)
+    word_count = len(seg.get("text", "").split())
     if duration >= MIN_SEGMENT_DURATION and word_count / max(duration, 0.1) < MIN_WORDS_PER_SEC:
         return True
 
@@ -675,9 +684,22 @@ def transcribe_vocals(
             asr_options=relaxed_asr, vad_options=relaxed_vad,
         )
 
-        progress(68, f"Filling {len(gaps)} gaps (pass 2)...")
+        MAX_CHUNK = 15.0
+        sub_gaps = []
+        for gs, ge in gaps:
+            length = ge - gs
+            if length <= MAX_CHUNK:
+                sub_gaps.append((gs, ge))
+            else:
+                pos = gs
+                while pos < ge:
+                    chunk_end = min(pos + MAX_CHUNK, ge)
+                    sub_gaps.append((pos, chunk_end))
+                    pos = chunk_end
+
+        progress(68, f"Filling {len(gaps)} gaps ({len(sub_gaps)} chunks, pass 2)...")
         recovered_segments = []
-        for gap_start, gap_end in gaps:
+        for gap_start, gap_end in sub_gaps:
             pad = 1.0
             slice_start = max(0, gap_start - pad)
             slice_end = min(duration_secs, gap_end + pad)
@@ -685,7 +707,7 @@ def transcribe_vocals(
             gap_dur = slice_end - slice_start
 
             rms = float(np.sqrt(np.mean(gap_audio.astype(np.float64) ** 2)))
-            print(f"[nightingale:LOG] P2 attempting gap {gap_start:.1f}-{gap_end:.1f} (slice {slice_start:.1f}-{slice_end:.1f}, {gap_dur:.1f}s, rms={rms:.5f})", flush=True)
+            print(f"[nightingale:LOG] P2 chunk {gap_start:.1f}-{gap_end:.1f} (slice {slice_start:.1f}-{slice_end:.1f}, {gap_dur:.1f}s, rms={rms:.5f})", flush=True)
 
             if rms < 1e-4:
                 print(f"[nightingale:LOG]   -> silence, skipping", flush=True)
@@ -702,16 +724,18 @@ def transcribe_vocals(
             gap_segs = gap_result.get("segments", [])
             print(f"[nightingale:LOG]   -> whisperx returned {len(gap_segs)} segments", flush=True)
 
+            any_kept = False
             for seg in gap_segs:
                 seg["start"] = round(seg.get("start", 0) + slice_start, 3)
                 seg["end"] = round(seg.get("end", 0) + slice_start, 3)
-                if _is_bad_segment(seg):
-                    print(f"[nightingale:LOG]   -> discarded bad P2 segment: [{seg['start']:.1f}-{seg['end']:.1f}] {seg.get('text','')[:80]}", flush=True)
+                if _is_hallucination(seg):
+                    print(f"[nightingale:LOG]   -> discarded hallucination: [{seg['start']:.1f}-{seg['end']:.1f}] {seg.get('text','')[:80]}", flush=True)
                     continue
                 recovered_segments.append(seg)
+                any_kept = True
                 print(f"[nightingale:LOG]   -> recovered: [{seg['start']:.1f}-{seg['end']:.1f}] {seg.get('text','')[:80]}", flush=True)
 
-            if not gap_segs or not any(not _is_bad_segment(s) for s in gap_segs):
+            if not any_kept:
                 print(f"[nightingale:LOG]   -> NOTHING usable recovered (rms={rms:.5f})", flush=True)
 
         del relaxed_model
