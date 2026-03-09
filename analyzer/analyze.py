@@ -274,16 +274,112 @@ def build_segments(all_words: list[dict]) -> list[dict]:
     return segments
 
 
+def _normalize(word: str) -> str:
+    return re.sub(r"[^\w]", "", word).lower()
+
+
+def _recover_dropped_words(raw_segments: list[dict], aligned_segments: list[dict]):
+    """Compare input vs aligned output and re-inject words the aligner silently dropped.
+
+    Works per-segment using the segment text as the source of truth. Uses a
+    sliding-window match so punctuation and minor normalization differences
+    don't cause false positives.
+    """
+    if len(raw_segments) != len(aligned_segments):
+        print(
+            f"[nightingale:LOG] Segment count mismatch (raw={len(raw_segments)}, "
+            f"aligned={len(aligned_segments)}), skipping word recovery",
+            flush=True,
+        )
+        return
+
+    total_recovered = 0
+
+    for seg_i, (raw_seg, aligned_seg) in enumerate(zip(raw_segments, aligned_segments)):
+        raw_text = raw_seg.get("text", "")
+        raw_words = raw_text.split()
+        aligned_words: list[dict] = aligned_seg.get("words", [])
+
+        if not raw_words:
+            continue
+
+        aligned_norms = [_normalize(w.get("word", "")) for w in aligned_words]
+
+        matched_raw: set[int] = set()
+        matched_aligned: set[int] = set()
+        ai = 0
+        for ri, rw in enumerate(raw_words):
+            rn = _normalize(rw)
+            if not rn:
+                matched_raw.add(ri)
+                continue
+            for si in range(ai, min(ai + 8, len(aligned_norms))):
+                if si not in matched_aligned and aligned_norms[si] == rn:
+                    matched_raw.add(ri)
+                    matched_aligned.add(si)
+                    ai = si + 1
+                    break
+
+        missing_indices = [i for i in range(len(raw_words)) if i not in matched_raw]
+        if not missing_indices:
+            continue
+
+        seg_start = aligned_seg.get("start", raw_seg.get("start", 0))
+        seg_end = aligned_seg.get("end", raw_seg.get("end", 0))
+        missing_text = " ".join(raw_words[i] for i in missing_indices)
+        print(
+            f"[nightingale:LOG] Recovering {len(missing_indices)} dropped words in segment "
+            f"[{seg_start:.1f}-{seg_end:.1f}]: {missing_text}",
+            flush=True,
+        )
+
+        for orig_idx in reversed(missing_indices):
+            insert_pos = len(aligned_words)
+            for check_ri in range(orig_idx + 1, len(raw_words)):
+                check_norm = _normalize(raw_words[check_ri])
+                for ai_pos, an in enumerate(aligned_norms):
+                    if an == check_norm:
+                        insert_pos = ai_pos
+                        break
+                if insert_pos < len(aligned_words):
+                    break
+
+            recovered = {"word": raw_words[orig_idx]}
+            aligned_words.insert(insert_pos, recovered)
+            aligned_norms.insert(insert_pos, _normalize(raw_words[orig_idx]))
+            total_recovered += 1
+
+        aligned_seg["words"] = aligned_words
+
+    if total_recovered > 0:
+        print(f"[nightingale:LOG] Total recovered words: {total_recovered}", flush=True)
+
+
 def align_and_build_segments(raw_segments: list[dict], audio, language: str, device: str) -> dict:
     """Run WhisperX forced alignment, interpolate unaligned words, and build final segments."""
     import whisperx
 
     align_device = "cpu" if device == "mps" else device
 
+    input_words_by_seg: list[list[str]] = []
+    total_input_words = 0
+    for seg in raw_segments:
+        seg_text = seg.get("text", "")
+        words = seg_text.split()
+        input_words_by_seg.append(words)
+        total_input_words += len(words)
+    print(f"[nightingale:LOG] Pre-alignment: {len(raw_segments)} segments, {total_input_words} words total", flush=True)
+
     progress(80, f"Aligning word timestamps (lang={language})...")
     print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{align_device}'", flush=True)
     align_model, metadata = whisperx.load_align_model(language_code=language, device=align_device)
     result = whisperx.align(raw_segments, align_model, metadata, audio, align_device)
+
+    output_segments = result.get("segments", [])
+    total_output_words = sum(len(s.get("words", [])) for s in output_segments)
+    print(f"[nightingale:LOG] Post-alignment: {len(output_segments)} segments, {total_output_words} words total", flush=True)
+
+    _recover_dropped_words(raw_segments, output_segments)
 
     MAX_WORD_DURATION = 5.0
 
@@ -305,7 +401,7 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
     total_aligned = 0
     total_interpolated = 0
 
-    for seg in result["segments"]:
+    for seg in output_segments:
         raw_words = seg.get("words", [])
         if not raw_words:
             continue
@@ -368,6 +464,7 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
 
         for e in entries:
             if e["start"] is None or e["end"] is None:
+                print(f"[nightingale:LOG] WARNING: Dropping word with no timestamps after interpolation: '{e['word']}'", flush=True)
                 continue
             word_entry = {
                 "word": e["word"],
