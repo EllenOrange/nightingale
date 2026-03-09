@@ -516,51 +516,6 @@ def _prepare_audio_for_nemo(vocals_path: str) -> str:
     return nemo_path
 
 
-def _transcribe_fastconformer(vocals_path: str, device: str) -> list[dict]:
-    """Transcribe with Russian FastConformer, return list of {word, start, end}."""
-    import nemo.collections.asr as nemo_asr
-    from omegaconf import open_dict
-
-    nemo_audio = _prepare_audio_for_nemo(vocals_path)
-
-    progress(62, "Loading NeMo FastConformer (Russian)...")
-    asr_model = nemo_asr.models.ASRModel.from_pretrained(
-        "nvidia/stt_ru_fastconformer_hybrid_large_pc"
-    )
-    if device == "cuda":
-        asr_model = asr_model.cuda()
-    asr_model.eval()
-
-    decoding_cfg = asr_model.cfg.decoding
-    with open_dict(decoding_cfg):
-        decoding_cfg.preserve_alignments = True
-        decoding_cfg.compute_timestamps = True
-        asr_model.change_decoding_strategy(decoding_cfg)
-
-    progress(65, "Transcribing with FastConformer...")
-    hypotheses = asr_model.transcribe([nemo_audio], return_hypotheses=True)
-    if isinstance(hypotheses, tuple):
-        hypotheses = hypotheses[0]
-
-    text = hypotheses[0].text
-    print(f"[nightingale:LOG] FastConformer transcript: '{text[:200]}'", flush=True)
-
-    timestamp_dict = hypotheses[0].timestamp
-    time_stride = 8 * asr_model.cfg.preprocessor.window_stride
-
-    all_words = []
-    for stamp in timestamp_dict.get("word", []):
-        word_text = str(stamp.get("char", stamp.get("word", ""))).strip()
-        if not word_text:
-            continue
-        start = round(stamp["start_offset"] * time_stride, 3)
-        end = round(stamp["end_offset"] * time_stride, 3)
-        all_words.append({"word": word_text, "start": start, "end": end})
-
-    print(f"[nightingale:LOG] FastConformer: {len(all_words)} words extracted", flush=True)
-    return all_words
-
-
 def _transcribe_canary(vocals_path: str, device: str) -> list[dict]:
     """Transcribe with Canary-1B-Flash (multilingual), return list of {word, start, end}."""
     from nemo.collections.asr.models import EncDecMultiTaskModel
@@ -597,12 +552,8 @@ def transcribe_nemo(vocals_path: str, original_audio_path: str, device: str) -> 
     """Transcribe using NeMo: FastConformer for Russian, Canary for other languages."""
     language = _detect_language_for_nemo(vocals_path, device)
 
-    if language == "ru":
-        print("[nightingale:LOG] Using FastConformer (Russian-optimized)", flush=True)
-        all_words = _transcribe_fastconformer(vocals_path, device)
-    else:
-        print(f"[nightingale:LOG] Using Canary-1B-Flash (lang={language})", flush=True)
-        all_words = _transcribe_canary(vocals_path, device)
+    print(f"[nightingale:LOG] Using Canary-1B-Flash (lang={language})", flush=True)
+    all_words = _transcribe_canary(vocals_path, device)
 
     progress(75, f"NeMo transcription complete: {len(all_words)} words, lang={language}")
 
