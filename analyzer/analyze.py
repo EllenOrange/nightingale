@@ -381,8 +381,6 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
 
     _recover_dropped_words(raw_segments, output_segments)
 
-    MAX_WORD_DURATION = 5.0
-
     def _interpolate_range(entries, start_idx, end_idx, gap_start, gap_end):
         n = end_idx - start_idx
         if n <= 0:
@@ -422,11 +420,6 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
                 "score": w.get("score"),
                 "aligned": has_ts,
             }
-            if has_ts:
-                duration = entry["end"] - entry["start"]
-                if duration > MAX_WORD_DURATION:
-                    print(f"[nightingale:LOG] Clamping long word '{word_text}' ({duration:.1f}s)", flush=True)
-                    entry["start"] = entry["end"] - 0.5
             entries.append(entry)
 
         if not entries:
