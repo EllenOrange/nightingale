@@ -516,10 +516,7 @@ def transcribe_vocals(
     asr_options = {
         "beam_size": beam_size,
         "initial_prompt": (
-            "Everything before GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT. "
-            "Song Lyrics. Split lines with punctuation. "
-            "No annotations or descriptions. "
-            "GO"
+            "Song lyrics transcription for karaoke."
         ),
     }
 
