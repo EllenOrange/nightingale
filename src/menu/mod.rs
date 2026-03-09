@@ -45,12 +45,30 @@ impl Default for MenuFocus {
     }
 }
 
+const NAV_INITIAL_DELAY: f32 = 0.4;
+const NAV_REPEAT_RATE: f32 = 0.06;
+
+#[derive(Resource)]
+struct NavRepeat {
+    timer: Timer,
+    started: bool,
+}
+
+impl Default for NavRepeat {
+    fn default() -> Self {
+        Self {
+            timer: Timer::from_seconds(NAV_INITIAL_DELAY, TimerMode::Once),
+            started: false,
+        }
+    }
+}
+
 pub const SIDEBAR_ACTIONS: &[SidebarAction] = &[
     SidebarAction::ChangeFolder,
     SidebarAction::RescanFolder,
+    SidebarAction::Profile,
     SidebarAction::Settings,
     SidebarAction::ToggleTheme,
-    SidebarAction::Profile,
     SidebarAction::Exit,
 ];
 
@@ -60,6 +78,7 @@ impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuState>()
             .init_resource::<MenuFocus>()
+            .init_resource::<NavRepeat>()
             .add_systems(
                 OnEnter(AppState::Menu),
                 (load_album_art, build_menu).chain(),
@@ -72,6 +91,7 @@ impl Plugin for MenuPlugin {
                     handle_search_input,
                     update_status_badges,
                     sidebar::handle_sidebar_click,
+                    sidebar::handle_exit_input,
                     settings::handle_settings_click,
                     profile::handle_profile_click,
                     folder::poll_folder_result,
@@ -102,8 +122,8 @@ impl Plugin for MenuPlugin {
 }
 
 #[derive(Resource, Default)]
-struct MenuState {
-    search_query: String,
+pub(crate) struct MenuState {
+    pub(crate) search_query: String,
 }
 
 #[derive(Resource)]
@@ -354,10 +374,11 @@ fn handle_song_click(
     theme: Res<UiTheme>,
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
-    focus: Res<MenuFocus>,
+    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
+    mut focus: ResMut<MenuFocus>,
     keyboard: Res<ButtonInput<KeyCode>>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
         return;
     }
     for (interaction, song_card, mut bg, mut border) in &mut interaction_query {
@@ -366,6 +387,7 @@ fn handle_song_click(
                 activate_song(song_card.song_index, &mut commands, &mut library, &mut next_state, &mut queue);
             }
             Interaction::Hovered => {
+                focus.active = false;
                 *bg = BackgroundColor(theme.card_hover);
                 *border = BorderColor::all(theme.accent);
             }
@@ -426,8 +448,9 @@ fn handle_reanalyze_click(
     theme: Res<UiTheme>,
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
+    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
         return;
     }
     for (interaction, btn, mut bg) in &mut interaction_query {
@@ -463,9 +486,10 @@ fn handle_search_input(
     mut card_query: Query<(&SongCard, &mut Node)>,
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
+    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
     mut focus: ResMut<MenuFocus>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
         return;
     }
     let mut changed = false;
@@ -723,14 +747,36 @@ fn handle_menu_nav(
     >,
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
+    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
     theme: Res<UiTheme>,
+    time: Res<Time>,
+    mut nav_repeat: ResMut<NavRepeat>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
         return;
     }
 
-    let any_nav = keyboard.just_pressed(KeyCode::ArrowUp)
-        || keyboard.just_pressed(KeyCode::ArrowDown)
+    let ud_just = keyboard.just_pressed(KeyCode::ArrowUp)
+        || keyboard.just_pressed(KeyCode::ArrowDown);
+    let ud_held = keyboard.pressed(KeyCode::ArrowUp)
+        || keyboard.pressed(KeyCode::ArrowDown);
+
+    let mut ud_step = false;
+    if ud_just {
+        nav_repeat.timer = Timer::from_seconds(NAV_INITIAL_DELAY, TimerMode::Once);
+        nav_repeat.started = true;
+        ud_step = true;
+    } else if ud_held && nav_repeat.started {
+        nav_repeat.timer.tick(time.delta());
+        if nav_repeat.timer.just_finished() {
+            nav_repeat.timer = Timer::from_seconds(NAV_REPEAT_RATE, TimerMode::Repeating);
+            ud_step = true;
+        }
+    } else {
+        nav_repeat.started = false;
+    }
+
+    let any_nav = ud_step
         || keyboard.just_pressed(KeyCode::ArrowLeft)
         || keyboard.just_pressed(KeyCode::ArrowRight)
         || keyboard.just_pressed(KeyCode::Tab);
@@ -752,7 +798,10 @@ fn handle_menu_nav(
         };
     }
 
-    if keyboard.just_pressed(KeyCode::ArrowDown) || keyboard.just_pressed(KeyCode::ArrowUp) {
+    let step_down = ud_step && keyboard.pressed(KeyCode::ArrowDown);
+    let step_up = ud_step && keyboard.pressed(KeyCode::ArrowUp);
+
+    if step_down || step_up {
         match focus.panel {
             FocusPanel::SongList => {
                 let mut visible: Vec<usize> = card_query
@@ -764,14 +813,14 @@ fn handle_menu_nav(
 
                 if !visible.is_empty() {
                     let pos = visible.iter().position(|&i| i == focus.song_index);
-                    if keyboard.just_pressed(KeyCode::ArrowDown) {
+                    if step_down {
                         focus.song_index = match pos {
                             Some(p) if p + 1 < visible.len() => visible[p + 1],
                             None => visible[0],
                             _ => focus.song_index,
                         };
                     }
-                    if keyboard.just_pressed(KeyCode::ArrowUp) {
+                    if step_up {
                         focus.song_index = match pos {
                             Some(p) if p > 0 => visible[p - 1],
                             None => visible[0],
@@ -781,11 +830,11 @@ fn handle_menu_nav(
                 }
             }
             FocusPanel::Sidebar => {
-                if keyboard.just_pressed(KeyCode::ArrowDown) {
+                if step_down {
                     focus.sidebar_index =
                         (focus.sidebar_index + 1).min(SIDEBAR_ACTIONS.len() - 1);
                 }
-                if keyboard.just_pressed(KeyCode::ArrowUp) {
+                if step_up {
                     focus.sidebar_index = focus.sidebar_index.saturating_sub(1);
                 }
             }
@@ -873,6 +922,7 @@ fn cleanup_menu(
     query: Query<Entity, With<MenuRoot>>,
     settings_query: Query<Entity, With<SettingsOverlay>>,
     profile_query: Query<Entity, With<ProfileOverlay>>,
+    exit_query: Query<Entity, With<sidebar::ExitOverlay>>,
 ) {
     for entity in &query {
         commands.entity(entity).despawn();
@@ -883,10 +933,14 @@ fn cleanup_menu(
     for entity in &profile_query {
         commands.entity(entity).despawn();
     }
+    for entity in &exit_query {
+        commands.entity(entity).despawn();
+    }
     commands.remove_resource::<AlbumArtCache>();
     commands.remove_resource::<IconFont>();
     commands.remove_resource::<profile::ProfileInputState>();
     commands.remove_resource::<profile::PendingDeleteProfile>();
     commands.remove_resource::<profile::ProfileFocus>();
     commands.remove_resource::<settings::SettingsFocus>();
+    commands.remove_resource::<sidebar::ExitFocus>();
 }
