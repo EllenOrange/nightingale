@@ -477,12 +477,130 @@ def transcribe_vocals(
     return align_and_build_segments(result["segments"], audio, result_language, device)
 
 
+def _detect_language_for_nemo(vocals_path: str, device: str) -> str:
+    """Use a lightweight WhisperX model just for language detection."""
+    import whisperx
+
+    compute_type = "float16" if device == "cuda" else "float32"
+    detect_device = "cpu" if device == "mps" else device
+
+    progress(55, "Loading language detection model...")
+    audio = whisperx.load_audio(vocals_path)
+    model = whisperx.load_model(
+        "large-v3-turbo", detect_device, compute_type=compute_type, task="transcribe",
+    )
+
+    progress(58, "Detecting language (multi-window)...")
+    language = detect_language_multiwindow(model, audio)
+    print(f"[nightingale:LOG] NeMo pipeline: detected language='{language}'", flush=True)
+    progress(59, f"Detected language: {language}")
+
+    del model
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    return language
+
+
+def _transcribe_fastconformer(vocals_path: str, device: str) -> list[dict]:
+    """Transcribe with Russian FastConformer, return list of {word, start, end}."""
+    import nemo.collections.asr as nemo_asr
+    from omegaconf import open_dict
+
+    progress(62, "Loading NeMo FastConformer (Russian)...")
+    asr_model = nemo_asr.models.ASRModel.from_pretrained(
+        "nvidia/stt_ru_fastconformer_hybrid_large_pc"
+    )
+    if device == "cuda":
+        asr_model = asr_model.cuda()
+
+    decoding_cfg = asr_model.cfg.decoding
+    with open_dict(decoding_cfg):
+        decoding_cfg.preserve_alignments = True
+        decoding_cfg.compute_timestamps = True
+        asr_model.change_decoding_strategy(decoding_cfg)
+
+    progress(65, "Transcribing with FastConformer...")
+    hypotheses = asr_model.transcribe([vocals_path], return_hypotheses=True)
+    if isinstance(hypotheses, tuple):
+        hypotheses = hypotheses[0]
+
+    text = hypotheses[0].text
+    print(f"[nightingale:LOG] FastConformer transcript: '{text[:200]}'", flush=True)
+
+    timestamp_dict = hypotheses[0].timestep
+    time_stride = 8 * asr_model.cfg.preprocessor.window_stride
+
+    all_words = []
+    for stamp in timestamp_dict.get("word", []):
+        word_text = str(stamp.get("char", stamp.get("word", ""))).strip()
+        if not word_text:
+            continue
+        start = round(stamp["start_offset"] * time_stride, 3)
+        end = round(stamp["end_offset"] * time_stride, 3)
+        all_words.append({"word": word_text, "start": start, "end": end})
+
+    print(f"[nightingale:LOG] FastConformer: {len(all_words)} words extracted", flush=True)
+    return all_words
+
+
+def _transcribe_canary(vocals_path: str, device: str) -> list[dict]:
+    """Transcribe with Canary-1B-Flash (multilingual), return list of {word, start, end}."""
+    from nemo.collections.asr.models import EncDecMultiTaskModel
+
+    progress(62, "Loading NeMo Canary-1B-Flash...")
+    canary_model = EncDecMultiTaskModel.from_pretrained("nvidia/canary-1b-flash")
+    if device == "cuda":
+        canary_model = canary_model.cuda()
+
+    progress(65, "Transcribing with Canary...")
+    output = canary_model.transcribe([vocals_path], timestamps=True)
+
+    text = output[0].text if hasattr(output[0], "text") else str(output[0])
+    print(f"[nightingale:LOG] Canary transcript: '{text[:200]}'", flush=True)
+
+    all_words = []
+    word_stamps = output[0].timestamp.get("word", []) if hasattr(output[0], "timestamp") else []
+    for stamp in word_stamps:
+        word_text = str(stamp.get("word", stamp.get("char", ""))).strip()
+        if not word_text:
+            continue
+        start = round(stamp.get("start", stamp.get("start_offset", 0)), 3)
+        end = round(stamp.get("end", stamp.get("end_offset", 0)), 3)
+        all_words.append({"word": word_text, "start": start, "end": end})
+
+    print(f"[nightingale:LOG] Canary: {len(all_words)} words extracted", flush=True)
+    return all_words
+
+
+def transcribe_nemo(vocals_path: str, original_audio_path: str, device: str) -> dict:
+    """Transcribe using NeMo: FastConformer for Russian, Canary for other languages."""
+    language = _detect_language_for_nemo(vocals_path, device)
+
+    if language == "ru":
+        print("[nightingale:LOG] Using FastConformer (Russian-optimized)", flush=True)
+        all_words = _transcribe_fastconformer(vocals_path, device)
+    else:
+        print(f"[nightingale:LOG] Using Canary-1B-Flash (lang={language})", flush=True)
+        all_words = _transcribe_canary(vocals_path, device)
+
+    progress(75, f"NeMo transcription complete: {len(all_words)} words, lang={language}")
+
+    all_words = _remove_hallucinations(all_words)
+    segments = build_segments(all_words)
+
+    progress(90, f"Transcription complete: {len(segments)} segments, lang={language}")
+    if segments:
+        print(f"[nightingale:LOG] First segment: '{segments[0]['text'][:100]}'", flush=True)
+        print(f"[nightingale:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
+
+    return {"language": language, "segments": segments}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Nightingale Song Analyzer")
     parser.add_argument("audio_path", help="Path to the audio file")
     parser.add_argument("output_dir", help="Directory to write output files")
     parser.add_argument("--hash", dest="file_hash", help="Pre-computed file hash (skip computing)")
-    parser.add_argument("--model", default="large-v3-turbo", help="Model name (large-v3, large-v3-turbo)")
+    parser.add_argument("--model", default="large-v3-turbo", help="Model name (large-v3, large-v3-turbo, nemo)")
     parser.add_argument("--beam-size", type=int, default=5, help="Beam size for decoding")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size for transcription")
     args = parser.parse_args()
@@ -522,12 +640,15 @@ def main():
             shutil.move(instrumental_path, final_instrumental)
         vocals_path = final_vocals
 
-    transcript = transcribe_vocals(
-        vocals_path, audio_path, device,
-        model_name=args.model,
-        beam_size=args.beam_size,
-        batch_size=args.batch_size,
-    )
+    if args.model == "nemo":
+        transcript = transcribe_nemo(vocals_path, audio_path, device)
+    else:
+        transcript = transcribe_vocals(
+            vocals_path, audio_path, device,
+            model_name=args.model,
+            beam_size=args.beam_size,
+            batch_size=args.batch_size,
+        )
 
     progress(95, "Writing transcript...")
     with open(transcript_path, "w", encoding="utf-8") as f:

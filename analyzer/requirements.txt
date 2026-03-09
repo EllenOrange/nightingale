@@ -2,3 +2,4 @@ demucs>=4.0.0
 whisperx>=3.3.0
 torch>=2.0.0
 torchaudio>=2.0.0
+nemo_toolkit[asr]>=2.0.0

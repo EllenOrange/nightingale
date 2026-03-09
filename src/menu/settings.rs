@@ -4,7 +4,7 @@ use bevy::window::WindowMode;
 use super::song_card::*;
 use crate::ui::{self, UiTheme};
 
-const MODELS: &[&str] = &["large-v3-turbo", "large-v3"];
+const MODELS: &[&str] = &["large-v3-turbo", "large-v3", "nemo"];
 
 pub fn spawn_settings_popup(
     commands: &mut Commands,
@@ -60,7 +60,7 @@ pub fn spawn_settings_popup(
                     spawn_settings_row(card, theme, "Model", config.whisper_model(),
                         SettingsValueText(SettingsField::Model),
                         &[("<", SettingsAction::ModelPrev), (">", SettingsAction::ModelNext)],
-                        "turbo is fastest, v3 is most accurate");
+                        "turbo=fast, v3=accurate, nemo=best Russian");
                     spawn_settings_row(card, theme, "Beam size", &config.beam_size().to_string(),
                         SettingsValueText(SettingsField::Beam),
                         &[("-", SettingsAction::BeamDown), ("+", SettingsAction::BeamUp)],
