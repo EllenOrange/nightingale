@@ -509,7 +509,8 @@ def transcribe_vocals(
 
     progress(55, f"Loading WhisperX model ({model_name})...")
     audio = whisperx.load_audio(vocals_path)
-    print(f"[nightingale:LOG] Vocals audio loaded: {len(audio)} samples from {vocals_path}", flush=True)
+    duration_secs = len(audio) / 16000
+    print(f"[nightingale:LOG] Vocals audio loaded: {len(audio)} samples ({duration_secs:.1f}s) from {vocals_path}", flush=True)
     print(f"[nightingale:LOG] Settings: model={model_name}, beam_size={beam_size}, batch_size={batch_size}", flush=True)
 
     asr_options = {
@@ -517,15 +518,19 @@ def transcribe_vocals(
         "initial_prompt": (
             "Everything before GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT. "
             "Song Lyrics. Split lines with punctuation. "
-            "Don't write any indications of music being played, only lyrics. "
-            "Don't skip ANY lyrics, under NO CIRCUMSTANCES. Write EVERYTHING you understand. "
+            "Don't write any indications of music being played, only lyrics. Don't skip ANY lyrics. "
             "GO"
         ),
     }
 
+    vad_options = {
+        "vad_onset": 0.25,
+        "vad_offset": 0.08,
+    }
+
     model = whisperx.load_model(
         model_name, device, compute_type=compute_type, task="transcribe",
-        asr_options=asr_options,
+        asr_options=asr_options, vad_options=vad_options,
     )
 
     progress(58, "Detecting language from vocals (multi-window)...")
@@ -536,7 +541,7 @@ def transcribe_vocals(
     model = whisperx.load_model(
         model_name, device, compute_type=compute_type,
         task="transcribe", language=language,
-        asr_options=asr_options,
+        asr_options=asr_options, vad_options=vad_options,
     )
     print(f"[nightingale:LOG] Model loaded with lang={language}, tokenizer={model.tokenizer}", flush=True)
 
@@ -546,17 +551,36 @@ def transcribe_vocals(
         batch_size=batch_size,
         task="transcribe",
         language=language,
+        chunk_size=20,
     )
 
     result_language = result.get("language", language)
-    print(f"[nightingale:LOG] Transcribe returned language='{result_language}', segments={len(result.get('segments', []))}", flush=True)
-    if result.get("segments"):
-        first_seg = result["segments"][0]
-        print(f"[nightingale:LOG] First segment text: '{first_seg.get('text', '')[:100]}'", flush=True)
-        print(f"[nightingale:LOG] First segment time: {first_seg.get('start')} -> {first_seg.get('end')}", flush=True)
+    raw_segments = result.get("segments", [])
+    total_raw_words = sum(len(s.get("text", "").split()) for s in raw_segments)
+    print(f"[nightingale:LOG] Transcribe returned language='{result_language}', segments={len(raw_segments)}, ~{total_raw_words} words", flush=True)
+
+    if raw_segments:
+        covered = sum(s.get("end", 0) - s.get("start", 0) for s in raw_segments)
+        print(f"[nightingale:LOG] Transcribed coverage: {covered:.1f}s / {duration_secs:.1f}s ({covered/duration_secs*100:.0f}%)", flush=True)
+
+        gaps = []
+        for i in range(1, len(raw_segments)):
+            gap_start = raw_segments[i - 1].get("end", 0)
+            gap_end = raw_segments[i].get("start", 0)
+            gap = gap_end - gap_start
+            if gap > 5.0:
+                gaps.append((gap_start, gap_end, gap))
+        if gaps:
+            print(f"[nightingale:LOG] Large gaps (>5s) in transcript:", flush=True)
+            for gs, ge, g in gaps:
+                print(f"[nightingale:LOG]   {gs:.1f}s - {ge:.1f}s ({g:.1f}s gap)", flush=True)
+
+        for i, seg in enumerate(raw_segments):
+            print(f"[nightingale:LOG] Seg {i}: [{seg.get('start',0):.1f}-{seg.get('end',0):.1f}] {seg.get('text','')[:80]}", flush=True)
+
     progress(75, f"Language: {result_language}")
 
-    return align_and_build_segments(result["segments"], audio, result_language, device)
+    return align_and_build_segments(raw_segments, audio, result_language, device)
 
 
 def main():
