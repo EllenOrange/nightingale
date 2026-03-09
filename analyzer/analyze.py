@@ -515,9 +515,11 @@ def transcribe_vocals(
 
     asr_options = {
         "beam_size": beam_size,
-        "initial_prompt": (
-            "Song lyrics transcription for karaoke."
-        ),
+        "initial_prompt": "Song lyrics transcription for karaoke.",
+        "no_speech_threshold": 0.35,
+        "compression_ratio_threshold": 3.0,
+        "log_prob_threshold": -1.5,
+        "condition_on_previous_text": False,
     }
 
     vad_options = {
@@ -550,7 +552,7 @@ def transcribe_vocals(
         batch_size=batch_size,
         task="transcribe",
         language=language,
-        chunk_size=20,
+        chunk_size=15,
     )
 
     result_language = result.get("language", language)
