@@ -518,14 +518,16 @@ def transcribe_vocals(
         "initial_prompt": (
             "Everything before GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT. "
             "Song Lyrics. Split lines with punctuation. "
-            "No annotations or descriptions."
+            "No annotations or descriptions. "
             "GO"
         ),
     }
 
     vad_options = {
-        "vad_onset": 0.25,
-        "vad_offset": 0.08,
+        "vad_onset": 0.12,
+        "vad_offset": 0.05,
+        "min_duration_on": 0.15,
+        "min_duration_off": 0.6,
     }
 
     model = whisperx.load_model(
