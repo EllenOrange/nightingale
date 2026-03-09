@@ -52,67 +52,63 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
             },
         ))
         .with_children(|root| {
-            root.spawn(Node {
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            })
-            .with_children(|wrapper| {
-                wrapper.spawn((
-                    CountdownNode,
-                    Node {
-                        position_type: PositionType::Absolute,
-                        top: Val::Px(-36.0),
-                        left: Val::Px(-36.0),
-                        width: Val::Px(40.0),
-                        height: Val::Px(40.0),
-                        border_radius: BorderRadius::all(Val::Percent(50.0)),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
+            root.spawn((
+                CountdownNode,
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(-40.0),
+                    left: Val::Percent(50.0),
+                    margin: UiRect::left(Val::Px(-20.0)),
+                    width: Val::Px(40.0),
+                    height: Val::Px(40.0),
+                    border_radius: BorderRadius::all(Val::Percent(50.0)),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Visibility::Hidden,
+                ZIndex(1),
+            ))
+            .with_children(|cd| {
+                cd.spawn((
+                    Text::new(""),
+                    TextFont {
+                        font_size: 22.0,
                         ..default()
                     },
-                    BackgroundColor(Color::NONE),
-                    Visibility::Hidden,
-                    ZIndex(1),
-                ))
-                .with_children(|cd| {
-                    cd.spawn((
-                        Text::new(""),
-                        TextFont {
-                            font_size: 22.0,
-                            ..default()
-                        },
-                        TextColor(theme.countdown_color),
-                    ));
-                });
-
-                wrapper.spawn((
-                    CurrentLine,
-                    Node {
-                        max_width: Val::Vw(80.0),
-                        flex_direction: FlexDirection::Row,
-                        flex_wrap: FlexWrap::Wrap,
-                        justify_content: JustifyContent::Center,
-                        column_gap: Val::Px(8.0),
-                        padding: UiRect::new(
-                            Val::Px(20.0),
-                            Val::Px(20.0),
-                            Val::Px(10.0),
-                            Val::Px(10.0),
-                        ),
-                        border_radius: BorderRadius::all(Val::Px(8.0)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::NONE),
-                    Visibility::Hidden,
+                    TextColor(theme.countdown_color),
                 ));
             });
+
+            root.spawn((
+                CurrentLine,
+                Node {
+                    max_width: Val::Vw(80.0),
+                    flex_direction: FlexDirection::Row,
+                    flex_wrap: FlexWrap::Wrap,
+                    flex_shrink: 0.0,
+                    justify_content: JustifyContent::Center,
+                    column_gap: Val::Px(8.0),
+                    padding: UiRect::new(
+                        Val::Px(20.0),
+                        Val::Px(20.0),
+                        Val::Px(10.0),
+                        Val::Px(10.0),
+                    ),
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Visibility::Hidden,
+            ));
 
             root.spawn((
                 NextLine,
                 Node {
                     flex_direction: FlexDirection::Row,
                     flex_wrap: FlexWrap::Wrap,
+                    flex_shrink: 0.0,
                     justify_content: JustifyContent::Center,
                     column_gap: Val::Px(6.0),
                     padding: UiRect::new(

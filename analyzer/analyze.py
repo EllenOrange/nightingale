@@ -175,6 +175,30 @@ def build_segments(all_words: list[dict]) -> list[dict]:
     if current_words:
         segments.append(_flush(current_words))
 
+    merged = True
+    while merged:
+        merged = False
+        i = 0
+        while i < len(segments):
+            if len(segments[i]["words"]) < MIN_WORDS_PER_LINE and len(segments) > 1:
+                if i == 0:
+                    neighbor = i + 1
+                elif i == len(segments) - 1:
+                    neighbor = i - 1
+                else:
+                    gap_before = segments[i]["start"] - segments[i - 1]["end"]
+                    gap_after = segments[i + 1]["start"] - segments[i]["end"]
+                    neighbor = i - 1 if gap_before <= gap_after else i + 1
+                if neighbor < i:
+                    segments[neighbor] = _flush(segments[neighbor]["words"] + segments[i]["words"])
+                    segments.pop(i)
+                else:
+                    segments[neighbor] = _flush(segments[i]["words"] + segments[neighbor]["words"])
+                    segments.pop(i)
+                merged = True
+            else:
+                i += 1
+
     for seg in segments:
         print(f"[nightingale:LOG] Segment [{seg['start']:.1f}-{seg['end']:.1f}] avg_score={seg['_avg_score']:.2f}: {seg['text'][:80]}", flush=True)
 
