@@ -21,6 +21,8 @@ pub struct Word {
     pub end: f64,
     #[serde(default)]
     pub score: Option<f64>,
+    #[serde(default)]
+    pub estimated: bool,
 }
 
 impl Transcript {

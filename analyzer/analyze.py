@@ -135,7 +135,14 @@ def detect_language_multiwindow(model, audio, sample_rate=16000, window_secs=30)
     return best_lang
 
 
-def transcribe_vocals(vocals_path: str, original_audio_path: str, device: str) -> dict:
+def transcribe_vocals(
+    vocals_path: str,
+    original_audio_path: str,
+    device: str,
+    model_name: str = "large-v3-turbo",
+    beam_size: int = 5,
+    batch_size: int = 8,
+) -> dict:
     """Transcribe vocals with WhisperX to get word-level timestamps."""
     import whisperx
 
@@ -143,12 +150,19 @@ def transcribe_vocals(vocals_path: str, original_audio_path: str, device: str) -
     if device == "mps":
         device = "cpu"
 
-    progress(55, "Loading WhisperX model...")
+    progress(55, f"Loading WhisperX model ({model_name})...")
     audio = whisperx.load_audio(vocals_path)
     print(f"[nightingale:LOG] Vocals audio loaded: {len(audio)} samples from {vocals_path}", flush=True)
+    print(f"[nightingale:LOG] Settings: model={model_name}, beam_size={beam_size}, batch_size={batch_size}", flush=True)
+
+    asr_options = {
+        "beam_size": beam_size,
+        "initial_prompt": "Song lyrics:",
+    }
 
     model = whisperx.load_model(
-        "large-v3-turbo", device, compute_type=compute_type, task="transcribe"
+        model_name, device, compute_type=compute_type, task="transcribe",
+        asr_options=asr_options,
     )
 
     progress(58, "Detecting language from vocals (multi-window)...")
@@ -157,13 +171,19 @@ def transcribe_vocals(vocals_path: str, original_audio_path: str, device: str) -
     progress(59, f"Detected language: {language}")
 
     model = whisperx.load_model(
-        "large-v3-turbo", device, compute_type=compute_type,
+        model_name, device, compute_type=compute_type,
         task="transcribe", language=language,
+        asr_options=asr_options,
     )
     print(f"[nightingale:LOG] Model loaded with lang={language}, tokenizer={model.tokenizer}", flush=True)
 
     progress(60, "Transcribing vocals...")
-    result = model.transcribe(audio, batch_size=8, task="transcribe", language=language)
+    result = model.transcribe(
+        audio,
+        batch_size=batch_size,
+        task="transcribe",
+        language=language,
+    )
 
     result_language = result.get("language", language)
     print(f"[nightingale:LOG] Transcribe returned language='{result_language}', segments={len(result.get('segments', []))}", flush=True)
@@ -179,40 +199,134 @@ def transcribe_vocals(vocals_path: str, original_audio_path: str, device: str) -
     result = whisperx.align(result["segments"], align_model, metadata, audio, device)
 
     MAX_WORD_DURATION = 5.0
+    MAX_WORD_GAP = 3.0
     EDGE_CONFIDENCE_THRESHOLD = 0.5
 
-    segments = []
+    def _interpolate_range(entries, start_idx, end_idx, gap_start, gap_end):
+        n = end_idx - start_idx
+        if n <= 0:
+            return
+        if gap_end > gap_start:
+            d = (gap_end - gap_start) / n
+            for j in range(n):
+                entries[start_idx + j]["start"] = gap_start + j * d
+                entries[start_idx + j]["end"] = gap_start + (j + 1) * d
+        else:
+            for j in range(n):
+                entries[start_idx + j]["start"] = gap_start
+                entries[start_idx + j]["end"] = gap_start + 0.1
+
+    all_words = []
+    total_aligned = 0
+    total_interpolated = 0
+
     for seg in result["segments"]:
-        words = []
-        for w in seg.get("words", []):
-            if "start" not in w or "end" not in w:
+        raw_words = seg.get("words", [])
+        if not raw_words:
+            continue
+
+        seg_start = seg.get("start", 0)
+        seg_end = seg.get("end", 0)
+
+        entries = []
+        for w in raw_words:
+            word_text = w.get("word", "").strip()
+            if not word_text:
                 continue
-            start = w["start"]
-            end = w["end"]
-            duration = end - start
-            if duration > MAX_WORD_DURATION:
-                new_start = end - 0.5
-                print(f"[nightingale:LOG] Fixing misaligned word '{w['word'].strip()}' ({duration:.1f}s): {start:.1f}->{new_start:.1f}", flush=True)
-                start = new_start
-            word_entry = {
-                "word": w["word"].strip(),
-                "start": round(start, 3),
-                "end": round(end, 3),
+            has_ts = "start" in w and "end" in w
+            entry = {
+                "word": word_text,
+                "start": w.get("start"),
+                "end": w.get("end"),
+                "score": w.get("score"),
+                "aligned": has_ts,
             }
-            if "score" in w:
-                word_entry["score"] = round(w["score"], 3)
-            words.append(word_entry)
-        if words:
-            scores = [w["score"] for w in words if "score" in w]
+            if has_ts:
+                duration = entry["end"] - entry["start"]
+                if duration > MAX_WORD_DURATION:
+                    print(f"[nightingale:LOG] Clamping long word '{word_text}' ({duration:.1f}s)", flush=True)
+                    entry["start"] = entry["end"] - 0.5
+            entries.append(entry)
+
+        if not entries:
+            continue
+
+        anchors = [(i, e) for i, e in enumerate(entries) if e["aligned"]]
+
+        if not anchors:
+            n = len(entries)
+            dur = (seg_end - seg_start) / n if seg_end > seg_start else 0.1
+            for j, e in enumerate(entries):
+                e["start"] = seg_start + j * dur
+                e["end"] = seg_start + (j + 1) * dur
+        else:
+            first_idx = anchors[0][0]
+            if first_idx > 0:
+                _interpolate_range(entries, 0, first_idx, seg_start, entries[first_idx]["start"])
+
+            for ai in range(len(anchors) - 1):
+                a_idx = anchors[ai][0]
+                b_idx = anchors[ai + 1][0]
+                if b_idx - a_idx > 1:
+                    _interpolate_range(entries, a_idx + 1, b_idx, entries[a_idx]["end"], entries[b_idx]["start"])
+
+            last_idx = anchors[-1][0]
+            if last_idx < len(entries) - 1:
+                _interpolate_range(entries, last_idx + 1, len(entries), entries[last_idx]["end"], seg_end)
+
+        seg_interpolated = sum(1 for e in entries if not e["aligned"])
+        total_aligned += len(entries) - seg_interpolated
+        total_interpolated += seg_interpolated
+
+        if seg_interpolated > 0:
+            print(f"[nightingale:LOG] Interpolated {seg_interpolated}/{len(entries)} words in segment [{seg_start:.1f}-{seg_end:.1f}]", flush=True)
+
+        for e in entries:
+            if e["start"] is None or e["end"] is None:
+                continue
+            word_entry = {
+                "word": e["word"],
+                "start": round(e["start"], 3),
+                "end": round(e["end"], 3),
+            }
+            if e.get("score") is not None:
+                word_entry["score"] = round(e["score"], 3)
+            if not e["aligned"]:
+                word_entry["estimated"] = True
+            all_words.append(word_entry)
+
+    print(f"[nightingale:LOG] Word stats: {total_aligned} aligned, {total_interpolated} interpolated, {len(all_words)} total", flush=True)
+
+    segments = []
+    current_words = []
+    for w in all_words:
+        if current_words and w["start"] - current_words[-1]["end"] > MAX_WORD_GAP:
+            print(f"[nightingale:LOG] Splitting segment at {w['start'] - current_words[-1]['end']:.1f}s gap", flush=True)
+            scores = [wd["score"] for wd in current_words if "score" in wd]
             avg_score = sum(scores) / len(scores) if scores else 0.0
             segments.append({
-                "text": " ".join(w["word"] for w in words),
-                "start": words[0]["start"],
-                "end": words[-1]["end"],
-                "words": words,
+                "text": " ".join(wd["word"] for wd in current_words),
+                "start": current_words[0]["start"],
+                "end": current_words[-1]["end"],
+                "words": current_words,
                 "_avg_score": avg_score,
             })
-            print(f"[nightingale:LOG] Segment [{words[0]['start']:.1f}-{words[-1]['end']:.1f}] avg_score={avg_score:.2f}: {segments[-1]['text'][:80]}", flush=True)
+            current_words = []
+        current_words.append(w)
+
+    if current_words:
+        scores = [wd["score"] for wd in current_words if "score" in wd]
+        avg_score = sum(scores) / len(scores) if scores else 0.0
+        segments.append({
+            "text": " ".join(wd["word"] for wd in current_words),
+            "start": current_words[0]["start"],
+            "end": current_words[-1]["end"],
+            "words": current_words,
+            "_avg_score": avg_score,
+        })
+
+    for seg in segments:
+        print(f"[nightingale:LOG] Segment [{seg['start']:.1f}-{seg['end']:.1f}] avg_score={seg['_avg_score']:.2f}: {seg['text'][:80]}", flush=True)
 
     while segments and segments[0]["_avg_score"] < EDGE_CONFIDENCE_THRESHOLD:
         dropped = segments.pop(0)
@@ -238,6 +352,9 @@ def main():
     parser.add_argument("audio_path", help="Path to the audio file")
     parser.add_argument("output_dir", help="Directory to write output files")
     parser.add_argument("--hash", dest="file_hash", help="Pre-computed file hash (skip computing)")
+    parser.add_argument("--model", default="large-v3-turbo", help="Whisper model name (e.g. large-v3, large-v3-turbo)")
+    parser.add_argument("--beam-size", type=int, default=5, help="Beam size for decoding")
+    parser.add_argument("--batch-size", type=int, default=8, help="Batch size for transcription")
     args = parser.parse_args()
 
     audio_path = os.path.abspath(args.audio_path)
@@ -275,7 +392,12 @@ def main():
             shutil.move(instrumental_path, final_instrumental)
         vocals_path = final_vocals
 
-    transcript = transcribe_vocals(vocals_path, audio_path, device)
+    transcript = transcribe_vocals(
+        vocals_path, audio_path, device,
+        model_name=args.model,
+        beam_size=args.beam_size,
+        batch_size=args.batch_size,
+    )
 
     progress(95, "Writing transcript...")
     with open(transcript_path, "w", encoding="utf-8") as f:

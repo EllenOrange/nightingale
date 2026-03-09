@@ -102,7 +102,14 @@ fn parse_progress_line(line: &str) -> Option<(u32, String)> {
     Some((pct, msg))
 }
 
-fn spawn_analyzer(song_path: PathBuf, cache_path: PathBuf, file_hash: String) -> Arc<Mutex<ProgressInfo>> {
+fn spawn_analyzer(
+    song_path: PathBuf,
+    cache_path: PathBuf,
+    file_hash: String,
+    whisper_model: String,
+    beam_size: u32,
+    batch_size: u32,
+) -> Arc<Mutex<ProgressInfo>> {
     let progress = Arc::new(Mutex::new(ProgressInfo {
         percent: 0,
         message: "Starting analyzer...".into(),
@@ -120,6 +127,12 @@ fn spawn_analyzer(song_path: PathBuf, cache_path: PathBuf, file_hash: String) ->
             .arg(&cache_path)
             .arg("--hash")
             .arg(&file_hash)
+            .arg("--model")
+            .arg(&whisper_model)
+            .arg("--beam-size")
+            .arg(beam_size.to_string())
+            .arg("--batch-size")
+            .arg(batch_size.to_string())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
@@ -197,6 +210,7 @@ fn process_queue(
     mut queue: ResMut<AnalysisQueue>,
     library: Option<ResMut<SongLibrary>>,
     cache: Res<CacheDir>,
+    config: Res<crate::config::AppConfig>,
 ) {
     let Some(mut library) = library else { return };
     if queue.active.is_some() || queue.queue.is_empty() {
@@ -216,6 +230,9 @@ fn process_queue(
         song.path.clone(),
         cache.path.clone(),
         song.file_hash.clone(),
+        config.whisper_model().to_string(),
+        config.beam_size(),
+        config.batch_size(),
     );
 
     library.songs[song_index].analysis_status = AnalysisStatus::Analyzing;

@@ -132,6 +132,13 @@ fn enter_playing(
 
     transcript.split_long_segments(8);
 
+    let total_singable: f64 = transcript
+        .segments
+        .iter()
+        .flat_map(|s| s.words.iter())
+        .map(|w| (w.end - w.start).max(0.0))
+        .sum();
+
     let saved_guide = config.guide_volume.unwrap_or(0.0);
     setup_audio(
         &mut commands,
@@ -154,7 +161,6 @@ fn enter_playing(
     );
 
     let vocals_path = cache.vocals_path(hash);
-    let song_duration = song.duration_secs;
     if let Some(vocals_buf) = scoring::load_vocals_buffer(&vocals_path) {
         commands.insert_resource(vocals_buf);
     }
@@ -169,7 +175,7 @@ fn enter_playing(
     let mic_device_name = mic_capture.device_name.clone();
     commands.insert_resource(mic_capture);
     commands.insert_resource(scoring::PitchState::default());
-    commands.insert_resource(scoring::ScoringState::new(song_duration));
+    commands.insert_resource(scoring::ScoringState::new(total_singable));
 
     let title = song.display_title().to_string();
     let artist = song.display_artist().to_string();

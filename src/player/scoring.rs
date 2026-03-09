@@ -4,6 +4,7 @@ use std::path::Path;
 use bevy::prelude::*;
 
 use super::audio;
+use super::lyrics::LyricsState;
 use super::microphone::{MicrophoneCapture, detect_pitch_from_samples};
 use audio::KaraokeAudio;
 use bevy_kira_audio::AudioInstance;
@@ -150,31 +151,27 @@ fn ema(prev: Option<f32>, current: Option<f32>) -> Option<f32> {
 
 #[derive(Resource)]
 pub struct ScoringState {
+    total_singable: f64,
     earned: f64,
-    scored_time: f64,
-    elapsed: f64,
-    song_duration: f64,
     last_time: f64,
 }
 
 impl ScoringState {
-    pub fn new(song_duration: f64) -> Self {
+    pub fn new(total_singable: f64) -> Self {
         Self {
+            total_singable,
             earned: 0.0,
-            scored_time: 0.0,
-            elapsed: 0.0,
-            song_duration: song_duration.max(1.0),
             last_time: 0.0,
         }
     }
 
     pub fn score(&self) -> u32 {
-        if self.scored_time < 0.5 {
+        if self.total_singable < 0.5 {
             return 0;
         }
-        let accuracy = self.earned / self.scored_time;
-        let progress = (self.elapsed / self.song_duration).min(1.0);
-        (accuracy * progress * 1000.0).round().clamp(0.0, 1000.0) as u32
+        ((self.earned / self.total_singable) * 1000.0)
+            .round()
+            .clamp(0.0, 1000.0) as u32
     }
 }
 
@@ -218,6 +215,7 @@ pub fn update_pitch_scoring(
     audio_instances: Res<Assets<AudioInstance>>,
     mic: Option<Res<MicrophoneCapture>>,
     vocals: Option<Res<VocalsBuffer>>,
+    lyrics: Option<Res<LyricsState>>,
     mut pitch_state: Option<ResMut<PitchState>>,
     mut scoring: Option<ResMut<ScoringState>>,
 ) {
@@ -254,9 +252,18 @@ pub fn update_pitch_scoring(
     let dt = (current_time - scoring.last_time).clamp(0.0, 0.1);
     scoring.last_time = current_time;
 
-    scoring.elapsed += dt;
-    if ref_pitch.is_some() {
-        scoring.scored_time += dt;
+    let in_word = lyrics.as_ref().is_some_and(|l| {
+        l.transcript.segments.iter().any(|seg| {
+            if current_time < seg.start || current_time > seg.end {
+                return false;
+            }
+            seg.words
+                .iter()
+                .any(|w| current_time >= w.start && current_time <= w.end)
+        })
+    });
+
+    if in_word && user_pitch.is_some() {
         scoring.earned += similarity as f64 * dt;
     }
 }

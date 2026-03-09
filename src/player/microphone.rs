@@ -50,6 +50,13 @@ pub struct MicrophoneCapture {
     sample_counter: Arc<AtomicU64>,
     last_checked_count: u64,
     stale_ticks: u32,
+    shutdown: Arc<AtomicBool>,
+}
+
+impl Drop for MicrophoneCapture {
+    fn drop(&mut self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+    }
 }
 
 const STALE_THRESHOLD_TICKS: u32 = 60;
@@ -163,7 +170,9 @@ fn select_device(host: &cpal::Host, preferred: Option<&str>) -> Option<cpal::Dev
 }
 
 pub fn start_microphone(preferred: Option<&str>) -> MicrophoneCapture {
-    let (shared, stream, name, error_flag, counter) = try_build_stream(preferred);
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let (shared, stream, name, error_flag, counter) =
+        try_build_stream(preferred, Arc::clone(&shutdown));
 
     let shared = shared.unwrap_or_else(|| {
         warn!("No microphone found or permission denied; scoring disabled");
@@ -179,11 +188,13 @@ pub fn start_microphone(preferred: Option<&str>) -> MicrophoneCapture {
         sample_counter: counter,
         last_checked_count: 0,
         stale_ticks: 0,
+        shutdown,
     }
 }
 
 fn try_build_stream(
     preferred: Option<&str>,
+    shutdown: Arc<AtomicBool>,
 ) -> (
     Option<Arc<Mutex<MicPitchData>>>,
     Option<cpal::Stream>,
@@ -307,17 +318,25 @@ fn try_build_stream(
     }
 
     let detect_counter = Arc::clone(&sample_counter);
+    let detect_shutdown = Arc::clone(&shutdown);
     std::thread::spawn(move || {
-        pitch_detection_loop(shared_detect, detect_counter);
+        pitch_detection_loop(shared_detect, detect_counter, detect_shutdown);
     });
 
     (Some(shared), Some(stream), name, error_flag, sample_counter)
 }
 
-fn pitch_detection_loop(shared: Arc<Mutex<MicPitchData>>, sample_counter: Arc<AtomicU64>) {
+fn pitch_detection_loop(
+    shared: Arc<Mutex<MicPitchData>>,
+    sample_counter: Arc<AtomicU64>,
+    shutdown: Arc<AtomicBool>,
+) {
     let sleep_dur = std::time::Duration::from_millis(25);
 
     std::thread::sleep(std::time::Duration::from_millis(500));
+    if shutdown.load(Ordering::Relaxed) {
+        return;
+    }
     let count = sample_counter.load(Ordering::Relaxed);
     if count == 0 {
         error!("Mic: no samples received after 500ms — mic may be blocked or muted");
@@ -331,6 +350,11 @@ fn pitch_detection_loop(shared: Arc<Mutex<MicPitchData>>, sample_counter: Arc<At
 
     loop {
         std::thread::sleep(sleep_dur);
+
+        if shutdown.load(Ordering::Relaxed) {
+            info!("Mic pitch detection thread shutting down");
+            return;
+        }
 
         let (window, sr) = {
             let Ok(lock) = shared.lock() else { return };

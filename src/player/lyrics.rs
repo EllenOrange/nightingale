@@ -52,7 +52,12 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
             },
         ))
         .with_children(|root| {
-            root.spawn(Node::default())
+            root.spawn(Node {
+                width: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            })
             .with_children(|wrapper| {
                 wrapper.spawn((
                     CountdownNode,
@@ -218,13 +223,16 @@ pub fn update_lyrics(
     }
 
     let sung = theme.sung_color;
-    let unsung = theme.unsung_color;
-
     let (sung_r, sung_g, sung_b) = extract_rgb(sung);
 
     for (lw, mut color) in &mut word_query {
         if lw.segment_idx < segments.len() && lw.word_idx < segments[lw.segment_idx].words.len() {
             let word = &segments[lw.segment_idx].words[lw.word_idx];
+            let unsung = if word.estimated {
+                theme.unsung_estimated
+            } else {
+                theme.unsung_color
+            };
             if current_time >= word.end {
                 *color = TextColor(sung);
             } else if current_time >= word.start {
@@ -295,6 +303,11 @@ fn rebuild_lines(
         if idx < segments.len() {
             commands.entity(entity).with_children(|parent| {
                 for (wi, word) in segments[idx].words.iter().enumerate() {
+                    let unsung = if word.estimated {
+                        theme.unsung_estimated
+                    } else {
+                        theme.unsung_color
+                    };
                     parent.spawn((
                         LyricWord {
                             segment_idx: idx,
@@ -305,7 +318,7 @@ fn rebuild_lines(
                             font_size: 42.0,
                             ..default()
                         },
-                        TextColor(theme.unsung_color),
+                        TextColor(unsung),
                     ));
                 }
             });
@@ -318,13 +331,19 @@ fn rebuild_lines(
         if next_idx < segments.len() {
             commands.entity(entity).with_children(|parent| {
                 for word in &segments[next_idx].words {
+                    let col = if word.estimated {
+                        let est = theme.unsung_estimated.to_srgba();
+                        Color::srgba(est.red, est.green, est.blue, 0.35)
+                    } else {
+                        theme.next_line_color
+                    };
                     parent.spawn((
                         Text::new(&word.word),
                         TextFont {
                             font_size: 28.0,
                             ..default()
                         },
-                        TextColor(theme.next_line_color),
+                        TextColor(col),
                     ));
                 }
             });

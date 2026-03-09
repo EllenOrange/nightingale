@@ -107,7 +107,7 @@ fn poll_scan(
     }
 }
 
-fn scan_folder(folder: &Path, cache: &CacheDir) -> Vec<Song> {
+pub fn scan_folder(folder: &Path, cache: &CacheDir) -> Vec<Song> {
     let mut songs = Vec::new();
 
     for entry in WalkDir::new(folder)

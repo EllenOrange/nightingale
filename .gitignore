@@ -3,3 +3,4 @@ analyzer/.venv
 __pycache__
 *.pyc
 samples/
+.env

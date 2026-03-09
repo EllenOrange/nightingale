@@ -10,8 +10,9 @@ use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
 
+use crate::analyzer::cache::CacheDir;
 use crate::analyzer::{AnalysisQueue, PlayTarget};
-use crate::scanner::metadata::{AnalysisStatus, SongLibrary};
+use crate::scanner::metadata::{AnalysisStatus, Song, SongLibrary};
 use crate::states::AppState;
 use crate::ui::{self, UiTheme};
 use song_card::*;
@@ -29,10 +30,13 @@ impl Plugin for MenuPlugin {
                 Update,
                 (
                     handle_song_click,
+                    handle_reanalyze_click,
                     handle_search_input,
                     update_status_badges,
                     handle_sidebar_click,
+                    handle_settings_click,
                     poll_folder_result,
+                    poll_rescan,
                 )
                     .run_if(in_state(AppState::Menu)),
             )
@@ -53,6 +57,11 @@ struct AlbumArtCache {
 #[derive(Resource)]
 struct PendingFolderPick {
     result: Arc<Mutex<Option<Option<PathBuf>>>>,
+}
+
+#[derive(Resource)]
+struct PendingRescan {
+    result: Arc<Mutex<Option<Vec<Song>>>>,
 }
 
 fn load_album_art(
@@ -92,6 +101,14 @@ fn load_album_art(
     commands.insert_resource(AlbumArtCache { handles });
 }
 
+#[derive(Resource, Clone)]
+pub struct IconFont(pub Handle<Font>);
+
+pub const FA_REFRESH: &str = "\u{f021}";
+pub const FA_SUN: &str = "\u{f185}";
+pub const FA_MOON: &str = "\u{f186}";
+pub const FA_SPINNER: &str = "\u{f1ce}";
+
 #[derive(Component)]
 struct MenuRoot;
 
@@ -102,16 +119,13 @@ fn build_menu(
     art_cache: Res<AlbumArtCache>,
     theme: Res<UiTheme>,
     config: Res<crate::config::AppConfig>,
-    windows: Query<&Window>,
     asset_server: Res<AssetServer>,
 ) {
     let has_folder = config.last_folder.as_ref().is_some_and(|f| f.is_dir());
-    let is_fs = windows
-        .single()
-        .map(|w| matches!(w.mode, WindowMode::BorderlessFullscreen(_)))
-        .unwrap_or(config.is_fullscreen());
 
     let logo_handle: Handle<Image> = asset_server.load("images/logo.png");
+    let icon_font = IconFont(asset_server.load("fonts/fa-solid-900.ttf"));
+    commands.insert_resource(icon_font.clone());
 
     commands
         .spawn((
@@ -125,8 +139,8 @@ fn build_menu(
             BackgroundColor(theme.bg),
         ))
         .with_children(|root| {
-            build_sidebar(root, &theme, has_folder, is_fs, logo_handle);
-            build_main_area(root, &library, &menu_state, &art_cache, &theme);
+            build_sidebar(root, &theme, has_folder, logo_handle, &icon_font);
+            build_main_area(root, &library, &menu_state, &art_cache, &theme, &icon_font);
         });
 }
 
@@ -134,8 +148,8 @@ fn build_sidebar(
     root: &mut ChildSpawnerCommands,
     theme: &UiTheme,
     has_folder: bool,
-    is_fullscreen: bool,
     logo: Handle<Image>,
+    icon_font: &IconFont,
 ) {
     root.spawn((
         Node {
@@ -179,15 +193,50 @@ fn build_sidebar(
             ..default()
         });
 
-        let fs_label = if is_fullscreen {
-            "Windowed"
-        } else {
-            "Fullscreen"
-        };
-        spawn_sidebar_button(sidebar, fs_label, SidebarAction::ToggleFullscreen, theme, true);
+        sidebar
+            .spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(6.0),
+                ..default()
+            })
+            .with_children(|row| {
+                spawn_sidebar_button(row, "Settings", SidebarAction::Settings, theme, true);
 
-        let theme_label = format!("Theme: {}", theme.mode_label());
-        spawn_sidebar_button(sidebar, &theme_label, SidebarAction::ToggleTheme, theme, true);
+                let theme_glyph = if theme.mode == crate::ui::ThemeMode::Dark {
+                    FA_SUN
+                } else {
+                    FA_MOON
+                };
+                row.spawn((
+                    SidebarButton {
+                        action: SidebarAction::ToggleTheme,
+                    },
+                    ThemeToggleIcon,
+                    Button,
+                    Node {
+                        width: Val::Px(40.0),
+                        height: Val::Px(40.0),
+                        flex_shrink: 0.0,
+                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(theme.sidebar_btn),
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        Text::new(theme_glyph),
+                        TextFont {
+                            font: icon_font.0.clone(),
+                            font_size: 16.0,
+                            ..default()
+                        },
+                        TextColor(theme.text_primary),
+                    ));
+                });
+            });
 
         spawn_sidebar_button(sidebar, "Exit", SidebarAction::Exit, theme, true);
     });
@@ -236,6 +285,7 @@ fn build_main_area(
     menu_state: &MenuState,
     art_cache: &AlbumArtCache,
     theme: &UiTheme,
+    icon_font: &IconFont,
 ) {
     root.spawn(Node {
         flex_grow: 1.0,
@@ -328,7 +378,7 @@ fn build_main_area(
                     }
                 }
                 let art = art_cache.handles.get(i).and_then(|h| h.clone());
-                build_song_card(list, song, i, art, theme);
+                build_song_card(list, song, i, art, theme, icon_font);
             }
         });
     });
@@ -386,7 +436,11 @@ fn handle_song_click(
     mut next_state: ResMut<NextState<AppState>>,
     mut queue: ResMut<AnalysisQueue>,
     theme: Res<UiTheme>,
+    overlay_query: Query<(), With<SettingsOverlay>>,
 ) {
+    if !overlay_query.is_empty() {
+        return;
+    }
     for (interaction, song_card, mut bg, mut border) in &mut interaction_query {
         match interaction {
             Interaction::Pressed => {
@@ -415,30 +469,81 @@ fn handle_song_click(
     }
 }
 
+fn handle_reanalyze_click(
+    mut interaction_query: Query<
+        (&Interaction, &ReanalyzeButton, &mut BackgroundColor),
+        Changed<Interaction>,
+    >,
+    mut library: ResMut<SongLibrary>,
+    mut queue: ResMut<AnalysisQueue>,
+    cache: Res<CacheDir>,
+    theme: Res<UiTheme>,
+    overlay_query: Query<(), With<SettingsOverlay>>,
+) {
+    if !overlay_query.is_empty() {
+        return;
+    }
+    for (interaction, btn, mut bg) in &mut interaction_query {
+        match interaction {
+            Interaction::Pressed => {
+                let idx = btn.song_index;
+                if idx >= library.songs.len() {
+                    continue;
+                }
+                let hash = &library.songs[idx].file_hash;
+                let transcript = cache.transcript_path(hash);
+                if transcript.is_file() {
+                    let _ = std::fs::remove_file(&transcript);
+                }
+                library.songs[idx].analysis_status = AnalysisStatus::Queued;
+                queue.enqueue(idx);
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(theme.sidebar_btn_hover);
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(theme.sidebar_btn);
+            }
+        }
+    }
+}
+
 fn handle_sidebar_click(
     mut commands: Commands,
     mut interaction_query: Query<
         (&Interaction, &SidebarButton, &mut BackgroundColor),
         Changed<Interaction>,
     >,
-    mut next_state: ResMut<NextState<AppState>>,
-    mut queue: ResMut<AnalysisQueue>,
     mut exit: MessageWriter<AppExit>,
     mut config: ResMut<crate::config::AppConfig>,
     pending: Option<Res<PendingFolderPick>>,
-    mut windows: Query<&mut Window>,
+    pending_rescan: Option<Res<PendingRescan>>,
     mut theme: ResMut<UiTheme>,
+    cache: Res<CacheDir>,
+    overlay_query: Query<(), With<SettingsOverlay>>,
+    mut next_state: ResMut<NextState<AppState>>,
 ) {
+    if !overlay_query.is_empty() {
+        return;
+    }
     for (interaction, sidebar_btn, mut bg) in &mut interaction_query {
         match interaction {
             Interaction::Pressed => match sidebar_btn.action {
                 SidebarAction::RescanFolder => {
+                    if pending_rescan.is_some() {
+                        return;
+                    }
                     if let Some(folder) = config.last_folder.clone() {
-                        commands.insert_resource(SongLibrary { songs: vec![] });
-                        queue.queue.clear();
-                        queue.active = None;
-                        commands.insert_resource(crate::scanner::ScanRequest { folder });
-                        next_state.set(AppState::Scanning);
+                        let cache_path = cache.path.clone();
+                        let result: Arc<Mutex<Option<Vec<Song>>>> =
+                            Arc::new(Mutex::new(None));
+                        let result_clone = Arc::clone(&result);
+                        std::thread::spawn(move || {
+                            let cache = CacheDir { path: cache_path };
+                            let songs = crate::scanner::scan_folder(&folder, &cache);
+                            *result_clone.lock().unwrap() = Some(songs);
+                        });
+                        commands.insert_resource(PendingRescan { result });
                     }
                 }
                 SidebarAction::ChangeFolder => {
@@ -455,26 +560,15 @@ fn handle_sidebar_click(
                     });
                     commands.insert_resource(PendingFolderPick { result });
                 }
+                SidebarAction::Settings => {
+                    spawn_settings_popup(&mut commands, &theme, &config);
+                }
                 SidebarAction::ToggleTheme => {
                     theme.toggle();
                     config.dark_mode = Some(theme.mode == crate::ui::ThemeMode::Dark);
                     config.save();
                     rebuild_menu(&mut commands, &mut next_state);
-                }
-                SidebarAction::ToggleFullscreen => {
-                    if let Ok(mut window) = windows.single_mut() {
-                        let is_fs = matches!(window.mode, WindowMode::BorderlessFullscreen(_));
-                        window.mode = if is_fs {
-                            WindowMode::Windowed
-                        } else {
-                            WindowMode::BorderlessFullscreen(
-                                bevy::window::MonitorSelection::Current,
-                            )
-                        };
-                        config.fullscreen = Some(!is_fs);
-                        config.save();
-                        rebuild_menu(&mut commands, &mut next_state);
-                    }
+                    return;
                 }
                 SidebarAction::Exit => {
                     exit.write(AppExit::Success);
@@ -522,6 +616,79 @@ fn poll_folder_result(
     }
 }
 
+fn poll_rescan(
+    mut commands: Commands,
+    pending: Option<Res<PendingRescan>>,
+    mut next_state: ResMut<NextState<AppState>>,
+    mut library: ResMut<SongLibrary>,
+    mut queue: ResMut<AnalysisQueue>,
+) {
+    let Some(pending) = pending else { return };
+
+    let lock = pending.result.lock().unwrap();
+    let Some(ref new_songs) = *lock else { return };
+
+    let mut status_by_hash: std::collections::HashMap<String, AnalysisStatus> =
+        std::collections::HashMap::new();
+    for song in &library.songs {
+        match &song.analysis_status {
+            AnalysisStatus::Queued | AnalysisStatus::Analyzing => {
+                status_by_hash.insert(song.file_hash.clone(), song.analysis_status.clone());
+            }
+            _ => {}
+        }
+    }
+
+    let old_active_hash = queue
+        .active
+        .as_ref()
+        .and_then(|a| library.songs.get(a.song_index))
+        .map(|s| s.file_hash.clone());
+
+    let old_queued_hashes: Vec<String> = queue
+        .queue
+        .iter()
+        .filter_map(|&idx| library.songs.get(idx))
+        .map(|s| s.file_hash.clone())
+        .collect();
+
+    let mut merged = new_songs.clone();
+    for song in &mut merged {
+        if let Some(status) = status_by_hash.get(&song.file_hash) {
+            song.analysis_status = status.clone();
+        }
+    }
+
+    let hash_to_new_idx: std::collections::HashMap<&str, usize> = merged
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.file_hash.as_str(), i))
+        .collect();
+
+    if let Some(ref mut active) = queue.active {
+        if let Some(ref old_hash) = old_active_hash {
+            if let Some(&new_idx) = hash_to_new_idx.get(old_hash.as_str()) {
+                active.song_index = new_idx;
+            }
+        }
+    }
+
+    let mut new_queue = std::collections::VecDeque::new();
+    for hash in &old_queued_hashes {
+        if let Some(&new_idx) = hash_to_new_idx.get(hash.as_str()) {
+            new_queue.push_back(new_idx);
+        }
+    }
+    queue.queue = new_queue;
+
+    library.songs = merged;
+
+    drop(lock);
+    commands.remove_resource::<PendingRescan>();
+
+    rebuild_menu(&mut commands, &mut next_state);
+}
+
 fn handle_search_input(
     mut key_events: MessageReader<KeyboardInput>,
     mut menu_state: ResMut<MenuState>,
@@ -531,7 +698,12 @@ fn handle_search_input(
     mut commands: Commands,
     art_cache: Res<AlbumArtCache>,
     theme: Res<UiTheme>,
+    overlay_query: Query<(), With<SettingsOverlay>>,
+    icon_font: Res<IconFont>,
 ) {
+    if !overlay_query.is_empty() {
+        return;
+    }
     let mut changed = false;
 
     for ev in key_events.read() {
@@ -585,6 +757,7 @@ fn handle_search_input(
             &menu_state.search_query,
             &art_cache.handles,
             &theme,
+            &icon_font,
         );
     }
 }
@@ -594,14 +767,14 @@ fn update_status_badges(
     queue: Res<AnalysisQueue>,
     time: Res<Time>,
     theme: Res<UiTheme>,
-    mut badge_query: Query<(&StatusBadge, &mut BackgroundColor)>,
-    mut badge_text_query: Query<
-        (&BadgeText, &mut Text),
-        (Without<StatsText>, Without<SpinnerDotText>),
+    mut badge_query: Query<(&StatusBadge, &mut BackgroundColor), Without<SpinnerOverlay>>,
+    mut badge_text_query: Query<(&BadgeText, &mut Text), Without<StatsText>>,
+    mut stats_query: Query<&mut Text, With<StatsText>>,
+    mut spinner_query: Query<
+        (&SpinnerOverlay, &mut Visibility, &mut BackgroundColor),
+        (Without<ReanalyzeButton>, Without<StatusBadge>),
     >,
-    mut stats_query: Query<&mut Text, (With<StatsText>, Without<SpinnerDotText>)>,
-    mut spinner_query: Query<(&SpinnerOverlay, &mut Visibility)>,
-    mut dot_text_query: Query<&mut Text, With<SpinnerDotText>>,
+    mut reanalyze_query: Query<(&ReanalyzeButton, &mut Visibility), Without<SpinnerOverlay>>,
 ) {
     for (badge, mut bg) in &mut badge_query {
         if badge.song_index >= library.songs.len() {
@@ -650,14 +823,9 @@ fn update_status_badges(
         );
     }
 
-    let dot_phase = (time.elapsed_secs() * 2.5) as usize % 3;
-    let dots = match dot_phase {
-        0 => ".",
-        1 => "..",
-        _ => "...",
-    };
+    let spinner_alpha = (time.elapsed_secs() * 3.0).sin() * 0.25 + 0.75;
 
-    for (spinner, mut vis) in &mut spinner_query {
+    for (spinner, mut vis, mut bg) in &mut spinner_query {
         if spinner.song_index >= library.songs.len() {
             continue;
         }
@@ -668,16 +836,357 @@ fn update_status_badges(
         } else {
             Visibility::Hidden
         };
+        if analyzing {
+            *bg = BackgroundColor(Color::srgba(0.0, 0.0, 0.0, spinner_alpha));
+        }
     }
 
-    for mut dot_text in &mut dot_text_query {
-        **dot_text = dots.into();
+    for (btn, mut vis) in &mut reanalyze_query {
+        if btn.song_index >= library.songs.len() {
+            continue;
+        }
+        *vis = if matches!(
+            library.songs[btn.song_index].analysis_status,
+            AnalysisStatus::Ready | AnalysisStatus::Failed(_)
+        ) {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
     }
 }
 
-fn cleanup_menu(mut commands: Commands, query: Query<Entity, With<MenuRoot>>) {
+fn spawn_settings_popup(
+    commands: &mut Commands,
+    theme: &UiTheme,
+    config: &crate::config::AppConfig,
+) {
+    commands
+        .spawn((
+            SettingsOverlay,
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                position_type: PositionType::Absolute,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+            GlobalZIndex(10),
+        ))
+        .with_children(|overlay| {
+            overlay
+                .spawn((
+                    Node {
+                        width: Val::Px(460.0),
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect::all(Val::Px(32.0)),
+                        row_gap: Val::Px(8.0),
+                        border_radius: BorderRadius::all(Val::Px(14.0)),
+                        ..default()
+                    },
+                    BackgroundColor(theme.surface),
+                ))
+                .with_children(|card| {
+                    card.spawn((
+                        Text::new("Settings"),
+                        TextFont { font_size: 22.0, ..default() },
+                        TextColor(theme.text_primary),
+                        Node {
+                            margin: UiRect::bottom(Val::Px(12.0)),
+                            ..default()
+                        },
+                    ));
+
+                    spawn_settings_section(card, theme, "General");
+                    let fs_label = if config.is_fullscreen() { "Fullscreen" } else { "Windowed" };
+                    spawn_settings_row(card, theme, "Window", fs_label, SettingsFullscreenText,
+                        &[("Switch", SettingsAction::ToggleFullscreen)],
+                        "Toggle between fullscreen and windowed mode");
+
+                    spawn_settings_section(card, theme, "Analyzer");
+                    spawn_settings_row(card, theme, "Model", config.whisper_model(), SettingsModelText,
+                        &[("Switch", SettingsAction::ToggleModel)],
+                        "v3 is more accurate but slower, turbo is faster");
+                    spawn_settings_row(card, theme, "Beam size", &config.beam_size().to_string(), SettingsBeamText,
+                        &[("-", SettingsAction::BeamDown), ("+", SettingsAction::BeamUp)],
+                        "Higher values improve accuracy at the cost of speed");
+                    spawn_settings_row(card, theme, "Batch size", &config.batch_size().to_string(), SettingsBatchText,
+                        &[("-", SettingsAction::BatchDown), ("+", SettingsAction::BatchUp)],
+                        "Higher values use more memory but process faster");
+
+                    card.spawn((
+                        Text::new("Changes apply to future analyses. Use the re-analyze button on song cards to apply."),
+                        TextFont { font_size: 12.0, ..default() },
+                        TextColor(theme.text_dim),
+                        Node {
+                            margin: UiRect::new(Val::ZERO, Val::ZERO, Val::Px(8.0), Val::Px(4.0)),
+                            ..default()
+                        },
+                    ));
+
+                    spawn_settings_btn(card, "Restore Defaults", SettingsAction::RestoreDefaults, theme, true);
+                    spawn_settings_btn(card, "Close", SettingsAction::Close, theme, true);
+                });
+        });
+}
+
+fn spawn_settings_section(parent: &mut ChildSpawnerCommands, theme: &UiTheme, title: &str) {
+    parent.spawn((
+        Text::new(title.to_uppercase()),
+        TextFont { font_size: 11.0, ..default() },
+        TextColor(theme.text_dim),
+        Node {
+            margin: UiRect::new(Val::ZERO, Val::ZERO, Val::Px(12.0), Val::Px(2.0)),
+            ..default()
+        },
+    ));
+}
+
+fn spawn_settings_row(
+    parent: &mut ChildSpawnerCommands,
+    theme: &UiTheme,
+    label: &str,
+    value: &str,
+    marker: impl Component,
+    buttons: &[(&str, SettingsAction)],
+    description: &str,
+) {
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Column,
+            ..default()
+        })
+        .with_children(|wrapper| {
+            wrapper
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(8.0), Val::Px(8.0)),
+                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        ..default()
+                    },
+                    BackgroundColor(theme.card_bg),
+                ))
+                .with_children(|row| {
+                    row.spawn((
+                        Text::new(label),
+                        TextFont { font_size: 14.0, ..default() },
+                        TextColor(theme.text_secondary),
+                        Node {
+                            width: Val::Px(100.0),
+                            flex_shrink: 0.0,
+                            ..default()
+                        },
+                    ));
+
+                    row.spawn((
+                        marker,
+                        Text::new(value),
+                        TextFont { font_size: 14.0, ..default() },
+                        TextColor(theme.text_primary),
+                        Node {
+                            flex_grow: 1.0,
+                            ..default()
+                        },
+                    ));
+
+                    for &(btn_label, action) in buttons {
+                        spawn_settings_btn(row, btn_label, action, theme, false);
+                    }
+                });
+
+            wrapper.spawn((
+                Text::new(description),
+                TextFont { font_size: 11.0, ..default() },
+                TextColor(theme.text_dim),
+                Node {
+                    padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(2.0), Val::Px(0.0)),
+                    ..default()
+                },
+            ));
+        });
+}
+
+fn spawn_settings_btn(
+    parent: &mut ChildSpawnerCommands,
+    label: &str,
+    action: SettingsAction,
+    theme: &UiTheme,
+    wide: bool,
+) {
+    let width = if wide { Val::Percent(100.0) } else { Val::Auto };
+    let padding = if wide {
+        UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(10.0), Val::Px(10.0))
+    } else {
+        UiRect::new(Val::Px(10.0), Val::Px(10.0), Val::Px(5.0), Val::Px(5.0))
+    };
+    let font_size = if wide { 14.0 } else { 13.0 };
+    parent
+        .spawn((
+            SettingsButton { action },
+            Button,
+            Node {
+                width,
+                padding,
+                margin: UiRect::left(Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(theme.sidebar_btn),
+        ))
+        .with_children(|btn| {
+            ui::spawn_label(btn, label, font_size, theme.text_primary);
+        });
+}
+
+fn handle_settings_click(
+    mut commands: Commands,
+    mut interaction_query: Query<
+        (&Interaction, &SettingsButton, &mut BackgroundColor),
+        Changed<Interaction>,
+    >,
+    mut config: ResMut<crate::config::AppConfig>,
+    overlay_query: Query<Entity, With<SettingsOverlay>>,
+    mut model_text: Query<&mut Text, (With<SettingsModelText>, Without<SettingsBeamText>, Without<SettingsBatchText>, Without<SettingsFullscreenText>)>,
+    mut beam_text: Query<&mut Text, (With<SettingsBeamText>, Without<SettingsModelText>, Without<SettingsBatchText>, Without<SettingsFullscreenText>)>,
+    mut batch_text: Query<&mut Text, (With<SettingsBatchText>, Without<SettingsModelText>, Without<SettingsBeamText>, Without<SettingsFullscreenText>)>,
+    mut fs_text: Query<&mut Text, (With<SettingsFullscreenText>, Without<SettingsModelText>, Without<SettingsBeamText>, Without<SettingsBatchText>)>,
+    theme: Res<UiTheme>,
+    mut windows: Query<&mut Window>,
+) {
+    for (interaction, settings_btn, mut bg) in &mut interaction_query {
+        match interaction {
+            Interaction::Pressed => {
+                match settings_btn.action {
+                    SettingsAction::ToggleFullscreen => {
+                        if let Ok(mut window) = windows.single_mut() {
+                            let is_fs = matches!(window.mode, WindowMode::BorderlessFullscreen(_));
+                            window.mode = if is_fs {
+                                WindowMode::Windowed
+                            } else {
+                                WindowMode::BorderlessFullscreen(
+                                    bevy::window::MonitorSelection::Current,
+                                )
+                            };
+                            config.fullscreen = Some(!is_fs);
+                            config.save();
+                            let new_label = if is_fs { "Windowed" } else { "Fullscreen" };
+                            if let Ok(mut text) = fs_text.single_mut() {
+                                **text = new_label.to_string();
+                            }
+                        }
+                    }
+                    SettingsAction::ToggleModel => {
+                        let new_model = if config.whisper_model() == "large-v3-turbo" {
+                            "large-v3"
+                        } else {
+                            "large-v3-turbo"
+                        };
+                        config.whisper_model = Some(new_model.to_string());
+                        config.save();
+                        if let Ok(mut text) = model_text.single_mut() {
+                            **text = new_model.to_string();
+                        }
+                    }
+                    SettingsAction::BeamUp => {
+                        let new_val = (config.beam_size() + 1).min(15);
+                        config.beam_size = Some(new_val);
+                        config.save();
+                        if let Ok(mut text) = beam_text.single_mut() {
+                            **text = new_val.to_string();
+                        }
+                    }
+                    SettingsAction::BeamDown => {
+                        let new_val = config.beam_size().saturating_sub(1).max(1);
+                        config.beam_size = Some(new_val);
+                        config.save();
+                        if let Ok(mut text) = beam_text.single_mut() {
+                            **text = new_val.to_string();
+                        }
+                    }
+                    SettingsAction::BatchUp => {
+                        let new_val = (config.batch_size() + 1).min(16);
+                        config.batch_size = Some(new_val);
+                        config.save();
+                        if let Ok(mut text) = batch_text.single_mut() {
+                            **text = new_val.to_string();
+                        }
+                    }
+                    SettingsAction::BatchDown => {
+                        let new_val = config.batch_size().saturating_sub(1).max(1);
+                        config.batch_size = Some(new_val);
+                        config.save();
+                        if let Ok(mut text) = batch_text.single_mut() {
+                            **text = new_val.to_string();
+                        }
+                    }
+                    SettingsAction::RestoreDefaults => {
+                        config.whisper_model = None;
+                        config.beam_size = None;
+                        config.batch_size = None;
+                        config.fullscreen = None;
+                        config.save();
+
+                        if let Ok(mut text) = model_text.single_mut() {
+                            **text = config.whisper_model().to_string();
+                        }
+                        if let Ok(mut text) = beam_text.single_mut() {
+                            **text = config.beam_size().to_string();
+                        }
+                        if let Ok(mut text) = batch_text.single_mut() {
+                            **text = config.batch_size().to_string();
+                        }
+                        if let Ok(mut window) = windows.single_mut() {
+                            window.mode = if config.is_fullscreen() {
+                                WindowMode::BorderlessFullscreen(
+                                    bevy::window::MonitorSelection::Current,
+                                )
+                            } else {
+                                WindowMode::Windowed
+                            };
+                        }
+                        if let Ok(mut text) = fs_text.single_mut() {
+                            **text = if config.is_fullscreen() {
+                                "Fullscreen"
+                            } else {
+                                "Windowed"
+                            }
+                            .to_string();
+                        }
+                    }
+                    SettingsAction::Close => {
+                        for entity in &overlay_query {
+                            commands.entity(entity).despawn();
+                        }
+                    }
+                }
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(theme.sidebar_btn_hover);
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(theme.sidebar_btn);
+            }
+        }
+    }
+}
+
+fn cleanup_menu(
+    mut commands: Commands,
+    query: Query<Entity, With<MenuRoot>>,
+    settings_query: Query<Entity, With<SettingsOverlay>>,
+) {
     for entity in &query {
         commands.entity(entity).despawn();
     }
+    for entity in &settings_query {
+        commands.entity(entity).despawn();
+    }
     commands.remove_resource::<AlbumArtCache>();
+    commands.remove_resource::<IconFont>();
 }

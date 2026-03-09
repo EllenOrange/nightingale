@@ -12,6 +12,9 @@ pub struct AppConfig {
     pub dark_mode: Option<bool>,
     pub mic_active: Option<bool>,
     pub preferred_mic: Option<String>,
+    pub whisper_model: Option<String>,
+    pub beam_size: Option<u32>,
+    pub batch_size: Option<u32>,
 }
 
 impl AppConfig {
@@ -50,5 +53,17 @@ impl AppConfig {
 
     pub fn is_dark_mode(&self) -> bool {
         self.dark_mode.unwrap_or(true)
+    }
+
+    pub fn whisper_model(&self) -> &str {
+        self.whisper_model.as_deref().unwrap_or("large-v3-turbo")
+    }
+
+    pub fn beam_size(&self) -> u32 {
+        self.beam_size.unwrap_or(5)
+    }
+
+    pub fn batch_size(&self) -> u32 {
+        self.batch_size.unwrap_or(8)
     }
 }
