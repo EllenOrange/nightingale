@@ -3,6 +3,7 @@ pub mod background;
 pub mod lyrics;
 pub mod microphone;
 pub mod scoring;
+pub mod video_bg;
 
 use bevy::prelude::*;
 use bevy_kira_audio::AudioInstance;
@@ -18,6 +19,7 @@ use background::{
     ActiveTheme, AuroraMaterial, BackgroundQuad, NebulaMaterial, PlasmaMaterial,
     StarfieldMaterial, WavesMaterial, despawn_background, spawn_background,
 };
+use video_bg::{ActiveVideoFlavor, VideoBackground, VideoSprite};
 use lyrics::{
     CountdownNode, CurrentLine, LyricWord, LyricsRoot, LyricsState, NextLine, setup_lyrics,
 };
@@ -35,6 +37,7 @@ impl Plugin for PlayerPlugin {
                     handle_escape,
                     handle_guide_volume,
                     handle_theme_switch,
+                    handle_flavor_switch,
                 )
                     .run_if(in_state(AppState::Playing)),
             )
@@ -47,6 +50,11 @@ impl Plugin for PlayerPlugin {
                     scoring::update_pitch_scoring,
                     scoring::draw_pitch_waves,
                     scoring::update_score_text,
+                    (
+                        video_bg::update_video_frame,
+                        video_bg::fit_video_to_window,
+                    )
+                        .run_if(resource_exists::<VideoBackground>),
                 )
                     .run_if(in_state(AppState::Playing)),
             )
@@ -62,6 +70,9 @@ struct GuideVolumeText;
 
 #[derive(Component)]
 struct ThemeText;
+
+#[derive(Component)]
+struct PixabayCreditText;
 
 #[derive(Component)]
 struct SkipIntroButton;
@@ -110,12 +121,14 @@ fn enter_playing(
     config: Res<crate::config::AppConfig>,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
     mut plasma_materials: ResMut<Assets<PlasmaMaterial>>,
     mut aurora_materials: ResMut<Assets<AuroraMaterial>>,
     mut waves_materials: ResMut<Assets<WavesMaterial>>,
     mut nebula_materials: ResMut<Assets<NebulaMaterial>>,
     mut starfield_materials: ResMut<Assets<StarfieldMaterial>>,
     bg_theme: Res<ActiveTheme>,
+    video_flavor: Res<ActiveVideoFlavor>,
     ui_theme: Res<UiTheme>,
 ) {
     let song = &library.songs[target.song_index];
@@ -149,16 +162,21 @@ fn enter_playing(
         saved_guide,
     );
     setup_lyrics(&mut commands, &transcript, &ui_theme);
-    spawn_background(
-        &mut commands,
-        &mut meshes,
-        &mut plasma_materials,
-        &mut aurora_materials,
-        &mut waves_materials,
-        &mut nebula_materials,
-        &mut starfield_materials,
-        &bg_theme,
-    );
+
+    if bg_theme.is_video() {
+        video_bg::spawn_video_background(&mut commands, &mut images, video_flavor.flavor());
+    } else {
+        spawn_background(
+            &mut commands,
+            &mut meshes,
+            &mut plasma_materials,
+            &mut aurora_materials,
+            &mut waves_materials,
+            &mut nebula_materials,
+            &mut starfield_materials,
+            &bg_theme,
+        );
+    }
 
     let vocals_path = cache.vocals_path(hash);
     if let Some(vocals_buf) = scoring::load_vocals_buffer(&vocals_path) {
@@ -182,7 +200,7 @@ fn enter_playing(
 
     let guide_vol = config.guide_volume.unwrap_or(0.0);
     let guide_text = format_guide_text(guide_vol);
-    let theme_text = format!("Theme: {} [T]", bg_theme.name());
+    let theme_text = format_theme_text(&bg_theme, &video_flavor);
     let mic_text = format_mic_text(mic_active, &mic_device_name);
 
     commands
@@ -310,6 +328,28 @@ fn enter_playing(
                 TextColor(Color::srgba(1.0, 1.0, 1.0, 0.25)),
             ));
         });
+
+    commands.spawn((
+        PlayerHud,
+        PixabayCreditText,
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(8.0),
+            right: Val::Px(16.0),
+            display: if bg_theme.is_video() {
+                Display::Flex
+            } else {
+                Display::None
+            },
+            ..default()
+        },
+        Text::new("Videos by Pixabay"),
+        TextFont {
+            font_size: 10.0,
+            ..default()
+        },
+        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.3)),
+    ));
 }
 
 fn format_guide_text(volume: f64) -> String {
@@ -331,6 +371,14 @@ fn format_mic_text(active: bool, device_name: &str) -> String {
         format!("Mic: ON — {short_name} [M/N]")
     } else {
         format!("Mic: OFF — {short_name} [M/N]")
+    }
+}
+
+fn format_theme_text(theme: &ActiveTheme, flavor: &ActiveVideoFlavor) -> String {
+    if theme.is_video() {
+        format!("Theme: Video — {} [T/F]", flavor.flavor().name())
+    } else {
+        format!("Theme: {} [T]", theme.name())
     }
 }
 
@@ -602,11 +650,15 @@ fn handle_guide_volume(
 fn handle_theme_switch(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut theme: ResMut<ActiveTheme>,
+    video_flavor: Res<ActiveVideoFlavor>,
     mut config: ResMut<crate::config::AppConfig>,
-    mut query: Query<&mut Text, With<ThemeText>>,
+    mut query: Query<&mut Text, (With<ThemeText>, Without<PixabayCreditText>)>,
+    mut credit_query: Query<&mut Node, With<PixabayCreditText>>,
     mut commands: Commands,
     bg_query: Query<Entity, With<BackgroundQuad>>,
+    video_query: Query<Entity, With<VideoSprite>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
     mut plasma_materials: ResMut<Assets<PlasmaMaterial>>,
     mut aurora_materials: ResMut<Assets<AuroraMaterial>>,
     mut waves_materials: ResMut<Assets<WavesMaterial>>,
@@ -618,23 +670,64 @@ fn handle_theme_switch(
     }
 
     despawn_background(&mut commands, &bg_query);
+    video_bg::despawn_video_background(&mut commands, &video_query);
+
     theme.next();
-    spawn_background(
-        &mut commands,
-        &mut meshes,
-        &mut plasma_materials,
-        &mut aurora_materials,
-        &mut waves_materials,
-        &mut nebula_materials,
-        &mut starfield_materials,
-        &theme,
-    );
+
+    if theme.is_video() {
+        video_bg::spawn_video_background(&mut commands, &mut images, video_flavor.flavor());
+    } else {
+        spawn_background(
+            &mut commands,
+            &mut meshes,
+            &mut plasma_materials,
+            &mut aurora_materials,
+            &mut waves_materials,
+            &mut nebula_materials,
+            &mut starfield_materials,
+            &theme,
+        );
+    }
 
     config.last_theme = Some(theme.index);
     config.save();
 
     if let Ok(mut text) = query.single_mut() {
-        **text = format!("Theme: {} [T]", theme.name());
+        **text = format_theme_text(&theme, &video_flavor);
+    }
+
+    if let Ok(mut node) = credit_query.single_mut() {
+        node.display = if theme.is_video() {
+            Display::Flex
+        } else {
+            Display::None
+        };
+    }
+}
+
+fn handle_flavor_switch(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    theme: Res<ActiveTheme>,
+    mut video_flavor: ResMut<ActiveVideoFlavor>,
+    mut config: ResMut<crate::config::AppConfig>,
+    mut query: Query<&mut Text, (With<ThemeText>, Without<PixabayCreditText>)>,
+    mut video_bg: Option<ResMut<VideoBackground>>,
+) {
+    if !keyboard.just_pressed(KeyCode::KeyF) || !theme.is_video() {
+        return;
+    }
+
+    video_flavor.next();
+
+    if let Some(ref mut bg) = video_bg {
+        video_bg::switch_flavor(bg, video_flavor.flavor());
+    }
+
+    config.last_video_flavor = Some(video_flavor.index);
+    config.save();
+
+    if let Ok(mut text) = query.single_mut() {
+        **text = format_theme_text(&theme, &video_flavor);
     }
 }
 
@@ -644,6 +737,7 @@ fn exit_playing(
     hud_query: Query<Entity, With<PlayerHud>>,
     lyrics_query: Query<Entity, With<LyricsRoot>>,
     bg_query: Query<Entity, With<BackgroundQuad>>,
+    video_query: Query<Entity, With<VideoSprite>>,
 ) {
     cleanup_audio(&mut commands, &audio);
 
@@ -659,6 +753,8 @@ fn exit_playing(
     for entity in &bg_query {
         commands.entity(entity).despawn();
     }
+
+    video_bg::despawn_video_background(&mut commands, &video_query);
 
     commands.remove_resource::<microphone::MicrophoneCapture>();
     commands.remove_resource::<scoring::VocalsBuffer>();

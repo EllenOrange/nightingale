@@ -7,6 +7,8 @@ use bevy::{
 
 use crate::states::AppState;
 
+const SHADER_COUNT: usize = 5;
+
 macro_rules! define_time_material {
     ($name:ident, $shader:literal) => {
         #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -61,7 +63,11 @@ impl Default for ActiveTheme {
 
 impl ActiveTheme {
     pub fn theme_count() -> usize {
-        5
+        SHADER_COUNT + 1
+    }
+
+    pub fn is_video(&self) -> bool {
+        self.index % Self::theme_count() >= SHADER_COUNT
     }
 
     pub fn name(&self) -> &str {
@@ -71,6 +77,7 @@ impl ActiveTheme {
             2 => "Waves",
             3 => "Nebula",
             4 => "Starfield",
+            5 => "Video",
             _ => unreachable!(),
         }
     }
@@ -117,6 +124,10 @@ pub fn spawn_background(
     starfield_materials: &mut ResMut<Assets<StarfieldMaterial>>,
     theme: &ActiveTheme,
 ) {
+    if theme.is_video() {
+        return;
+    }
+
     let mesh = meshes.add(Rectangle::new(1.0, 1.0));
     let transform = Transform::from_scale(Vec3::new(3000.0, 2000.0, 1.0))
         .with_translation(Vec3::new(0.0, 0.0, -10.0));

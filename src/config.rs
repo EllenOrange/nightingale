@@ -15,6 +15,7 @@ pub struct AppConfig {
     pub whisper_model: Option<String>,
     pub beam_size: Option<u32>,
     pub batch_size: Option<u32>,
+    pub last_video_flavor: Option<usize>,
 }
 
 impl AppConfig {

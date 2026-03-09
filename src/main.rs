@@ -19,6 +19,8 @@ use states::AppState;
 use ui::UiTheme;
 
 fn main() {
+    dotenvy::dotenv().ok();
+
     let mut app = App::new();
 
     let config = AppConfig::load();
@@ -58,6 +60,9 @@ fn main() {
     let bg_theme = player::background::ActiveTheme {
         index: config.last_theme.unwrap_or(0),
     };
+    let video_flavor = player::video_bg::ActiveVideoFlavor {
+        index: config.last_video_flavor.unwrap_or(0),
+    };
     let ui_theme = UiTheme::from_config(&config);
 
     app.add_plugins(AudioPlugin)
@@ -67,6 +72,7 @@ fn main() {
         .insert_resource(SongLibrary { songs: vec![] })
         .insert_resource(config)
         .insert_resource(bg_theme)
+        .insert_resource(video_flavor)
         .insert_resource(ui_theme)
         .add_systems(Startup, setup_camera)
         .add_systems(Update, toggle_fullscreen)
