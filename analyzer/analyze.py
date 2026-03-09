@@ -521,6 +521,7 @@ def transcribe_vocals(
             "No annotations or descriptions. "
             "GO"
         ),
+        "compression_ratio_threshold": 3.5,
     }
 
     vad_options = {
