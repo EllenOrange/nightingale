@@ -500,10 +500,28 @@ def _detect_language_for_nemo(vocals_path: str, device: str) -> str:
     return language
 
 
+def _prepare_audio_for_nemo(vocals_path: str) -> str:
+    """Convert audio to 16kHz mono WAV for NeMo models."""
+    import torchaudio
+
+    wav, sr = torchaudio.load(vocals_path)
+    if wav.shape[0] > 1:
+        wav = wav.mean(dim=0, keepdim=True)
+    if sr != 16000:
+        wav = torchaudio.functional.resample(wav, sr, 16000)
+
+    nemo_path = vocals_path.rsplit(".", 1)[0] + "_nemo16k.wav"
+    torchaudio.save(nemo_path, wav, 16000)
+    print(f"[nightingale:LOG] Prepared audio for NeMo: {wav.shape[1]} samples @ 16kHz mono", flush=True)
+    return nemo_path
+
+
 def _transcribe_fastconformer(vocals_path: str, device: str) -> list[dict]:
     """Transcribe with Russian FastConformer, return list of {word, start, end}."""
     import nemo.collections.asr as nemo_asr
     from omegaconf import open_dict
+
+    nemo_audio = _prepare_audio_for_nemo(vocals_path)
 
     progress(62, "Loading NeMo FastConformer (Russian)...")
     asr_model = nemo_asr.models.ASRModel.from_pretrained(
@@ -511,6 +529,7 @@ def _transcribe_fastconformer(vocals_path: str, device: str) -> list[dict]:
     )
     if device == "cuda":
         asr_model = asr_model.cuda()
+    asr_model.eval()
 
     decoding_cfg = asr_model.cfg.decoding
     with open_dict(decoding_cfg):
@@ -519,7 +538,7 @@ def _transcribe_fastconformer(vocals_path: str, device: str) -> list[dict]:
         asr_model.change_decoding_strategy(decoding_cfg)
 
     progress(65, "Transcribing with FastConformer...")
-    hypotheses = asr_model.transcribe([vocals_path], return_hypotheses=True)
+    hypotheses = asr_model.transcribe([nemo_audio], return_hypotheses=True)
     if isinstance(hypotheses, tuple):
         hypotheses = hypotheses[0]
 
@@ -546,13 +565,16 @@ def _transcribe_canary(vocals_path: str, device: str) -> list[dict]:
     """Transcribe with Canary-1B-Flash (multilingual), return list of {word, start, end}."""
     from nemo.collections.asr.models import EncDecMultiTaskModel
 
+    nemo_audio = _prepare_audio_for_nemo(vocals_path)
+
     progress(62, "Loading NeMo Canary-1B-Flash...")
     canary_model = EncDecMultiTaskModel.from_pretrained("nvidia/canary-1b-flash")
     if device == "cuda":
         canary_model = canary_model.cuda()
+    canary_model.eval()
 
     progress(65, "Transcribing with Canary...")
-    output = canary_model.transcribe([vocals_path], timestamps=True)
+    output = canary_model.transcribe([nemo_audio], timestamps=True)
 
     text = output[0].text if hasattr(output[0], "text") else str(output[0])
     print(f"[nightingale:LOG] Canary transcript: '{text[:200]}'", flush=True)
