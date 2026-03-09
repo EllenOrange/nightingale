@@ -11,6 +11,7 @@ pub struct AppConfig {
     pub fullscreen: Option<bool>,
     pub dark_mode: Option<bool>,
     pub mic_active: Option<bool>,
+    pub preferred_mic: Option<String>,
 }
 
 impl AppConfig {

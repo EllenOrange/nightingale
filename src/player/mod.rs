@@ -43,6 +43,7 @@ impl Plugin for PlayerPlugin {
                 (
                     handle_skip_buttons,
                     handle_mic_toggle,
+                    check_mic_health,
                     scoring::update_pitch_scoring,
                     scoring::draw_pitch_waves,
                     scoring::update_score_text,
@@ -158,12 +159,14 @@ fn enter_playing(
         commands.insert_resource(vocals_buf);
     }
 
-    let mut mic_capture = microphone::start_microphone();
+    let mut mic_capture =
+        microphone::start_microphone(config.preferred_mic.as_deref());
     let mic_has_device = mic_capture.active;
     if mic_has_device {
         mic_capture.active = config.mic_active.unwrap_or(true);
     }
     let mic_active = mic_capture.active;
+    let mic_device_name = mic_capture.device_name.clone();
     commands.insert_resource(mic_capture);
     commands.insert_resource(scoring::PitchState::default());
     commands.insert_resource(scoring::ScoringState::new(song_duration));
@@ -174,7 +177,7 @@ fn enter_playing(
     let guide_vol = config.guide_volume.unwrap_or(0.0);
     let guide_text = format_guide_text(guide_vol);
     let theme_text = format!("Theme: {} [T]", bg_theme.name());
-    let mic_text = format_mic_text(mic_active);
+    let mic_text = format_mic_text(mic_active, &mic_device_name);
 
     commands
         .spawn((
@@ -312,11 +315,16 @@ fn format_guide_text(volume: f64) -> String {
     }
 }
 
-fn format_mic_text(active: bool) -> String {
-    if active {
-        "Mic: ON [M]".into()
+fn format_mic_text(active: bool, device_name: &str) -> String {
+    let short_name = if device_name.len() > 30 {
+        format!("{}…", &device_name[..29])
     } else {
-        "Mic: OFF [M]".into()
+        device_name.to_string()
+    };
+    if active {
+        format!("Mic: ON — {short_name} [M/N]")
+    } else {
+        format!("Mic: OFF — {short_name} [M/N]")
     }
 }
 
@@ -445,19 +453,86 @@ fn handle_skip_buttons(
 
 fn handle_mic_toggle(
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut mic: Option<ResMut<microphone::MicrophoneCapture>>,
+    mut commands: Commands,
+    mic: Option<ResMut<microphone::MicrophoneCapture>>,
     mut mic_text_query: Query<&mut Text, With<MicStatusText>>,
     mut config: ResMut<crate::config::AppConfig>,
 ) {
+    let Some(mut mic) = mic else { return };
+
     if keyboard.just_pressed(KeyCode::KeyM) {
-        if let Some(ref mut mic) = mic {
-            mic.active = !mic.active;
-            config.mic_active = Some(mic.active);
-            config.save();
-            if let Ok(mut text) = mic_text_query.single_mut() {
-                **text = format_mic_text(mic.active);
-            }
+        mic.active = !mic.active;
+        config.mic_active = Some(mic.active);
+        config.save();
+        if let Ok(mut text) = mic_text_query.single_mut() {
+            **text = format_mic_text(mic.active, &mic.device_name);
         }
+    }
+
+    if keyboard.just_pressed(KeyCode::KeyN) {
+        let devices = microphone::available_devices();
+        if devices.len() <= 1 {
+            return;
+        }
+        let current_idx = devices.iter().position(|n| *n == mic.device_name);
+        let next_idx = match current_idx {
+            Some(i) => (i + 1) % devices.len(),
+            None => 0,
+        };
+        let next_name = &devices[next_idx];
+        info!("Switching mic to: {next_name}");
+
+        let was_active = mic.active;
+        let mut new_capture = microphone::start_microphone(Some(next_name));
+        new_capture.active = was_active && new_capture.active;
+        let device_name = new_capture.device_name.clone();
+        commands.insert_resource(new_capture);
+
+        config.preferred_mic = Some(device_name.clone());
+        config.save();
+
+        if let Ok(mut text) = mic_text_query.single_mut() {
+            **text = format_mic_text(was_active, &device_name);
+        }
+    }
+}
+
+fn check_mic_health(
+    mut commands: Commands,
+    mic: Option<ResMut<microphone::MicrophoneCapture>>,
+    mut mic_text_query: Query<&mut Text, With<MicStatusText>>,
+    config: Res<crate::config::AppConfig>,
+) {
+    let Some(mut mic) = mic else { return };
+    if !mic.active {
+        return;
+    }
+
+    if mic.check_health() {
+        return;
+    }
+
+    warn!(
+        "Mic '{}' disconnected, attempting auto-recovery",
+        mic.device_name
+    );
+
+    let mut new_capture = microphone::start_microphone(config.preferred_mic.as_deref());
+    if !new_capture.has_stream() {
+        new_capture.active = false;
+        new_capture.device_name = "(disconnected)".into();
+    }
+
+    let name = new_capture.device_name.clone();
+    let active = new_capture.active;
+    commands.insert_resource(new_capture);
+
+    if active {
+        info!("Mic auto-recovered to '{name}'");
+    }
+
+    if let Ok(mut text) = mic_text_query.single_mut() {
+        **text = format_mic_text(active, &name);
     }
 }
 

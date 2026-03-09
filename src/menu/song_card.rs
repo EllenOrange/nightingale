@@ -96,6 +96,7 @@ pub fn build_song_card(
                 },
                 TextColor(theme.text_secondary),
                 Node {
+                    flex_shrink: 0.0,
                     margin: UiRect::right(Val::Px(12.0)),
                     ..default()
                 },
@@ -202,6 +203,8 @@ fn spawn_song_info(card: &mut ChildSpawnerCommands, song: &Song, theme: &UiTheme
     card.spawn(Node {
         flex_direction: FlexDirection::Column,
         flex_grow: 1.0,
+        flex_shrink: 1.0,
+        overflow: Overflow::clip(),
         row_gap: Val::Px(4.0),
         ..default()
     })
@@ -235,6 +238,7 @@ fn spawn_status_badge(
     card.spawn((
         StatusBadge { song_index: index },
         Node {
+            flex_shrink: 0.0,
             padding: UiRect::new(Val::Px(10.0), Val::Px(10.0), Val::Px(4.0), Val::Px(4.0)),
             border_radius: BorderRadius::all(Val::Px(4.0)),
             ..default()

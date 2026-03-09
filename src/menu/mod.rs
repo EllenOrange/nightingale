@@ -255,6 +255,7 @@ fn build_main_area(
             Node {
                 width: Val::Px(600.0),
                 height: Val::Px(44.0),
+                flex_shrink: 0.0,
                 padding: UiRect::horizontal(Val::Px(16.0)),
                 margin: UiRect::bottom(Val::Px(20.0)),
                 align_items: AlignItems::Center,
@@ -298,6 +299,7 @@ fn build_main_area(
             },
             TextColor(theme.text_secondary),
             Node {
+                flex_shrink: 0.0,
                 margin: UiRect::bottom(Val::Px(16.0)),
                 ..default()
             },
@@ -308,6 +310,7 @@ fn build_main_area(
             Node {
                 width: Val::Px(700.0),
                 flex_grow: 1.0,
+                flex_basis: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
                 overflow: Overflow::scroll_y(),
                 row_gap: Val::Px(8.0),
