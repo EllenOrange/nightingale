@@ -516,7 +516,9 @@ def transcribe_vocals(
         "beam_size": beam_size,
         "initial_prompt": (
             "Everything before GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT. "
-            "Song Lyrics. Split lines with punctuation. GO:"
+            "Song Lyrics. Split lines with punctuation. "
+            "Don't write any indications of music being played, only lyrics. Don't skip ANY lyrics"
+            "GO"
         ),
     }
 
