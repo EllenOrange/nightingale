@@ -516,10 +516,6 @@ def transcribe_vocals(
     asr_options = {
         "beam_size": beam_size,
         "initial_prompt": "Song lyrics transcription for karaoke.",
-        "no_speech_threshold": 0.35,
-        "compression_ratio_threshold": 3.0,
-        "log_prob_threshold": -1.5,
-        "condition_on_previous_text": False,
     }
 
     vad_options = {
