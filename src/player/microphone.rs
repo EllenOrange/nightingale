@@ -132,6 +132,7 @@ pub fn available_devices() -> Vec<String> {
         return vec![];
     };
     devices
+        .filter(|d| !is_virtual_device(d))
         .filter_map(|d| d.description().ok().map(|desc| desc.name().to_string()))
         .collect()
 }
@@ -141,6 +142,10 @@ fn select_device(host: &cpal::Host, preferred: Option<&str>) -> Option<cpal::Dev
         let devices = host.input_devices().ok()?;
         for dev in devices {
             if device_display_name(&dev) == pref_name {
+                if is_virtual_device(&dev) {
+                    warn!("Preferred mic '{pref_name}' is a virtual device, skipping");
+                    break;
+                }
                 if let Ok(cfg) = dev.default_input_config() {
                     let bt = if is_bluetooth(&dev) { " [Bluetooth]" } else { "" };
                     info!(
@@ -247,7 +252,7 @@ fn try_build_stream(
     let host = cpal::default_host();
     let device = match select_device(&host, preferred) {
         Some(d) => d,
-        None => return (None, None, String::new(), ret_err, ret_sil, ret_ctr, None),
+        None => return (None, None, "(no mic)".into(), ret_err, ret_sil, ret_ctr, None),
     };
     let name = device_display_name(&device);
     let bt = is_bluetooth(&device);

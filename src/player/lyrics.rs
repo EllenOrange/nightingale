@@ -30,7 +30,7 @@ pub struct LyricWord {
 const COUNTDOWN_DURATION: f64 = 3.0;
 const COUNTDOWN_GAP_THRESHOLD: f64 = 5.0;
 const LYRICS_LEAD: f64 = 0.15;
-const WORD_HIGHLIGHT_LEAD: f64 = 0.15;
+const WORD_HIGHLIGHT_LEAD: f64 = 0.25;
 
 pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &UiTheme) {
     let state = LyricsState {
@@ -60,33 +60,34 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
                 ..default()
             })
             .with_children(|wrapper| {
-                wrapper.spawn((
-                    CountdownNode,
-                    Node {
-                        position_type: PositionType::Absolute,
-                        top: Val::Px(-36.0),
-                        left: Val::Px(-36.0),
-                        width: Val::Px(40.0),
-                        height: Val::Px(40.0),
-                        border_radius: BorderRadius::all(Val::Percent(50.0)),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    BackgroundColor(Color::NONE),
-                    Visibility::Hidden,
-                    ZIndex(1),
-                ))
-                .with_children(|cd| {
-                    cd.spawn((
-                        Text::new(""),
-                        TextFont {
-                            font_size: 22.0,
+                wrapper
+                    .spawn((
+                        CountdownNode,
+                        Node {
+                            position_type: PositionType::Absolute,
+                            top: Val::Px(-36.0),
+                            left: Val::Px(-36.0),
+                            width: Val::Px(40.0),
+                            height: Val::Px(40.0),
+                            border_radius: BorderRadius::all(Val::Percent(50.0)),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
                             ..default()
                         },
-                        TextColor(theme.countdown_color),
-                    ));
-                });
+                        BackgroundColor(Color::NONE),
+                        Visibility::Hidden,
+                        ZIndex(1),
+                    ))
+                    .with_children(|cd| {
+                        cd.spawn((
+                            Text::new(""),
+                            TextFont {
+                                font_size: 22.0,
+                                ..default()
+                            },
+                            TextColor(theme.countdown_color),
+                        ));
+                    });
 
                 wrapper.spawn((
                     CurrentLine,
@@ -119,12 +120,7 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
                     flex_shrink: 0.0,
                     justify_content: JustifyContent::Center,
                     column_gap: Val::Px(6.0),
-                    padding: UiRect::new(
-                        Val::Px(16.0),
-                        Val::Px(16.0),
-                        Val::Px(6.0),
-                        Val::Px(6.0),
-                    ),
+                    padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(6.0), Val::Px(6.0)),
                     border_radius: BorderRadius::all(Val::Px(6.0)),
                     ..default()
                 },
@@ -160,12 +156,23 @@ pub fn update_lyrics(
         return;
     }
 
-    let seg_idx = find_current_segment(&lyrics.transcript.segments, current_time, lyrics.current_segment);
+    let seg_idx = find_current_segment(
+        &lyrics.transcript.segments,
+        current_time,
+        lyrics.current_segment,
+    );
 
     if seg_idx != lyrics.current_segment {
         lyrics.current_segment = seg_idx;
         let segments = &lyrics.transcript.segments;
-        rebuild_lines(seg_idx, segments, &current_line_query, &next_line_query, commands, theme);
+        rebuild_lines(
+            seg_idx,
+            segments,
+            &current_line_query,
+            &next_line_query,
+            commands,
+            theme,
+        );
     }
 
     let segments = &lyrics.transcript.segments;
@@ -178,8 +185,9 @@ pub fn update_lyrics(
         seg.start - segments[seg_idx - 1].end
     };
     let time_until = seg.start - current_time;
-    let show_countdown =
-        gap_before >= COUNTDOWN_GAP_THRESHOLD && time_until > 0.0 && time_until <= COUNTDOWN_DURATION;
+    let show_countdown = gap_before >= COUNTDOWN_GAP_THRESHOLD
+        && time_until > 0.0
+        && time_until <= COUNTDOWN_DURATION;
 
     let show_current = active || show_countdown;
 

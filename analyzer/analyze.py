@@ -135,6 +135,53 @@ def detect_language_multiwindow(model, audio, sample_rate=16000, window_secs=30)
     return best_lang
 
 
+import re
+
+BANNED_WORDS = {
+    "dimatorzok", "dimatorsok", "dima_torzok",
+    "amara.org",
+}
+
+ATTRIBUTION_WORDS = {
+    "субтитры", "субтитр", "подписи", "титры",
+    "сделал", "сделала", "сделали",
+    "создал", "создала", "создали",
+    "делал", "делала", "делали",
+    "создавал", "создавала", "создавали",
+    "подготовил", "подготовила", "подготовили",
+    "редактировал", "редактировала", "редактировали",
+    "выполнил", "выполнила", "выполнили",
+    "subtitles", "subtitle", "captions", "caption",
+    "transcribed", "transcript", "transcription",
+}
+
+
+def _remove_hallucinations(all_words: list[dict]) -> list[dict]:
+    if not all_words:
+        return all_words
+
+    to_remove: set[int] = set()
+
+    for i, w in enumerate(all_words):
+        clean = re.sub(r"[.,!?;:\"\']", "", w["word"]).lower()
+        if clean in BANNED_WORDS:
+            to_remove.add(i)
+            for j in range(max(0, i - 4), i):
+                neighbor = re.sub(r"[.,!?;:\"\']", "", all_words[j]["word"]).lower()
+                if neighbor in ATTRIBUTION_WORDS:
+                    to_remove.add(j)
+            for j in range(i + 1, min(len(all_words), i + 3)):
+                neighbor = re.sub(r"[.,!?;:\"\']", "", all_words[j]["word"]).lower()
+                if neighbor in ATTRIBUTION_WORDS:
+                    to_remove.add(j)
+
+    if to_remove:
+        removed_text = " ".join(all_words[i]["word"] for i in sorted(to_remove))
+        print(f"[nightingale:LOG] Removed hallucination ({len(to_remove)} words): {removed_text}", flush=True)
+
+    return [w for i, w in enumerate(all_words) if i not in to_remove]
+
+
 def build_segments(all_words: list[dict]) -> list[dict]:
     """Group words into segments based on time gaps; filter low-confidence edges if scores exist."""
     MAX_WORD_GAP = 3.0
@@ -353,6 +400,7 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
 
     print(f"[nightingale:LOG] Word stats: {total_aligned} aligned, {total_interpolated} interpolated, {len(all_words)} total", flush=True)
 
+    all_words = _remove_hallucinations(all_words)
     segments = build_segments(all_words)
 
     progress(90, f"Transcription complete: {len(segments)} segments, lang={language}")
