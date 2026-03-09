@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, mpsc};
 
 use bevy::prelude::*;
 
@@ -92,6 +93,39 @@ pub fn load_vocals_buffer(path: &Path) -> Option<VocalsBuffer> {
     })
 }
 
+#[derive(Resource)]
+pub struct VocalsLoadTask {
+    rx: Mutex<mpsc::Receiver<(VocalsBuffer, f64)>>,
+}
+
+pub fn spawn_vocals_load(commands: &mut Commands, vocals_path: PathBuf) {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        if let Some(buf) = load_vocals_buffer(&vocals_path) {
+            let singable = compute_singable_time(&buf);
+            let _ = tx.send((buf, singable));
+        }
+    });
+    commands.insert_resource(VocalsLoadTask { rx: Mutex::new(rx) });
+}
+
+pub fn poll_vocals_load(
+    mut commands: Commands,
+    task: Option<Res<VocalsLoadTask>>,
+    mut scoring: Option<ResMut<ScoringState>>,
+) {
+    let Some(task) = task else { return };
+    let Ok(rx) = task.rx.lock() else { return };
+    if let Ok((buf, singable)) = rx.try_recv() {
+        drop(rx);
+        commands.insert_resource(buf);
+        if let Some(ref mut s) = scoring {
+            s.total_singable = singable;
+        }
+        commands.remove_resource::<VocalsLoadTask>();
+    }
+}
+
 pub fn compute_singable_time(vocals: &VocalsBuffer) -> f64 {
     let window_size = 2048_usize;
     let hop = window_size / 2;
@@ -168,7 +202,7 @@ fn ema(prev: Option<f32>, current: Option<f32>) -> Option<f32> {
 
 #[derive(Resource)]
 pub struct ScoringState {
-    total_singable: f64,
+    pub total_singable: f64,
     earned: f64,
     last_time: f64,
 }

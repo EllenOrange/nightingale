@@ -1,9 +1,8 @@
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use bevy::prelude::*;
-use cpal::InterfaceType;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use pitch_detection::detector::mcleod::McLeodDetector;
 use pitch_detection::detector::PitchDetector;
@@ -47,7 +46,6 @@ pub struct MicrophoneCapture {
     shared: Arc<Mutex<MicPitchData>>,
     _stream: Option<cpal::Stream>,
     stream_error: Arc<AtomicBool>,
-    silence_only: Arc<AtomicBool>,
     sample_counter: Arc<AtomicU64>,
     last_checked_count: u64,
     stale_ticks: u32,
@@ -78,10 +76,6 @@ impl MicrophoneCapture {
         self._stream.is_some()
     }
 
-    pub fn is_silence_only(&self) -> bool {
-        self.silence_only.load(Ordering::Relaxed)
-    }
-
     pub fn check_health(&mut self) -> bool {
         if !self.active || !self.has_stream() {
             return true;
@@ -107,33 +101,12 @@ fn device_display_name(device: &cpal::Device) -> String {
         .unwrap_or_else(|_| "(unknown)".into())
 }
 
-fn is_bluetooth(device: &cpal::Device) -> bool {
-    device
-        .description()
-        .map(|d| d.interface_type() == InterfaceType::Bluetooth)
-        .unwrap_or(false)
-}
-
-fn is_virtual_device(device: &cpal::Device) -> bool {
-    let name = device_display_name(device).to_lowercase();
-    let virtual_patterns = [
-        "jack audio connection kit",
-        "monitor of",
-        "loopback",
-        "virtual",
-        "null",
-        "zoom"
-    ];
-    virtual_patterns.iter().any(|p| name.contains(p))
-}
-
 pub fn available_devices() -> Vec<String> {
     let host = cpal::default_host();
     let Some(devices) = host.input_devices().ok() else {
         return vec![];
     };
     devices
-        .filter(|d| !is_virtual_device(d))
         .filter_map(|d| d.description().ok().map(|desc| desc.name().to_string()))
         .collect()
 }
@@ -143,16 +116,8 @@ fn select_device(host: &cpal::Host, preferred: Option<&str>) -> Option<cpal::Dev
         let devices = host.input_devices().ok()?;
         for dev in devices {
             if device_display_name(&dev) == pref_name {
-                if is_virtual_device(&dev) {
-                    warn!("Preferred mic '{pref_name}' is a virtual device, skipping");
-                    break;
-                }
                 if let Ok(cfg) = dev.default_input_config() {
-                    let bt = if is_bluetooth(&dev) { " [Bluetooth]" } else { "" };
-                    info!(
-                        "Using preferred mic '{pref_name}' ({}Hz){bt}",
-                        cfg.sample_rate()
-                    );
+                    info!("Using preferred mic '{pref_name}' ({}Hz)", cfg.sample_rate());
                     return Some(dev);
                 }
             }
@@ -165,49 +130,30 @@ fn select_device(host: &cpal::Host, preferred: Option<&str>) -> Option<cpal::Dev
         return None;
     }
 
-    let mut best: Option<(cpal::Device, u32, bool)> = None;
+    let mut best: Option<(cpal::Device, u32)> = None;
     for dev in devices {
         let Ok(cfg) = dev.default_input_config() else {
             continue;
         };
         let sr = cfg.sample_rate();
-        let bt = is_bluetooth(&dev);
-        let virt = is_virtual_device(&dev);
         let name = device_display_name(&dev);
-        let labels = match (bt, virt) {
-            (true, _) => " [Bluetooth]",
-            (_, true) => " [Virtual — skipped]",
-            _ => "",
-        };
-        info!("  Available mic: '{name}' ({sr}Hz){labels}");
-
-        if virt {
-            continue;
-        }
+        info!("  Available mic: '{name}' ({sr}Hz)");
 
         let dominated = match &best {
             None => false,
-            Some((_, best_sr, best_bt)) => {
-                if bt && !best_bt {
-                    true
-                } else if !bt && *best_bt {
-                    false
-                } else {
-                    sr <= *best_sr
-                }
-            }
+            Some((_, best_sr)) => sr <= *best_sr,
         };
         if !dominated {
-            best = Some((dev, sr, bt));
+            best = Some((dev, sr));
         }
     }
 
-    best.map(|(dev, _, _)| dev)
+    best.map(|(dev, _)| dev)
 }
 
 pub fn start_microphone(preferred: Option<&str>) -> MicrophoneCapture {
     let shutdown = Arc::new(AtomicBool::new(false));
-    let (shared, stream, name, error_flag, silence_flag, counter, pitch_thread) =
+    let (shared, stream, name, error_flag, counter, pitch_thread) =
         try_build_stream(preferred, Arc::clone(&shutdown));
 
     let shared = shared.unwrap_or_else(|| {
@@ -221,7 +167,6 @@ pub fn start_microphone(preferred: Option<&str>) -> MicrophoneCapture {
         shared,
         _stream: stream,
         stream_error: error_flag,
-        silence_only: silence_flag,
         sample_counter: counter,
         last_checked_count: 0,
         stale_ticks: 0,
@@ -238,39 +183,28 @@ fn try_build_stream(
     Option<cpal::Stream>,
     String,
     Arc<AtomicBool>,
-    Arc<AtomicBool>,
     Arc<AtomicU64>,
     Option<std::thread::JoinHandle<()>>,
 ) {
     let error_flag = Arc::new(AtomicBool::new(false));
-    let silence_flag = Arc::new(AtomicBool::new(false));
     let sample_counter = Arc::new(AtomicU64::new(0));
 
     let ret_err = Arc::clone(&error_flag);
-    let ret_sil = Arc::clone(&silence_flag);
     let ret_ctr = Arc::clone(&sample_counter);
 
     let host = cpal::default_host();
     let device = match select_device(&host, preferred) {
         Some(d) => d,
-        None => return (None, None, "(no mic)".into(), ret_err, ret_sil, ret_ctr, None),
+        None => return (None, None, "(no mic)".into(), ret_err, ret_ctr, None),
     };
     let name = device_display_name(&device);
-    let bt = is_bluetooth(&device);
-    info!("Microphone: {name}{}", if bt { " [Bluetooth]" } else { "" });
-
-    if bt {
-        warn!(
-            "Bluetooth mic selected — this may force HFP profile and degrade audio output quality. \
-             Press [N] to switch to a different mic."
-        );
-    }
+    info!("Microphone: {name}");
 
     let default_cfg = match device.default_input_config() {
         Ok(c) => c,
         Err(e) => {
             warn!("Cannot get default mic config: {e}");
-            return (None, None, name, ret_err, ret_sil, ret_ctr, None);
+            return (None, None, name, ret_err, ret_ctr, None);
         }
     };
 
@@ -355,7 +289,7 @@ fn try_build_stream(
         }
         other => {
             warn!("Unsupported mic sample format: {other:?}");
-            return (Some(shared), None, name, error_flag, silence_flag, sample_counter, None);
+            return (Some(shared), None, name, error_flag, sample_counter, None);
         }
     };
 
@@ -363,65 +297,28 @@ fn try_build_stream(
         Ok(s) => s,
         Err(e) => {
             warn!("Failed to build mic stream: {e}");
-            return (Some(shared), None, name, error_flag, silence_flag, sample_counter, None);
+            return (Some(shared), None, name, error_flag, sample_counter, None);
         }
     };
 
     if let Err(e) = stream.play() {
         warn!("Failed to start mic stream: {e}");
-        return (Some(shared), None, name, error_flag, silence_flag, sample_counter, None);
+        return (Some(shared), None, name, error_flag, sample_counter, None);
     }
 
-    let detect_counter = Arc::clone(&sample_counter);
     let detect_shutdown = Arc::clone(&shutdown);
-    let detect_silence = Arc::clone(&silence_flag);
     let pitch_thread = std::thread::spawn(move || {
-        pitch_detection_loop(shared_detect, detect_counter, detect_shutdown, detect_silence);
+        pitch_detection_loop(shared_detect, detect_shutdown);
     });
 
-    (Some(shared), Some(stream), name, error_flag, silence_flag, sample_counter, Some(pitch_thread))
+    (Some(shared), Some(stream), name, error_flag, sample_counter, Some(pitch_thread))
 }
-
-const SILENCE_CHECK_MS: u64 = 1500;
-const SILENCE_RMS_THRESHOLD: f32 = 0.001;
 
 fn pitch_detection_loop(
     shared: Arc<Mutex<MicPitchData>>,
-    sample_counter: Arc<AtomicU64>,
     shutdown: Arc<AtomicBool>,
-    silence_flag: Arc<AtomicBool>,
 ) {
     let sleep_dur = std::time::Duration::from_millis(25);
-
-    std::thread::sleep(std::time::Duration::from_millis(SILENCE_CHECK_MS));
-    if shutdown.load(Ordering::Relaxed) {
-        return;
-    }
-    let count = sample_counter.load(Ordering::Relaxed);
-    if count == 0 {
-        error!("Mic: no samples received after {SILENCE_CHECK_MS}ms — mic may be blocked or muted");
-        silence_flag.store(true, Ordering::Relaxed);
-        return;
-    }
-
-    let is_silent = {
-        let Ok(lock) = shared.lock() else { return };
-        if lock.samples.is_empty() {
-            true
-        } else {
-            let samples: Vec<f32> = lock.samples.iter().copied().collect();
-            rms(&samples) < SILENCE_RMS_THRESHOLD
-        }
-    };
-
-    if is_silent {
-        warn!("Mic: only silence detected after {SILENCE_CHECK_MS}ms — no real microphone connected");
-        silence_flag.store(true, Ordering::Relaxed);
-        return;
-    }
-
-    info!("Mic: received {count} samples in first {SILENCE_CHECK_MS}ms, pitch detection starting");
-
     let mut detector = McLeodDetector::new(PITCH_WINDOW, PITCH_WINDOW / 2);
     let mut detect_count: u64 = 0;
     let mut hit_count: u64 = 0;
@@ -480,4 +377,43 @@ pub fn detect_pitch_from_samples(samples: &[f32], sample_rate: u32) -> Option<f3
         .get_pitch(window, sample_rate as usize, PITCH_POWER_THRESHOLD, PITCH_CLARITY_THRESHOLD)
         .filter(|p| p.frequency >= MIN_PITCH_HZ && p.frequency <= MAX_PITCH_HZ)
         .map(|p| p.frequency)
+}
+
+#[derive(Resource)]
+pub struct MicLoadTask {
+    rx: Mutex<mpsc::Receiver<MicrophoneCapture>>,
+}
+
+pub fn spawn_mic_load(commands: &mut Commands, preferred: Option<String>) {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let capture = start_microphone(preferred.as_deref());
+        let _ = tx.send(capture);
+    });
+    commands.insert_resource(MicLoadTask { rx: Mutex::new(rx) });
+}
+
+pub fn poll_mic_load(
+    mut commands: Commands,
+    task: Option<Res<MicLoadTask>>,
+    config: Res<crate::config::AppConfig>,
+    mut mic_text_query: Query<&mut Text, With<super::scoring::MicStatusText>>,
+) {
+    let Some(task) = task else { return };
+    let Ok(rx) = task.rx.lock() else { return };
+    if let Ok(mut capture) = rx.try_recv() {
+        drop(rx);
+        let has_device = capture.active;
+        if has_device {
+            capture.active = config.mic_active.unwrap_or(true);
+        }
+        let mic_active = capture.active;
+        let device_name = capture.device_name.clone();
+        commands.insert_resource(capture);
+        commands.remove_resource::<MicLoadTask>();
+
+        if let Ok(mut text) = mic_text_query.single_mut() {
+            **text = super::format_mic_text(mic_active, &device_name);
+        }
+    }
 }

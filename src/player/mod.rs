@@ -58,6 +58,16 @@ impl Plugin for PlayerPlugin {
             )
             .add_systems(
                 Update,
+                scoring::poll_vocals_load
+                    .run_if(in_state(AppState::Playing)),
+            )
+            .add_systems(
+                Update,
+                microphone::poll_mic_load
+                    .run_if(in_state(AppState::Playing)),
+            )
+            .add_systems(
+                Update,
                 (
                     handle_skip_buttons,
                     handle_mic_toggle,
@@ -206,25 +216,15 @@ fn enter_playing(
     }
 
     let vocals_path = cache.vocals_path(hash);
-    let total_singable = if let Some(vocals_buf) = scoring::load_vocals_buffer(&vocals_path) {
-        let t = scoring::compute_singable_time(&vocals_buf);
-        commands.insert_resource(vocals_buf);
-        t
-    } else {
-        0.0
-    };
+    scoring::spawn_vocals_load(&mut commands, vocals_path);
 
-    let mut mic_capture =
-        microphone::start_microphone(config.preferred_mic.as_deref());
-    let mic_has_device = mic_capture.active;
-    if mic_has_device {
-        mic_capture.active = config.mic_active.unwrap_or(true);
-    }
-    let mic_active = mic_capture.active;
-    let mic_device_name = mic_capture.device_name.clone();
-    commands.insert_resource(mic_capture);
+    microphone::spawn_mic_load(&mut commands, config.preferred_mic.clone());
+
     commands.insert_resource(scoring::PitchState::default());
-    commands.insert_resource(scoring::ScoringState::new(total_singable));
+    commands.insert_resource(scoring::ScoringState::new(0.0));
+
+    let mic_active = config.mic_active.unwrap_or(true);
+    let mic_device_name = "(loading…)".to_string();
 
     let title = song.display_title().to_string();
     let artist = song.display_artist().to_string();
@@ -447,7 +447,7 @@ fn format_guide_text(volume: f64) -> String {
     }
 }
 
-fn format_mic_text(active: bool, device_name: &str) -> String {
+pub fn format_mic_text(active: bool, device_name: &str) -> String {
     let short_name = if device_name.len() > 30 {
         format!("{}…", &device_name[..29])
     } else {
@@ -742,16 +742,6 @@ fn check_mic_health(
         return;
     }
 
-    if mic.is_silence_only() {
-        warn!("Mic '{}': no real input detected, disabling", mic.device_name);
-        mic.active = false;
-        mic.device_name = "(no mic)".into();
-        if let Ok(mut text) = mic_text_query.single_mut() {
-            **text = format_mic_text(false, &mic.device_name);
-        }
-        return;
-    }
-
     if mic.check_health() {
         return;
     }
@@ -964,8 +954,11 @@ fn exit_playing(
     video_bg::despawn_video_background(&mut commands, &video_query);
 
     commands.remove_resource::<microphone::MicrophoneCapture>();
+    commands.remove_resource::<microphone::MicLoadTask>();
     commands.remove_resource::<scoring::VocalsBuffer>();
+    commands.remove_resource::<scoring::VocalsLoadTask>();
     commands.remove_resource::<scoring::PitchState>();
     commands.remove_resource::<scoring::ScoringState>();
     commands.remove_resource::<results::SongResult>();
+    commands.remove_resource::<results::PauseFocus>();
 }

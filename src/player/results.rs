@@ -37,6 +37,9 @@ pub struct ContinueButton;
 #[derive(Component)]
 pub struct ExitToMenuButton;
 
+#[derive(Resource)]
+pub struct PauseFocus(pub usize);
+
 fn half_stars(score: u32) -> u32 {
     (score as f64 / 100.0).round().min(10.0) as u32
 }
@@ -121,11 +124,13 @@ fn spawn_primary_btn(
                     Val::Px(10.0),
                     Val::Px(10.0),
                 ),
+                border: UiRect::all(Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(BTN_RADIUS)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderColor::all(Color::NONE),
             BackgroundColor(theme.accent),
         ))
         .with_children(|btn| {
@@ -158,11 +163,13 @@ fn spawn_secondary_btn(
                     Val::Px(10.0),
                     Val::Px(10.0),
                 ),
+                border: UiRect::all(Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(BTN_RADIUS)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderColor::all(Color::NONE),
             BackgroundColor(theme.popup_btn),
         ))
         .with_children(|btn| {
@@ -432,6 +439,7 @@ pub fn spawn_pause_overlay(
     theme: &UiTheme,
     asset_server: &AssetServer,
 ) {
+    commands.insert_resource(PauseFocus(0));
     let icon_font: Handle<Font> = asset_server.load("fonts/fa-solid-900.ttf");
 
     let root = spawn_overlay_root(commands, PauseOverlay);
@@ -503,25 +511,18 @@ pub fn handle_pause_input(
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut continue_query: Query<
-        (&Interaction, &mut BackgroundColor),
-        (
-            With<ContinueButton>,
-            Without<ExitToMenuButton>,
-            Changed<Interaction>,
-        ),
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        (With<ContinueButton>, Without<ExitToMenuButton>),
     >,
     mut exit_query: Query<
-        (&Interaction, &mut BackgroundColor),
-        (
-            With<ExitToMenuButton>,
-            Without<ContinueButton>,
-            Changed<Interaction>,
-        ),
+        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+        (With<ExitToMenuButton>, Without<ContinueButton>),
     >,
     overlay_query: Query<Entity, With<PauseOverlay>>,
     karaoke: Option<ResMut<super::audio::KaraokeAudio>>,
     mut audio_instances: ResMut<Assets<bevy_kira_audio::AudioInstance>>,
     theme: Res<UiTheme>,
+    mut pause_focus: Option<ResMut<PauseFocus>>,
 ) {
     if overlay_query.is_empty() {
         return;
@@ -531,44 +532,89 @@ pub fn handle_pause_input(
         for entity in &overlay_query {
             commands.entity(entity).despawn();
         }
+        commands.remove_resource::<PauseFocus>();
         if let Some(karaoke) = karaoke {
             super::audio::resume_audio(&karaoke, &mut audio_instances);
         }
         return;
     }
 
-    for (interaction, mut bg) in &mut continue_query {
+    if let Some(ref mut pf) = pause_focus {
+        if keyboard.just_pressed(KeyCode::ArrowDown) || keyboard.just_pressed(KeyCode::ArrowUp) {
+            pf.0 = if pf.0 == 0 { 1 } else { 0 };
+        }
+        if keyboard.just_pressed(KeyCode::Enter) {
+            if pf.0 == 0 {
+                for entity in &overlay_query {
+                    commands.entity(entity).despawn();
+                }
+                commands.remove_resource::<PauseFocus>();
+                if let Some(karaoke) = &karaoke {
+                    super::audio::resume_audio(karaoke, &mut audio_instances);
+                }
+                return;
+            } else {
+                for entity in &overlay_query {
+                    commands.entity(entity).despawn();
+                }
+                commands.remove_resource::<PauseFocus>();
+                next_state.set(AppState::Menu);
+                return;
+            }
+        }
+    }
+
+    let continue_focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 0);
+    let exit_focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 1);
+
+    for (interaction, mut bg, mut border) in &mut continue_query {
         match interaction {
             Interaction::Pressed => {
                 for entity in &overlay_query {
                     commands.entity(entity).despawn();
                 }
+                commands.remove_resource::<PauseFocus>();
                 if let Some(karaoke) = &karaoke {
                     super::audio::resume_audio(karaoke, &mut audio_instances);
                 }
             }
             Interaction::Hovered => {
                 *bg = BackgroundColor(theme.accent_hover);
+                *border = BorderColor::all(theme.accent);
             }
             Interaction::None => {
-                *bg = BackgroundColor(theme.accent);
+                if continue_focused {
+                    *bg = BackgroundColor(theme.accent_hover);
+                    *border = BorderColor::all(theme.accent);
+                } else {
+                    *bg = BackgroundColor(theme.accent);
+                    *border = BorderColor::all(Color::NONE);
+                }
             }
         }
     }
 
-    for (interaction, mut bg) in &mut exit_query {
+    for (interaction, mut bg, mut border) in &mut exit_query {
         match interaction {
             Interaction::Pressed => {
                 for entity in &overlay_query {
                     commands.entity(entity).despawn();
                 }
+                commands.remove_resource::<PauseFocus>();
                 next_state.set(AppState::Menu);
             }
             Interaction::Hovered => {
                 *bg = BackgroundColor(theme.popup_btn_hover);
+                *border = BorderColor::all(theme.accent);
             }
             Interaction::None => {
-                *bg = BackgroundColor(theme.popup_btn);
+                if exit_focused {
+                    *bg = BackgroundColor(theme.popup_btn_hover);
+                    *border = BorderColor::all(theme.accent);
+                } else {
+                    *bg = BackgroundColor(theme.popup_btn);
+                    *border = BorderColor::all(Color::NONE);
+                }
             }
         }
     }

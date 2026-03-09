@@ -112,11 +112,13 @@ pub fn build_sidebar(
                         width: Val::Px(40.0),
                         height: Val::Px(40.0),
                         flex_shrink: 0.0,
+                        border: UiRect::all(Val::Px(2.0)),
                         border_radius: BorderRadius::all(Val::Px(6.0)),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         ..default()
                     },
+                    BorderColor::all(Color::NONE),
                     BackgroundColor(theme.sidebar_btn),
                 ))
                 .with_children(|btn| {
@@ -153,11 +155,13 @@ fn spawn_icon_btn(
                 width: Val::Px(40.0),
                 height: Val::Px(40.0),
                 flex_shrink: 0.0,
+                border: UiRect::all(Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderColor::all(Color::NONE),
             BackgroundColor(theme.sidebar_btn),
         ))
         .with_children(|btn| {
@@ -193,11 +197,13 @@ fn spawn_sidebar_button(
             Node {
                 width: Val::Percent(100.0),
                 padding: UiRect::new(Val::Px(14.0), Val::Px(14.0), Val::Px(10.0), Val::Px(10.0)),
+                border: UiRect::all(Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderColor::all(Color::NONE),
             BackgroundColor(theme.sidebar_btn),
         ))
         .with_children(|btn| {
@@ -208,7 +214,7 @@ fn spawn_sidebar_button(
 pub fn handle_sidebar_click(
     mut commands: Commands,
     mut interaction_query: Query<
-        (&Interaction, &SidebarButton, &mut BackgroundColor),
+        (&Interaction, &SidebarButton, &mut BackgroundColor, &mut BorderColor),
         Changed<Interaction>,
     >,
     mut exit: MessageWriter<AppExit>,
@@ -222,11 +228,87 @@ pub fn handle_sidebar_click(
     profiles: Res<ProfileStore>,
     mut next_state: ResMut<NextState<AppState>>,
     asset_server: Res<AssetServer>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    focus: Res<super::MenuFocus>,
 ) {
     if !overlay_query.is_empty() || !profile_overlay_query.is_empty() {
         return;
     }
-    for (interaction, sidebar_btn, mut bg) in &mut interaction_query {
+
+    if keyboard.just_pressed(KeyCode::Enter)
+        && focus.active
+        && focus.panel == super::FocusPanel::Sidebar
+        && focus.sidebar_index < super::SIDEBAR_ACTIONS.len()
+    {
+        let action = super::SIDEBAR_ACTIONS[focus.sidebar_index];
+        match action {
+            SidebarAction::Settings => {
+                spawn_settings_popup(&mut commands, &theme, &config);
+            }
+            SidebarAction::Profile => {
+                super::profile::spawn_profile_popup(
+                    &mut commands,
+                    &theme,
+                    &profiles,
+                    &asset_server,
+                );
+            }
+            SidebarAction::ToggleTheme => {
+                theme.toggle();
+                config.dark_mode = Some(theme.mode == crate::ui::ThemeMode::Dark);
+                config.save();
+                next_state.set(AppState::Menu);
+            }
+            SidebarAction::Exit => {
+                exit.write(AppExit::Success);
+            }
+            SidebarAction::ChangeFolder => {
+                if pending.is_some() {
+                    return;
+                }
+                let result: Arc<Mutex<Option<Option<PathBuf>>>> = Arc::new(Mutex::new(None));
+                let result_clone = Arc::clone(&result);
+                std::thread::spawn(move || {
+                    let folder = rfd::FileDialog::new()
+                        .set_title("Select your music folder")
+                        .pick_folder();
+                    *result_clone.lock().unwrap() = Some(folder);
+                });
+                commands.insert_resource(PendingFolderPick { result });
+            }
+            SidebarAction::RescanFolder => {
+                if pending_rescan.is_some() {
+                    return;
+                }
+                if let Some(folder) = config.last_folder.clone() {
+                    let cache_path = cache.path.clone();
+                    let result: Arc<Mutex<Option<Vec<Song>>>> = Arc::new(Mutex::new(None));
+                    let result_clone = Arc::clone(&result);
+                    std::thread::spawn(move || {
+                        let scan_result = std::panic::catch_unwind(
+                            std::panic::AssertUnwindSafe(|| {
+                                let cache = CacheDir { path: cache_path };
+                                crate::scanner::scan_folder(&folder, &cache)
+                            }),
+                        );
+                        match scan_result {
+                            Ok(songs) => {
+                                *result_clone.lock().unwrap() = Some(songs);
+                            }
+                            Err(_) => {
+                                error!("Rescan thread panicked");
+                                *result_clone.lock().unwrap() = Some(vec![]);
+                            }
+                        }
+                    });
+                    commands.insert_resource(PendingRescan { result });
+                }
+            }
+        }
+        return;
+    }
+
+    for (interaction, sidebar_btn, mut bg, mut border) in &mut interaction_query {
         match interaction {
             Interaction::Pressed => match sidebar_btn.action {
                 SidebarAction::RescanFolder => {
@@ -296,9 +378,22 @@ pub fn handle_sidebar_click(
             },
             Interaction::Hovered => {
                 *bg = BackgroundColor(theme.sidebar_btn_hover);
+                *border = BorderColor::all(theme.accent);
             }
             Interaction::None => {
-                *bg = BackgroundColor(theme.sidebar_btn);
+                let idx = super::SIDEBAR_ACTIONS
+                    .iter()
+                    .position(|&a| a == sidebar_btn.action);
+                let is_focused = focus.active
+                    && focus.panel == super::FocusPanel::Sidebar
+                    && idx == Some(focus.sidebar_index);
+                if is_focused {
+                    *bg = BackgroundColor(theme.sidebar_btn_hover);
+                    *border = BorderColor::all(theme.accent);
+                } else {
+                    *bg = BackgroundColor(theme.sidebar_btn);
+                    *border = BorderColor::all(Color::NONE);
+                }
             }
         }
     }

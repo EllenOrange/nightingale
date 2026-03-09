@@ -70,6 +70,9 @@ pub struct SettingsButton {
     pub action: SettingsAction,
 }
 
+#[derive(Component)]
+pub struct SettingsRow(pub usize);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsField {
     Model,
@@ -373,7 +376,10 @@ fn spawn_song_info(
         flex_direction: FlexDirection::Column,
         flex_grow: 1.0,
         flex_shrink: 1.0,
-        overflow: Overflow::clip(),
+        overflow: Overflow {
+            x: OverflowAxis::Clip,
+            y: OverflowAxis::Visible,
+        },
         row_gap: Val::Px(4.0),
         ..default()
     })

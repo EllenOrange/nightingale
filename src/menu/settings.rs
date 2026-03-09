@@ -6,11 +6,54 @@ use crate::ui::{self, UiTheme};
 
 const MODELS: &[&str] = &["large-v3-turbo", "large-v3"];
 
+#[derive(Resource)]
+pub struct SettingsFocus(pub usize);
+
+const SETTINGS_ROW_COUNT: usize = 6;
+
+struct SettingsRowMapping {
+    enter: SettingsAction,
+    left: Option<SettingsAction>,
+    right: Option<SettingsAction>,
+}
+
+const fn row_mapping(
+    enter: SettingsAction,
+    left: Option<SettingsAction>,
+    right: Option<SettingsAction>,
+) -> SettingsRowMapping {
+    SettingsRowMapping { enter, left, right }
+}
+
+fn settings_rows() -> [SettingsRowMapping; SETTINGS_ROW_COUNT] {
+    [
+        row_mapping(SettingsAction::ToggleFullscreen, None, None),
+        row_mapping(
+            SettingsAction::ModelNext,
+            Some(SettingsAction::ModelPrev),
+            Some(SettingsAction::ModelNext),
+        ),
+        row_mapping(
+            SettingsAction::BeamUp,
+            Some(SettingsAction::BeamDown),
+            Some(SettingsAction::BeamUp),
+        ),
+        row_mapping(
+            SettingsAction::BatchUp,
+            Some(SettingsAction::BatchDown),
+            Some(SettingsAction::BatchUp),
+        ),
+        row_mapping(SettingsAction::RestoreDefaults, None, None),
+        row_mapping(SettingsAction::Close, None, None),
+    ]
+}
+
 pub fn spawn_settings_popup(
     commands: &mut Commands,
     theme: &UiTheme,
     config: &crate::config::AppConfig,
 ) {
+    commands.insert_resource(SettingsFocus(0));
     commands
         .spawn((
             SettingsOverlay,
@@ -54,21 +97,21 @@ pub fn spawn_settings_popup(
                     spawn_settings_row(card, theme, "Window", fs_label,
                         SettingsValueText(SettingsField::Fullscreen),
                         &[("Switch", SettingsAction::ToggleFullscreen)],
-                        "Toggle between fullscreen and windowed mode");
+                        "Toggle between fullscreen and windowed mode", 0);
 
                     spawn_settings_section(card, theme, "Analyzer");
                     spawn_settings_row(card, theme, "Model", config.whisper_model(),
                         SettingsValueText(SettingsField::Model),
                         &[("<", SettingsAction::ModelPrev), (">", SettingsAction::ModelNext)],
-                        "turbo is fastest, v3 is most accurate");
+                        "turbo is fastest, v3 is most accurate", 1);
                     spawn_settings_row(card, theme, "Beam size", &config.beam_size().to_string(),
                         SettingsValueText(SettingsField::Beam),
                         &[("-", SettingsAction::BeamDown), ("+", SettingsAction::BeamUp)],
-                        "Higher values improve accuracy at the cost of speed");
+                        "Higher values improve accuracy at the cost of speed", 2);
                     spawn_settings_row(card, theme, "Batch size", &config.batch_size().to_string(),
                         SettingsValueText(SettingsField::Batch),
                         &[("-", SettingsAction::BatchDown), ("+", SettingsAction::BatchUp)],
-                        "Higher values use more memory but process faster");
+                        "Higher values use more memory but process faster", 3);
 
                     card.spawn((
                         Text::new("Changes apply to future analyses. Use the re-analyze button on song cards to apply."),
@@ -80,8 +123,8 @@ pub fn spawn_settings_popup(
                         },
                     ));
 
-                    spawn_settings_btn(card, "Restore Defaults", SettingsAction::RestoreDefaults, theme, true);
-                    spawn_settings_btn(card, "Close", SettingsAction::Close, theme, true);
+                    spawn_settings_wide_btn(card, "Restore Defaults", SettingsAction::RestoreDefaults, theme, 4);
+                    spawn_settings_wide_btn(card, "Close", SettingsAction::Close, theme, 5);
                 });
         });
 }
@@ -106,6 +149,7 @@ fn spawn_settings_row(
     marker: SettingsValueText,
     buttons: &[(&str, SettingsAction)],
     description: &str,
+    row_idx: usize,
 ) {
     parent
         .spawn(Node {
@@ -115,13 +159,16 @@ fn spawn_settings_row(
         .with_children(|wrapper| {
             wrapper
                 .spawn((
+                    SettingsRow(row_idx),
                     Node {
                         flex_direction: FlexDirection::Row,
                         align_items: AlignItems::Center,
                         padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(8.0), Val::Px(8.0)),
+                        border: UiRect::all(Val::Px(2.0)),
                         border_radius: BorderRadius::all(Val::Px(6.0)),
                         ..default()
                     },
+                    BorderColor::all(Color::NONE),
                     BackgroundColor(theme.popup_btn),
                 ))
                 .with_children(|row| {
@@ -203,6 +250,122 @@ fn spawn_settings_btn(
         });
 }
 
+fn spawn_settings_wide_btn(
+    parent: &mut ChildSpawnerCommands,
+    label: &str,
+    action: SettingsAction,
+    theme: &UiTheme,
+    row_idx: usize,
+) {
+    parent
+        .spawn((
+            SettingsRow(row_idx),
+            SettingsButton { action },
+            Button,
+            Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(10.0), Val::Px(10.0)),
+                border: UiRect::all(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BorderColor::all(Color::NONE),
+            BackgroundColor(theme.popup_btn),
+        ))
+        .with_children(|btn| {
+            ui::spawn_label(btn, label, 14.0, theme.text_primary);
+        });
+}
+
+fn dispatch_settings_action(
+    action: SettingsAction,
+    commands: &mut Commands,
+    config: &mut crate::config::AppConfig,
+    overlay_query: &Query<Entity, With<SettingsOverlay>>,
+    value_texts: &mut Query<(&SettingsValueText, &mut Text)>,
+    windows: &mut Query<&mut Window>,
+) {
+    match action {
+        SettingsAction::ToggleFullscreen => {
+            if let Ok(mut window) = windows.single_mut() {
+                let is_fs = matches!(window.mode, WindowMode::BorderlessFullscreen(_));
+                window.mode = if is_fs {
+                    WindowMode::Windowed
+                } else {
+                    WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
+                };
+                config.fullscreen = Some(!is_fs);
+                config.save();
+                let new_label = if is_fs { "Windowed" } else { "Fullscreen" };
+                set_settings_text(value_texts, SettingsField::Fullscreen, new_label);
+            }
+        }
+        SettingsAction::ModelPrev | SettingsAction::ModelNext => {
+            let current = config.whisper_model();
+            let idx = MODELS.iter().position(|&m| m == current).unwrap_or(0);
+            let next_idx = if matches!(action, SettingsAction::ModelNext) {
+                (idx + 1) % MODELS.len()
+            } else {
+                (idx + MODELS.len() - 1) % MODELS.len()
+            };
+            let new_model = MODELS[next_idx];
+            config.whisper_model = Some(new_model.to_string());
+            config.save();
+            set_settings_text(value_texts, SettingsField::Model, new_model);
+        }
+        SettingsAction::BeamUp => {
+            let new_val = (config.beam_size() + 1).min(15);
+            config.beam_size = Some(new_val);
+            config.save();
+            set_settings_text(value_texts, SettingsField::Beam, &new_val.to_string());
+        }
+        SettingsAction::BeamDown => {
+            let new_val = config.beam_size().saturating_sub(1).max(1);
+            config.beam_size = Some(new_val);
+            config.save();
+            set_settings_text(value_texts, SettingsField::Beam, &new_val.to_string());
+        }
+        SettingsAction::BatchUp => {
+            let new_val = (config.batch_size() + 1).min(16);
+            config.batch_size = Some(new_val);
+            config.save();
+            set_settings_text(value_texts, SettingsField::Batch, &new_val.to_string());
+        }
+        SettingsAction::BatchDown => {
+            let new_val = config.batch_size().saturating_sub(1).max(1);
+            config.batch_size = Some(new_val);
+            config.save();
+            set_settings_text(value_texts, SettingsField::Batch, &new_val.to_string());
+        }
+        SettingsAction::RestoreDefaults => {
+            config.whisper_model = None;
+            config.beam_size = None;
+            config.batch_size = None;
+            config.fullscreen = None;
+            config.save();
+            set_settings_text(value_texts, SettingsField::Model, config.whisper_model());
+            set_settings_text(value_texts, SettingsField::Beam, &config.beam_size().to_string());
+            set_settings_text(value_texts, SettingsField::Batch, &config.batch_size().to_string());
+            let fs_label = if config.is_fullscreen() { "Fullscreen" } else { "Windowed" };
+            set_settings_text(value_texts, SettingsField::Fullscreen, fs_label);
+            if let Ok(mut window) = windows.single_mut() {
+                window.mode = if config.is_fullscreen() {
+                    WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
+                } else {
+                    WindowMode::Windowed
+                };
+            }
+        }
+        SettingsAction::Close => {
+            for entity in overlay_query {
+                commands.entity(entity).despawn();
+            }
+        }
+    }
+}
+
 pub fn handle_settings_click(
     mut commands: Commands,
     mut interaction_query: Query<
@@ -214,92 +377,93 @@ pub fn handle_settings_click(
     mut value_texts: Query<(&SettingsValueText, &mut Text)>,
     theme: Res<UiTheme>,
     mut windows: Query<&mut Window>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut settings_focus: Option<ResMut<SettingsFocus>>,
+    mut row_query: Query<(&SettingsRow, &mut BackgroundColor, &mut BorderColor)>,
 ) {
+    if overlay_query.is_empty() {
+        return;
+    }
+
+    if keyboard.just_pressed(KeyCode::Escape) {
+        for entity in &overlay_query {
+            commands.entity(entity).despawn();
+        }
+        commands.remove_resource::<SettingsFocus>();
+        return;
+    }
+
+    if let Some(ref mut sf) = settings_focus {
+        let rows = settings_rows();
+        let mut action_to_dispatch: Option<SettingsAction> = None;
+
+        if keyboard.just_pressed(KeyCode::ArrowDown) {
+            sf.0 = (sf.0 + 1).min(SETTINGS_ROW_COUNT - 1);
+        }
+        if keyboard.just_pressed(KeyCode::ArrowUp) {
+            sf.0 = sf.0.saturating_sub(1);
+        }
+        if keyboard.just_pressed(KeyCode::Enter) {
+            action_to_dispatch = Some(rows[sf.0].enter);
+        }
+        if keyboard.just_pressed(KeyCode::ArrowLeft) {
+            if let Some(a) = rows[sf.0].left {
+                action_to_dispatch = Some(a);
+            }
+        }
+        if keyboard.just_pressed(KeyCode::ArrowRight) {
+            if let Some(a) = rows[sf.0].right {
+                action_to_dispatch = Some(a);
+            }
+        }
+
+        if let Some(action) = action_to_dispatch {
+            dispatch_settings_action(
+                action,
+                &mut commands,
+                &mut config,
+                &overlay_query,
+                &mut value_texts,
+                &mut windows,
+            );
+            if action == SettingsAction::Close {
+                commands.remove_resource::<SettingsFocus>();
+                return;
+            }
+        }
+
+        let any_nav = keyboard.just_pressed(KeyCode::ArrowUp)
+            || keyboard.just_pressed(KeyCode::ArrowDown)
+            || keyboard.just_pressed(KeyCode::ArrowLeft)
+            || keyboard.just_pressed(KeyCode::ArrowRight)
+            || keyboard.just_pressed(KeyCode::Enter);
+
+        if any_nav {
+            for (row, mut bg, mut border) in &mut row_query {
+                if row.0 == sf.0 {
+                    *bg = BackgroundColor(theme.popup_btn_hover);
+                    *border = BorderColor::all(theme.accent);
+                } else {
+                    *bg = BackgroundColor(theme.popup_btn);
+                    *border = BorderColor::all(Color::NONE);
+                }
+            }
+        }
+    }
+
     for (interaction, settings_btn, mut bg) in &mut interaction_query {
         match interaction {
             Interaction::Pressed => {
-                match settings_btn.action {
-                    SettingsAction::ToggleFullscreen => {
-                        if let Ok(mut window) = windows.single_mut() {
-                            let is_fs = matches!(window.mode, WindowMode::BorderlessFullscreen(_));
-                            window.mode = if is_fs {
-                                WindowMode::Windowed
-                            } else {
-                                WindowMode::BorderlessFullscreen(
-                                    bevy::window::MonitorSelection::Current,
-                                )
-                            };
-                            config.fullscreen = Some(!is_fs);
-                            config.save();
-                            let new_label = if is_fs { "Windowed" } else { "Fullscreen" };
-                            set_settings_text(&mut value_texts, SettingsField::Fullscreen, new_label);
-                        }
-                    }
-                    SettingsAction::ModelPrev | SettingsAction::ModelNext => {
-                        let current = config.whisper_model();
-                        let idx = MODELS.iter().position(|&m| m == current).unwrap_or(0);
-                        let next_idx = if matches!(settings_btn.action, SettingsAction::ModelNext) {
-                            (idx + 1) % MODELS.len()
-                        } else {
-                            (idx + MODELS.len() - 1) % MODELS.len()
-                        };
-                        let new_model = MODELS[next_idx];
-                        config.whisper_model = Some(new_model.to_string());
-                        config.save();
-                        set_settings_text(&mut value_texts, SettingsField::Model, new_model);
-                    }
-                    SettingsAction::BeamUp => {
-                        let new_val = (config.beam_size() + 1).min(15);
-                        config.beam_size = Some(new_val);
-                        config.save();
-                        set_settings_text(&mut value_texts, SettingsField::Beam, &new_val.to_string());
-                    }
-                    SettingsAction::BeamDown => {
-                        let new_val = config.beam_size().saturating_sub(1).max(1);
-                        config.beam_size = Some(new_val);
-                        config.save();
-                        set_settings_text(&mut value_texts, SettingsField::Beam, &new_val.to_string());
-                    }
-                    SettingsAction::BatchUp => {
-                        let new_val = (config.batch_size() + 1).min(16);
-                        config.batch_size = Some(new_val);
-                        config.save();
-                        set_settings_text(&mut value_texts, SettingsField::Batch, &new_val.to_string());
-                    }
-                    SettingsAction::BatchDown => {
-                        let new_val = config.batch_size().saturating_sub(1).max(1);
-                        config.batch_size = Some(new_val);
-                        config.save();
-                        set_settings_text(&mut value_texts, SettingsField::Batch, &new_val.to_string());
-                    }
-                    SettingsAction::RestoreDefaults => {
-                        config.whisper_model = None;
-                        config.beam_size = None;
-                        config.batch_size = None;
-                        config.fullscreen = None;
-                        config.save();
-
-                        set_settings_text(&mut value_texts, SettingsField::Model, config.whisper_model());
-                        set_settings_text(&mut value_texts, SettingsField::Beam, &config.beam_size().to_string());
-                        set_settings_text(&mut value_texts, SettingsField::Batch, &config.batch_size().to_string());
-                        let fs_label = if config.is_fullscreen() { "Fullscreen" } else { "Windowed" };
-                        set_settings_text(&mut value_texts, SettingsField::Fullscreen, fs_label);
-
-                        if let Ok(mut window) = windows.single_mut() {
-                            window.mode = if config.is_fullscreen() {
-                                WindowMode::BorderlessFullscreen(
-                                    bevy::window::MonitorSelection::Current,
-                                )
-                            } else {
-                                WindowMode::Windowed
-                            };
-                        }
-                    }
-                    SettingsAction::Close => {
-                        for entity in &overlay_query {
-                            commands.entity(entity).despawn();
-                        }
-                    }
+                dispatch_settings_action(
+                    settings_btn.action,
+                    &mut commands,
+                    &mut config,
+                    &overlay_query,
+                    &mut value_texts,
+                    &mut windows,
+                );
+                if settings_btn.action == SettingsAction::Close {
+                    commands.remove_resource::<SettingsFocus>();
                 }
             }
             Interaction::Hovered => {
