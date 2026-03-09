@@ -63,9 +63,7 @@ impl Plugin for PlayerPlugin {
                     handle_mic_toggle,
                     check_mic_health,
                     scoring::update_pitch_scoring,
-                    scoring::draw_pitch_waves,
                     scoring::update_score_text,
-                    update_pitch_backdrop,
                     (
                         video_bg::update_video_frame,
                         video_bg::fit_video_to_window,
@@ -74,6 +72,14 @@ impl Plugin for PlayerPlugin {
                 )
                     .run_if(in_state(AppState::Playing))
                     .run_if(no_player_overlay),
+            )
+            .add_systems(
+                Update,
+                (
+                    scoring::draw_pitch_waves,
+                    update_pitch_backdrop,
+                )
+                    .run_if(in_state(AppState::Playing)),
             )
             .add_systems(
                 Update,
