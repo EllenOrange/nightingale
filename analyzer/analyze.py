@@ -262,7 +262,7 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
 
         entries = []
         for w in raw_words:
-            word_text = str(w.get("word", "")).strip()
+            word_text = w.get("word", "").strip()
             if not word_text:
                 continue
             has_ts = "start" in w and "end" in w
@@ -364,7 +364,7 @@ def transcribe_vocals(
     asr_options = {
         "beam_size": beam_size,
         "initial_prompt": (
-            "Everything before GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT.",
+            "Everything before GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT. "
             "Song Lyrics. Split lines with punctuation. GO:"
         ),
     }
