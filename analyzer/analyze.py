@@ -492,6 +492,27 @@ def align_and_build_segments(raw_segments: list[dict], audio, language: str, dev
     return {"language": language, "segments": segments}
 
 
+def _find_gaps(segments: list[dict], audio_duration: float, min_gap: float = 3.0) -> list[tuple[float, float]]:
+    """Find time ranges not covered by any segment."""
+    gaps = []
+    prev_end = 0.0
+    for seg in segments:
+        seg_start = seg.get("start", 0)
+        if seg_start - prev_end >= min_gap:
+            gaps.append((prev_end, seg_start))
+        prev_end = max(prev_end, seg.get("end", 0))
+    if audio_duration - prev_end >= min_gap:
+        gaps.append((prev_end, audio_duration))
+    return gaps
+
+
+def _extract_audio_range(audio, start: float, end: float, sr: int = 16000):
+    """Slice audio array by time range."""
+    s = max(0, int(start * sr))
+    e = min(len(audio), int(end * sr))
+    return audio[s:e]
+
+
 def transcribe_vocals(
     vocals_path: str,
     original_audio_path: str,
@@ -502,6 +523,7 @@ def transcribe_vocals(
 ) -> dict:
     """Transcribe vocals with WhisperX to get word-level timestamps."""
     import whisperx
+    import numpy as np
 
     compute_type = "float16" if device == "cuda" else "float32"
     if device == "mps":
@@ -521,7 +543,6 @@ def transcribe_vocals(
             "No annotations or descriptions. "
             "GO"
         ),
-        "compression_ratio_threshold": 3.5,
     }
 
     vad_options = {
@@ -531,13 +552,13 @@ def transcribe_vocals(
         "min_duration_off": 0.6,
     }
 
-    model = whisperx.load_model(
+    progress(58, "Detecting language from vocals (multi-window)...")
+    lang_model = whisperx.load_model(
         model_name, device, compute_type=compute_type, task="transcribe",
         asr_options=asr_options, vad_options=vad_options,
     )
-
-    progress(58, "Detecting language from vocals (multi-window)...")
-    language = detect_language_multiwindow(model, audio)
+    language = detect_language_multiwindow(lang_model, audio)
+    del lang_model
     print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
     progress(59, f"Detected language: {language}")
 
@@ -546,9 +567,9 @@ def transcribe_vocals(
         task="transcribe", language=language,
         asr_options=asr_options, vad_options=vad_options,
     )
-    print(f"[nightingale:LOG] Model loaded with lang={language}, tokenizer={model.tokenizer}", flush=True)
+    print(f"[nightingale:LOG] Model loaded with lang={language}", flush=True)
 
-    progress(60, "Transcribing vocals...")
+    progress(60, "Transcribing vocals (pass 1)...")
     result = model.transcribe(
         audio,
         batch_size=batch_size,
@@ -560,26 +581,82 @@ def transcribe_vocals(
     result_language = result.get("language", language)
     raw_segments = result.get("segments", [])
     total_raw_words = sum(len(s.get("text", "").split()) for s in raw_segments)
-    print(f"[nightingale:LOG] Transcribe returned language='{result_language}', segments={len(raw_segments)}, ~{total_raw_words} words", flush=True)
+    print(f"[nightingale:LOG] Pass 1: language='{result_language}', segments={len(raw_segments)}, ~{total_raw_words} words", flush=True)
 
-    if raw_segments:
+    for i, seg in enumerate(raw_segments):
+        print(f"[nightingale:LOG] P1 Seg {i}: [{seg.get('start',0):.1f}-{seg.get('end',0):.1f}] {seg.get('text','')[:80]}", flush=True)
+
+    gaps = _find_gaps(raw_segments, duration_secs, min_gap=3.0)
+
+    if gaps:
         covered = sum(s.get("end", 0) - s.get("start", 0) for s in raw_segments)
-        print(f"[nightingale:LOG] Transcribed coverage: {covered:.1f}s / {duration_secs:.1f}s ({covered/duration_secs*100:.0f}%)", flush=True)
+        print(f"[nightingale:LOG] Pass 1 coverage: {covered:.1f}s / {duration_secs:.1f}s ({covered/duration_secs*100:.0f}%)", flush=True)
+        print(f"[nightingale:LOG] Found {len(gaps)} gaps >= 3s, running pass 2 with relaxed filters...", flush=True)
+        for gs, ge in gaps:
+            print(f"[nightingale:LOG]   Gap: {gs:.1f}s - {ge:.1f}s ({ge-gs:.1f}s)", flush=True)
 
-        gaps = []
-        for i in range(1, len(raw_segments)):
-            gap_start = raw_segments[i - 1].get("end", 0)
-            gap_end = raw_segments[i].get("start", 0)
-            gap = gap_end - gap_start
-            if gap > 5.0:
-                gaps.append((gap_start, gap_end, gap))
-        if gaps:
-            print(f"[nightingale:LOG] Large gaps (>5s) in transcript:", flush=True)
-            for gs, ge, g in gaps:
-                print(f"[nightingale:LOG]   {gs:.1f}s - {ge:.1f}s ({g:.1f}s gap)", flush=True)
+        del model
 
-        for i, seg in enumerate(raw_segments):
-            print(f"[nightingale:LOG] Seg {i}: [{seg.get('start',0):.1f}-{seg.get('end',0):.1f}] {seg.get('text','')[:80]}", flush=True)
+        relaxed_asr = {
+            "beam_size": beam_size,
+            "initial_prompt": "Song lyrics transcription for karaoke.",
+            "compression_ratio_threshold": 10.0,
+            "no_speech_threshold": 0.4,
+            "log_prob_threshold": -1.5,
+        }
+        relaxed_vad = {
+            "vad_onset": 0.08,
+            "vad_offset": 0.03,
+            "min_duration_on": 0.1,
+            "min_duration_off": 0.3,
+        }
+
+        relaxed_model = whisperx.load_model(
+            model_name, device, compute_type=compute_type,
+            task="transcribe", language=result_language,
+            asr_options=relaxed_asr, vad_options=relaxed_vad,
+        )
+
+        progress(68, f"Filling {len(gaps)} gaps (pass 2)...")
+        recovered_segments = []
+        for gap_start, gap_end in gaps:
+            pad = 0.5
+            slice_start = max(0, gap_start - pad)
+            slice_end = min(duration_secs, gap_end + pad)
+            gap_audio = _extract_audio_range(audio, slice_start, slice_end)
+
+            rms = float(np.sqrt(np.mean(gap_audio.astype(np.float64) ** 2)))
+            if rms < 1e-4:
+                print(f"[nightingale:LOG] Gap {gap_start:.1f}-{gap_end:.1f}: silence (rms={rms:.6f}), skipping", flush=True)
+                continue
+
+            gap_result = relaxed_model.transcribe(
+                gap_audio,
+                batch_size=batch_size,
+                task="transcribe",
+                language=result_language,
+                chunk_size=15,
+            )
+
+            gap_segs = gap_result.get("segments", [])
+            for seg in gap_segs:
+                seg["start"] = round(seg.get("start", 0) + slice_start, 3)
+                seg["end"] = round(seg.get("end", 0) + slice_start, 3)
+                recovered_segments.append(seg)
+                print(f"[nightingale:LOG] P2 recovered: [{seg['start']:.1f}-{seg['end']:.1f}] {seg.get('text','')[:80]}", flush=True)
+
+        del relaxed_model
+
+        if recovered_segments:
+            raw_segments.extend(recovered_segments)
+            raw_segments.sort(key=lambda s: s.get("start", 0))
+            new_total = sum(len(s.get("text", "").split()) for s in raw_segments)
+            print(f"[nightingale:LOG] After pass 2: {len(raw_segments)} segments, ~{new_total} words (recovered {new_total - total_raw_words})", flush=True)
+        else:
+            print(f"[nightingale:LOG] Pass 2: no segments recovered from gaps", flush=True)
+    else:
+        covered = sum(s.get("end", 0) - s.get("start", 0) for s in raw_segments)
+        print(f"[nightingale:LOG] Coverage: {covered:.1f}s / {duration_secs:.1f}s ({covered/duration_secs*100:.0f}%), no significant gaps", flush=True)
 
     progress(75, f"Language: {result_language}")
 
