@@ -545,7 +545,7 @@ def _transcribe_fastconformer(vocals_path: str, device: str) -> list[dict]:
     text = hypotheses[0].text
     print(f"[nightingale:LOG] FastConformer transcript: '{text[:200]}'", flush=True)
 
-    timestamp_dict = hypotheses[0].timestep
+    timestamp_dict = hypotheses[0].timestamp
     time_stride = 8 * asr_model.cfg.preprocessor.window_stride
 
     all_words = []
