@@ -215,202 +215,16 @@ def build_segments(all_words: list[dict]) -> list[dict]:
     return segments
 
 
-def transcribe_voxtral(vocals_path: str, device: str) -> dict:
-    """Transcribe vocals with Voxtral Realtime, deriving word timestamps from token positions."""
-    from transformers import VoxtralRealtimeForConditionalGeneration, AutoProcessor
-    import torchaudio
-    from langdetect import detect as detect_lang
-
-    SECS_PER_TOKEN = 0.08
-    REPO_ID = "mistralai/Voxtral-Mini-4B-Realtime-2602"
-
-    progress(55, "Loading Voxtral Realtime model...")
-    processor = AutoProcessor.from_pretrained(REPO_ID)
-
-    if device == "cuda":
-        dtype = torch.bfloat16
-    elif device == "mps":
-        dtype = torch.float16
-    else:
-        dtype = torch.float32
-
-    model = VoxtralRealtimeForConditionalGeneration.from_pretrained(
-        REPO_ID, torch_dtype=dtype, device_map="auto"
-    )
-    print(f"[nightingale:LOG] Voxtral model loaded on {model.device} with dtype={model.dtype}", flush=True)
-
-    progress(60, "Loading audio for Voxtral...")
-    waveform, sr = torchaudio.load(vocals_path)
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-    target_sr = processor.feature_extractor.sampling_rate
-    if sr != target_sr:
-        resampler = torchaudio.transforms.Resample(sr, target_sr)
-        waveform = resampler(waveform)
-    audio_array = waveform.squeeze(0).numpy()
-
-    audio_duration = len(audio_array) / target_sr
-    max_tokens = int(audio_duration / SECS_PER_TOKEN) + 100
-    print(f"[nightingale:LOG] Audio loaded: {len(audio_array)} samples at {target_sr}Hz ({audio_duration:.1f}s), max_tokens={max_tokens}", flush=True)
-
-    progress(65, f"Transcribing with Voxtral Realtime ({audio_duration:.0f}s audio)...")
-    inputs = processor(audio_array, return_tensors="pt")
-    inputs = inputs.to(model.device, dtype=model.dtype)
-
-    with torch.no_grad():
-        outputs = model.generate(**inputs, max_new_tokens=max_tokens)
-    token_ids = outputs[0]
-
-    progress(75, "Extracting word timestamps from token positions...")
-
-    special_ids = set(processor.tokenizer.all_special_ids)
-
-    token_offset = 0
-    for t in token_ids:
-        if t.item() in special_ids:
-            token_offset += 1
-        else:
-            break
-
-    print(f"[nightingale:LOG] Token sequence: {len(token_ids)} total, {token_offset} leading special tokens skipped", flush=True)
-
-    words = []
-    current_word = {"text": "", "start": None, "end": None}
-
-    for i, token_id in enumerate(token_ids):
-        tid = token_id.item()
-        if tid in special_ids:
-            if current_word["text"]:
-                words.append(current_word)
-                current_word = {"text": "", "start": None, "end": None}
-            continue
-
-        token_text = processor.tokenizer.decode(tid)
-        pos = i - token_offset
-        time_start = round(pos * SECS_PER_TOKEN, 3)
-        time_end = round((pos + 1) * SECS_PER_TOKEN, 3)
-
-        is_word_start = token_text.startswith((" ", "\u2581")) or not current_word["text"]
-
-        if is_word_start and current_word["text"]:
-            words.append(current_word)
-            current_word = {"text": "", "start": None, "end": None}
-
-        clean_text = token_text.lstrip(" \u2581")
-        if not clean_text:
-            continue
-
-        if current_word["start"] is None:
-            current_word["start"] = time_start
-        current_word["end"] = time_end
-        current_word["text"] += clean_text
-
-    if current_word["text"]:
-        words.append(current_word)
-
-    all_words = [
-        {"word": w["text"], "start": w["start"], "end": w["end"]}
-        for w in words if w["text"].strip()
-    ]
-
-    if all_words:
-        last_token_end = max(w["end"] for w in all_words)
-        if last_token_end > 0:
-            scale = audio_duration / last_token_end
-            print(f"[nightingale:LOG] Calibrating timestamps: scale={scale:.4f} (token-based={last_token_end:.1f}s, actual={audio_duration:.1f}s)", flush=True)
-            for w in all_words:
-                w["start"] = round(w["start"] * scale, 3)
-                w["end"] = round(w["end"] * scale, 3)
-
-    full_text = " ".join(w["word"] for w in all_words)
-    try:
-        language = detect_lang(full_text)
-    except Exception:
-        language = "en"
-
-    print(f"[nightingale:LOG] Voxtral transcription: {len(all_words)} words, language='{language}'", flush=True)
-    if all_words:
-        print(f"[nightingale:LOG] First word: {all_words[0]}", flush=True)
-        print(f"[nightingale:LOG] Last word: {all_words[-1]}", flush=True)
-        print(f"[nightingale:LOG] Text preview: {full_text[:200]}", flush=True)
-
-    segments = build_segments(all_words)
-
-    progress(90, f"Transcription complete: {len(segments)} segments, lang={language}")
-    if segments:
-        print(f"[nightingale:LOG] First segment: '{segments[0]['text'][:100]}'", flush=True)
-        print(f"[nightingale:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
-
-    return {"language": language, "segments": segments}
-
-
-def transcribe_vocals(
-    vocals_path: str,
-    original_audio_path: str,
-    device: str,
-    model_name: str = "large-v3-turbo",
-    beam_size: int = 5,
-    batch_size: int = 8,
-) -> dict:
-    """Transcribe vocals with WhisperX to get word-level timestamps."""
+def align_and_build_segments(raw_segments: list[dict], audio, language: str, device: str) -> dict:
+    """Run WhisperX forced alignment, interpolate unaligned words, and build final segments."""
     import whisperx
 
-    compute_type = "float16" if device == "cuda" else "float32"
-    if device == "mps":
-        device = "cpu"
+    align_device = "cpu" if device == "mps" else device
 
-    progress(55, f"Loading WhisperX model ({model_name})...")
-    audio = whisperx.load_audio(vocals_path)
-    print(f"[nightingale:LOG] Vocals audio loaded: {len(audio)} samples from {vocals_path}", flush=True)
-    print(f"[nightingale:LOG] Settings: model={model_name}, beam_size={beam_size}, batch_size={batch_size}", flush=True)
-
-    asr_options = {
-        "beam_size": beam_size,
-        "initial_prompt": (
-            "Verse 1. I walk along the road, the wind is in my hair. "
-            "The sun is shining bright, without a single care. "
-            "Chorus. Oh, sing it loud, sing it clear. "
-            "Let the music fill the air, let the world hear."
-        ),
-    }
-
-    model = whisperx.load_model(
-        model_name, device, compute_type=compute_type, task="transcribe",
-        asr_options=asr_options,
-    )
-
-    progress(58, "Detecting language from vocals (multi-window)...")
-    language = detect_language_multiwindow(model, audio)
-    print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
-    progress(59, f"Detected language: {language}")
-
-    model = whisperx.load_model(
-        model_name, device, compute_type=compute_type,
-        task="transcribe", language=language,
-        asr_options=asr_options,
-    )
-    print(f"[nightingale:LOG] Model loaded with lang={language}, tokenizer={model.tokenizer}", flush=True)
-
-    progress(60, "Transcribing vocals...")
-    result = model.transcribe(
-        audio,
-        batch_size=batch_size,
-        task="transcribe",
-        language=language,
-    )
-
-    result_language = result.get("language", language)
-    print(f"[nightingale:LOG] Transcribe returned language='{result_language}', segments={len(result.get('segments', []))}", flush=True)
-    if result.get("segments"):
-        first_seg = result["segments"][0]
-        print(f"[nightingale:LOG] First segment text: '{first_seg.get('text', '')[:100]}'", flush=True)
-        print(f"[nightingale:LOG] First segment time: {first_seg.get('start')} -> {first_seg.get('end')}", flush=True)
-    progress(75, f"Language: {result_language}")
-
-    progress(80, f"Aligning word timestamps (lang={result_language})...")
-    print(f"[nightingale:LOG] Loading align model for language='{result_language}' on device='{device}'", flush=True)
-    align_model, metadata = whisperx.load_align_model(language_code=result_language, device=device)
-    result = whisperx.align(result["segments"], align_model, metadata, audio, device)
+    progress(80, f"Aligning word timestamps (lang={language})...")
+    print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{align_device}'", flush=True)
+    align_model, metadata = whisperx.load_align_model(language_code=language, device=align_device)
+    result = whisperx.align(raw_segments, align_model, metadata, audio, align_device)
 
     MAX_WORD_DURATION = 5.0
 
@@ -511,12 +325,149 @@ def transcribe_vocals(
 
     segments = build_segments(all_words)
 
-    progress(90, f"Transcription complete: {len(segments)} segments, lang={result_language}")
+    progress(90, f"Transcription complete: {len(segments)} segments, lang={language}")
     if segments:
-        print(f"[nightingale:LOG] First aligned segment: '{segments[0]['text'][:100]}'", flush=True)
-        print(f"[nightingale:LOG] First word: '{segments[0]['words'][0]}'", flush=True)
+        print(f"[nightingale:LOG] First segment: '{segments[0]['text'][:100]}'", flush=True)
+        if segments[0].get("words"):
+            print(f"[nightingale:LOG] First word: '{segments[0]['words'][0]}'", flush=True)
         print(f"[nightingale:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
-    return {"language": result_language, "segments": segments}
+
+    return {"language": language, "segments": segments}
+
+
+def transcribe_voxtral(vocals_path: str, original_audio_path: str, device: str) -> dict:
+    """Transcribe vocals with Voxtral Realtime, align with WhisperX for precise timestamps."""
+    import whisperx
+    from transformers import VoxtralRealtimeForConditionalGeneration, AutoProcessor
+    import torchaudio
+
+    SECS_PER_TOKEN = 0.08
+    REPO_ID = "mistralai/Voxtral-Mini-4B-Realtime-2602"
+
+    compute_type = "float16" if device == "cuda" else "float32"
+    whisperx_device = "cpu" if device == "mps" else device
+
+    progress(52, "Loading WhisperX model for language detection...")
+    audio = whisperx.load_audio(vocals_path)
+    whisperx_model = whisperx.load_model(
+        "large-v3-turbo", whisperx_device, compute_type=compute_type, task="transcribe",
+    )
+
+    progress(55, "Detecting language from vocals (multi-window)...")
+    language = detect_language_multiwindow(whisperx_model, audio)
+    print(f"[nightingale:LOG] Detected language: '{language}'", flush=True)
+    del whisperx_model
+
+    progress(58, "Loading Voxtral Realtime model...")
+    processor = AutoProcessor.from_pretrained(REPO_ID)
+
+    if device == "cuda":
+        dtype = torch.bfloat16
+    elif device == "mps":
+        dtype = torch.float16
+    else:
+        dtype = torch.float32
+
+    model = VoxtralRealtimeForConditionalGeneration.from_pretrained(
+        REPO_ID, torch_dtype=dtype, device_map="auto"
+    )
+    print(f"[nightingale:LOG] Voxtral model loaded on {model.device} with dtype={model.dtype}", flush=True)
+
+    progress(62, "Loading audio for Voxtral...")
+    waveform, sr = torchaudio.load(vocals_path)
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    target_sr = processor.feature_extractor.sampling_rate
+    if sr != target_sr:
+        resampler = torchaudio.transforms.Resample(sr, target_sr)
+        waveform = resampler(waveform)
+    audio_array = waveform.squeeze(0).numpy()
+
+    audio_duration = len(audio_array) / target_sr
+    max_tokens = int(audio_duration / SECS_PER_TOKEN) + 100
+    print(f"[nightingale:LOG] Audio loaded: {len(audio_array)} samples at {target_sr}Hz ({audio_duration:.1f}s), max_tokens={max_tokens}", flush=True)
+
+    progress(65, f"Transcribing with Voxtral Realtime ({audio_duration:.0f}s audio)...")
+    inputs = processor(audio_array, return_tensors="pt")
+    inputs = inputs.to(model.device, dtype=model.dtype)
+
+    with torch.no_grad():
+        outputs = model.generate(**inputs, max_new_tokens=max_tokens)
+
+    full_text = processor.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+    del model, processor, inputs, outputs
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    print(f"[nightingale:LOG] Voxtral transcription ({len(full_text.split())} words): {full_text[:200]}", flush=True)
+
+    progress(75, "Preparing segments for alignment...")
+    raw_segments = [{"text": full_text, "start": 0.0, "end": audio_duration}]
+
+    return align_and_build_segments(raw_segments, audio, language, device)
+
+
+def transcribe_vocals(
+    vocals_path: str,
+    original_audio_path: str,
+    device: str,
+    model_name: str = "large-v3-turbo",
+    beam_size: int = 5,
+    batch_size: int = 8,
+) -> dict:
+    """Transcribe vocals with WhisperX to get word-level timestamps."""
+    import whisperx
+
+    compute_type = "float16" if device == "cuda" else "float32"
+    if device == "mps":
+        device = "cpu"
+
+    progress(55, f"Loading WhisperX model ({model_name})...")
+    audio = whisperx.load_audio(vocals_path)
+    print(f"[nightingale:LOG] Vocals audio loaded: {len(audio)} samples from {vocals_path}", flush=True)
+    print(f"[nightingale:LOG] Settings: model={model_name}, beam_size={beam_size}, batch_size={batch_size}", flush=True)
+
+    asr_options = {
+        "beam_size": beam_size,
+        "initial_prompt": (
+            "Song Lyrics. Split lines with punctuation:"
+        ),
+    }
+
+    model = whisperx.load_model(
+        model_name, device, compute_type=compute_type, task="transcribe",
+        asr_options=asr_options,
+    )
+
+    progress(58, "Detecting language from vocals (multi-window)...")
+    language = detect_language_multiwindow(model, audio)
+    print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
+    progress(59, f"Detected language: {language}")
+
+    model = whisperx.load_model(
+        model_name, device, compute_type=compute_type,
+        task="transcribe", language=language,
+        asr_options=asr_options,
+    )
+    print(f"[nightingale:LOG] Model loaded with lang={language}, tokenizer={model.tokenizer}", flush=True)
+
+    progress(60, "Transcribing vocals...")
+    result = model.transcribe(
+        audio,
+        batch_size=batch_size,
+        task="transcribe",
+        language=language,
+    )
+
+    result_language = result.get("language", language)
+    print(f"[nightingale:LOG] Transcribe returned language='{result_language}', segments={len(result.get('segments', []))}", flush=True)
+    if result.get("segments"):
+        first_seg = result["segments"][0]
+        print(f"[nightingale:LOG] First segment text: '{first_seg.get('text', '')[:100]}'", flush=True)
+        print(f"[nightingale:LOG] First segment time: {first_seg.get('start')} -> {first_seg.get('end')}", flush=True)
+    progress(75, f"Language: {result_language}")
+
+    return align_and_build_segments(result["segments"], audio, result_language, device)
 
 
 def main():
@@ -565,7 +516,7 @@ def main():
         vocals_path = final_vocals
 
     if args.model == "voxtral-realtime":
-        transcript = transcribe_voxtral(vocals_path, device)
+        transcript = transcribe_voxtral(vocals_path, audio_path, device)
     else:
         transcript = transcribe_vocals(
             vocals_path, audio_path, device,
