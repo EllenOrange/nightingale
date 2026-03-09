@@ -548,7 +548,7 @@ def transcribe_vocals(
         batch_size=batch_size,
         task="transcribe",
         language=language,
-        chunk_size=15,
+        chunk_size=10,
     )
 
     result_language = result.get("language", language)
