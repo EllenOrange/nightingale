@@ -518,7 +518,7 @@ def transcribe_vocals(
         "initial_prompt": (
             "Everything before GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT. "
             "Song Lyrics. Split lines with punctuation. "
-            "Don't write any indications of music being played, only lyrics. Don't skip ANY lyrics. "
+            "No annotations or descriptions."
             "GO"
         ),
     }
