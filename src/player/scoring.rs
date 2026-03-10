@@ -59,53 +59,59 @@ impl VocalsBuffer {
     }
 }
 
+const VOCALS_SAMPLE_RATE: u32 = 44100;
+
 pub fn load_vocals_buffer(path: &Path) -> Option<VocalsBuffer> {
-    let reader = match hound::WavReader::open(path) {
-        Ok(r) => r,
+    use std::process::{Command, Stdio};
+
+    let result = Command::new("ffmpeg")
+        .args([
+            "-i",
+            path.to_str().unwrap_or(""),
+            "-f", "f32le",
+            "-ac", "1",
+            "-ar", &VOCALS_SAMPLE_RATE.to_string(),
+            "-v", "error",
+            "-",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output();
+
+    let output = match result {
+        Ok(o) => o,
         Err(e) => {
-            warn!("Failed to load vocals WAV for scoring: {e}");
+            warn!("Failed to run ffmpeg for vocals decoding: {e}");
             return None;
         }
     };
 
-    let spec = reader.spec();
-    let channels = spec.channels as usize;
-    let sample_rate = spec.sample_rate;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        warn!("ffmpeg vocals decode failed: {stderr}");
+        return None;
+    }
 
-    let raw_samples: Vec<f32> = match spec.sample_format {
-        hound::SampleFormat::Float => reader
-            .into_samples::<f32>()
-            .filter_map(|s| s.ok())
-            .collect(),
-        hound::SampleFormat::Int => {
-            let bits = spec.bits_per_sample;
-            let max_val = (1i32 << (bits - 1)) as f32;
-            reader
-                .into_samples::<i32>()
-                .filter_map(|s| s.ok())
-                .map(|s| s as f32 / max_val)
-                .collect()
-        }
-    };
+    let byte_data = output.stdout;
+    if byte_data.len() < 4 {
+        warn!("ffmpeg returned no audio data for vocals");
+        return None;
+    }
 
-    let mono = if channels > 1 {
-        raw_samples
-            .chunks(channels)
-            .map(|ch| ch.iter().sum::<f32>() / channels as f32)
-            .collect()
-    } else {
-        raw_samples
-    };
+    let samples: Vec<f32> = byte_data
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+        .collect();
 
     info!(
         "Loaded vocals buffer: {} samples, {}Hz",
-        mono.len(),
-        sample_rate
+        samples.len(),
+        VOCALS_SAMPLE_RATE
     );
 
     Some(VocalsBuffer {
-        samples: mono,
-        sample_rate,
+        samples,
+        sample_rate: VOCALS_SAMPLE_RATE,
         scratch: Vec::with_capacity(2048),
     })
 }

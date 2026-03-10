@@ -22,11 +22,11 @@ impl CacheDir {
     }
 
     pub fn instrumental_path(&self, hash: &str) -> PathBuf {
-        self.path.join(format!("{hash}_instrumental.wav"))
+        self.path.join(format!("{hash}_instrumental.ogg"))
     }
 
     pub fn vocals_path(&self, hash: &str) -> PathBuf {
-        self.path.join(format!("{hash}_vocals.wav"))
+        self.path.join(format!("{hash}_vocals.ogg"))
     }
 
     pub fn lyrics_path(&self, hash: &str) -> PathBuf {

@@ -125,6 +125,8 @@ fn update_ui_scale(
     mut ui_scale: ResMut<bevy::ui::UiScale>,
     theme: Res<UiTheme>,
     mut clear: ResMut<ClearColor>,
+    state: Res<State<AppState>>,
+    bg_theme: Res<player::background::ActiveTheme>,
 ) {
     let Ok(window) = windows.single() else { return };
     let factor = (window.width() / REFERENCE_WIDTH)
@@ -133,8 +135,13 @@ fn update_ui_scale(
     if (ui_scale.0 - factor).abs() > 0.01 {
         ui_scale.0 = factor;
     }
-    if clear.0 != theme.bg {
-        clear.0 = theme.bg;
+    let target = if *state.get() == AppState::Playing && bg_theme.is_video() {
+        Color::BLACK
+    } else {
+        theme.bg
+    };
+    if clear.0 != target {
+        clear.0 = target;
     }
 }
 

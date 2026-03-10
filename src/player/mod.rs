@@ -68,20 +68,30 @@ impl Plugin for PlayerPlugin {
             )
             .add_systems(
                 Update,
+                handle_skip_buttons
+                    .run_if(in_state(AppState::Playing))
+                    .run_if(no_player_overlay),
+            )
+            .add_systems(
+                Update,
                 (
-                    handle_skip_buttons,
                     handle_mic_toggle,
                     check_mic_health,
                     scoring::update_pitch_scoring,
                     scoring::update_score_text,
-                    (
-                        video_bg::update_video_frame,
-                        video_bg::fit_video_to_window,
-                    )
-                        .run_if(resource_exists::<VideoBackground>),
                 )
                     .run_if(in_state(AppState::Playing))
                     .run_if(no_player_overlay),
+            )
+            .add_systems(
+                Update,
+                (
+                    video_bg::update_video_frame,
+                    video_bg::fit_video_to_window,
+                )
+                    .run_if(in_state(AppState::Playing))
+                    .run_if(no_player_overlay)
+                    .run_if(resource_exists::<VideoBackground>),
             )
             .add_systems(
                 Update,
@@ -635,6 +645,7 @@ fn handle_skip_buttons(
             Changed<Interaction>,
         ),
     >,
+    nav: Res<crate::input::NavInput>,
     lyrics_state: Option<Res<LyricsState>>,
     karaoke: Option<ResMut<KaraokeAudio>>,
     mut audio_instances: ResMut<Assets<AudioInstance>>,
@@ -643,16 +654,10 @@ fn handle_skip_buttons(
     target: Res<PlayTarget>,
     library: Res<SongLibrary>,
     scoring_state: Option<Res<scoring::ScoringState>>,
-    results_q: Query<(), With<ResultsOverlay>>,
-    pause_q: Query<(), With<PauseOverlay>>,
     theme: Res<UiTheme>,
     asset_server: Res<AssetServer>,
     audio: Res<bevy_kira_audio::Audio>,
 ) {
-    if !results_q.is_empty() || !pause_q.is_empty() {
-        return;
-    }
-
     for (interaction, mut bg) in &mut intro_query {
         match interaction {
             Interaction::Pressed => {
@@ -690,6 +695,31 @@ fn handle_skip_buttons(
             }
             Interaction::None => {
                 *bg = BackgroundColor(SKIP_BTN_BG);
+            }
+        }
+    }
+
+    if nav.confirm {
+        if let (Some(lyrics), Some(karaoke)) = (&lyrics_state, &karaoke) {
+            let current_time = audio::playback_time(karaoke, &audio_instances);
+            let first_start = lyrics::first_segment_start(lyrics);
+            let last_end = lyrics::last_segment_end(lyrics);
+
+            if current_time < first_start - 3.0 {
+                let seek_target = (first_start - 3.0).max(0.0);
+                audio::seek_to(karaoke, &mut audio_instances, seek_target);
+            } else if current_time > last_end + 1.0 {
+                transition_on_song_end(
+                    &mut commands,
+                    &mut next_state,
+                    &mut profiles,
+                    &target,
+                    &library,
+                    &scoring_state,
+                    &theme,
+                    &asset_server,
+                    &audio,
+                );
             }
         }
     }

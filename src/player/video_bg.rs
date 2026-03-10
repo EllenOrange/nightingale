@@ -8,13 +8,14 @@ use bevy::image::{Image, ImageSampler};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use rand::seq::IndexedRandom;
+use rand::seq::SliceRandom;
 
 const VIDEO_WIDTH: u32 = 1920;
 const VIDEO_HEIGHT: u32 = 1080;
 const FRAME_BYTES: usize = (VIDEO_WIDTH * VIDEO_HEIGHT * 4) as usize;
 const TARGET_FPS: f64 = 30.0;
-const MAX_CACHED_VIDEOS: usize = 5;
-const PIXABAY_PER_PAGE: u32 = 20;
+const MAX_CACHED_VIDEOS: usize = 12;
+const PIXABAY_PER_PAGE: u32 = 200;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum VideoFlavor {
@@ -46,11 +47,57 @@ impl VideoFlavor {
 
     fn keywords(&self) -> &[&str] {
         match self {
-            Self::Nature => &["nature", "forest", "mountains", "sunset", "ocean", "waterfall"],
-            Self::Underwater => &["underwater", "ocean", "coral", "fish", "diving"],
-            Self::Space => &["space", "galaxy", "stars", "nebula", "aurora borealis"],
-            Self::City => &["city night", "traffic", "skyline", "urban", "neon"],
-            Self::Countryside => &["countryside", "farm", "meadow", "fields", "village"],
+            Self::Nature => &[
+                "nature landscape aerial",
+                "forest trees cinematic",
+                "mountain scenery drone",
+                "sunset clouds timelapse",
+                "waterfall tropical scenic",
+                "autumn leaves forest",
+                "river valley aerial",
+            ],
+            Self::Underwater => &[
+                "underwater coral reef",
+                "deep sea fish",
+                "ocean jellyfish",
+                "scuba diving reef",
+                "tropical fish underwater",
+                "sea turtle underwater",
+            ],
+            Self::Space => &[
+                "galaxy stars universe",
+                "nebula deep space",
+                "aurora borealis sky",
+                "earth orbit space",
+                "milky way night sky",
+                "starfield cosmos",
+            ],
+            Self::City => &[
+                "city skyline night",
+                "city traffic timelapse",
+                "neon lights city",
+                "urban aerial night",
+                "downtown skyscrapers dusk",
+                "highway traffic night",
+            ],
+            Self::Countryside => &[
+                "countryside meadow aerial",
+                "farm fields drone",
+                "rolling hills green",
+                "village landscape scenic",
+                "vineyard countryside",
+                "pastoral landscape sunset",
+            ],
+        }
+    }
+
+    fn category(&self) -> &str {
+        match self {
+            Self::Nature => "nature",
+            Self::Underwater => "animals",
+            Self::Space => "science",
+            Self::City => "buildings",
+            Self::Countryside => "places",
         }
     }
 
@@ -99,9 +146,9 @@ enum DecoderCommand {
 }
 
 fn cache_dir(flavor: VideoFlavor) -> PathBuf {
-    let base = dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from(".cache"))
-        .join("nightingale")
+    let base = dirs::home_dir()
+        .expect("could not find home directory")
+        .join(".nightingale")
         .join("videos")
         .join(flavor.name().to_lowercase());
     std::fs::create_dir_all(&base).ok();
@@ -136,23 +183,31 @@ fn fetch_video_listing(flavor: VideoFlavor) -> Vec<PendingDownload> {
         }
     };
 
+    let mut rng = rand::rng();
+
     let keyword = {
         let kws = flavor.keywords();
-        let mut rng = rand::rng();
         kws.choose(&mut rng).unwrap_or(&kws[0])
     };
 
+    let order = if rand::random::<bool>() { "popular" } else { "latest" };
+
+    let category = flavor.category();
+
     let url = format!(
-        "https://pixabay.com/api/videos/?key={}&q={}&per_page={}&safesearch=true&order=popular",
+        "https://pixabay.com/api/videos/?key={}&q={}&video_type=film&category={}&per_page={}&safesearch=true&order={}",
         api_key,
         urlencodeq(keyword),
+        category,
         PIXABAY_PER_PAGE,
+        order,
     );
 
     info!(
-        "Pixabay: fetching videos for '{}' (keyword='{}')",
+        "Pixabay: fetching videos for '{}' (keyword='{}', order={})",
         flavor.name(),
-        keyword
+        keyword,
+        order,
     );
 
     let body: serde_json::Value = match ureq::get(&url).call() {
@@ -179,7 +234,8 @@ fn fetch_video_listing(flavor: VideoFlavor) -> Vec<PendingDownload> {
 
     let dir = cache_dir(flavor);
 
-    hits.iter()
+    let mut results: Vec<PendingDownload> = hits
+        .iter()
         .filter_map(|hit| {
             let video_id = hit["id"].as_u64().unwrap_or(0);
             let video_url = hit["videos"]["large"]["url"]
@@ -191,7 +247,10 @@ fn fetch_video_listing(flavor: VideoFlavor) -> Vec<PendingDownload> {
                 dest: dir.join(format!("{video_id}.mp4")),
             })
         })
-        .collect()
+        .collect();
+
+    results.shuffle(&mut rng);
+    results
 }
 
 fn download_file(url: &str, dest: &PathBuf) -> Result<(), String> {
@@ -220,19 +279,20 @@ fn background_video_worker(
     frame_tx: mpsc::SyncSender<Vec<u8>>,
     cmd_rx: mpsc::Receiver<DecoderCommand>,
 ) {
-    let existing = cached_videos(flavor);
+    let mut existing = cached_videos(flavor);
 
     if !existing.is_empty() {
-        let playlist = std::sync::Arc::new(std::sync::Mutex::new(existing.clone()));
-        let need_more = existing.len() < MAX_CACHED_VIDEOS;
+        let mut rng = rand::rng();
+        existing.shuffle(&mut rng);
 
-        if need_more {
+        let playlist = std::sync::Arc::new(std::sync::Mutex::new(existing));
+
+        {
             let playlist_ref = playlist.clone();
-            let flavor_name = flavor.name().to_string();
             thread::Builder::new()
                 .name("video-dl".into())
                 .spawn(move || {
-                    download_missing(flavor, &flavor_name, &playlist_ref);
+                    download_and_refresh(flavor, &playlist_ref);
                 })
                 .ok();
         }
@@ -299,27 +359,61 @@ fn background_video_worker(
     warn!("No videos available for flavor '{}'", flavor.name());
 }
 
-fn download_missing(
+fn download_and_refresh(
     flavor: VideoFlavor,
-    flavor_name: &str,
     playlist: &std::sync::Mutex<Vec<PathBuf>>,
 ) {
     let listing = fetch_video_listing(flavor);
-    let needed = {
-        let pl = playlist.lock().unwrap();
-        MAX_CACHED_VIDEOS.saturating_sub(pl.len())
-    };
-    for dl in listing.into_iter().filter(|p| !p.dest.exists()).take(needed) {
+    let flavor_name = flavor.name().to_string();
+
+    let current_count = playlist.lock().unwrap().len();
+    let needed = MAX_CACHED_VIDEOS.saturating_sub(current_count);
+
+    if needed > 0 {
+        for dl in listing.iter().filter(|p| !p.dest.exists()).take(needed) {
+            info!(
+                "Pixabay[{}]: downloading video {} in background...",
+                flavor_name, dl.video_id
+            );
+            match download_file(&dl.url, &dl.dest) {
+                Ok(_) => {
+                    info!("Pixabay: saved {}", dl.dest.display());
+                    if let Ok(mut pl) = playlist.lock() {
+                        pl.push(dl.dest.clone());
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "Pixabay[{}]: download failed for {}: {e}",
+                        flavor_name, dl.video_id
+                    );
+                }
+            }
+        }
+    }
+
+    const ROTATE_COUNT: usize = 2;
+    let mut rotated = 0;
+    for dl in listing.iter().filter(|p| !p.dest.exists()) {
+        if rotated >= ROTATE_COUNT {
+            break;
+        }
         info!(
-            "Pixabay[{}]: downloading video {} in background...",
+            "Pixabay[{}]: rotating cache — downloading new video {}...",
             flavor_name, dl.video_id
         );
         match download_file(&dl.url, &dl.dest) {
             Ok(_) => {
                 info!("Pixabay: saved {}", dl.dest.display());
                 if let Ok(mut pl) = playlist.lock() {
-                    pl.push(dl.dest);
+                    pl.push(dl.dest.clone());
+                    if pl.len() > MAX_CACHED_VIDEOS {
+                        let evicted = pl.remove(0);
+                        info!("Pixabay[{}]: evicting old video {}", flavor_name, evicted.display());
+                        std::fs::remove_file(&evicted).ok();
+                    }
                 }
+                rotated += 1;
             }
             Err(e) => {
                 warn!(
@@ -404,28 +498,25 @@ fn pipeline_decode_loop(
     frame_tx: mpsc::SyncSender<Vec<u8>>,
     cmd_rx: mpsc::Receiver<DecoderCommand>,
 ) {
-    let mut idx = 0;
+    let mut rng = rand::rng();
     loop {
-        if should_stop(&cmd_rx) {
-            return;
-        }
-
-        let path = {
+        let order: Vec<PathBuf> = {
             let pl = playlist.lock().unwrap();
             if pl.is_empty() {
                 return;
             }
-            pl[idx % pl.len()].clone()
+            let mut snapshot = pl.clone();
+            snapshot.shuffle(&mut rng);
+            snapshot
         };
 
-        if !decode_video(&path, &frame_tx, &cmd_rx) {
-            return;
-        }
-
-        idx += 1;
-        let len = playlist.lock().unwrap().len();
-        if idx >= len && len > 0 {
-            idx = 0;
+        for path in &order {
+            if should_stop(&cmd_rx) {
+                return;
+            }
+            if !decode_video(path, &frame_tx, &cmd_rx) {
+                return;
+            }
         }
     }
 }

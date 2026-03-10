@@ -47,8 +47,7 @@ fn half_stars(score: u32) -> u32 {
 fn ensure_celebration_sound() -> std::path::PathBuf {
     let cache = dirs::home_dir()
         .expect("no home dir")
-        .join(".cache")
-        .join("nightingale")
+        .join(".nightingale")
         .join("sounds");
     let _ = std::fs::create_dir_all(&cache);
     let path = cache.join("celebration.wav");
@@ -196,7 +195,7 @@ pub fn spawn_results_overlay(
 
     let celebration_path = ensure_celebration_sound();
     if let Ok(canon) = celebration_path.canonicalize() {
-        let handle = asset_server.load(canon.to_string_lossy().to_string());
+        let handle = asset_server.load_override(canon.to_string_lossy().to_string());
         audio.play(handle);
     }
 

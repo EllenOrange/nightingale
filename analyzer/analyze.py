@@ -7,8 +7,8 @@ Usage:
     python analyze.py <audio_path> <output_dir> [--hash <file_hash>]
 
 Outputs (in output_dir):
-    {hash}_instrumental.wav
-    {hash}_vocals.wav
+    {hash}_instrumental.ogg
+    {hash}_vocals.ogg
     {hash}_transcript.json
 
 Progress protocol (parsed by Rust app):
@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -36,6 +37,15 @@ def compute_hash(path: str) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _convert_to_ogg(src_wav, dest_ogg):
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", src_wav, "-c:a", "libvorbis", "-q:a", "6", "-v", "error", dest_ogg],
+        check=True,
+    )
+    if os.path.isfile(dest_ogg):
+        os.remove(src_wav)
 
 
 def main():
@@ -70,19 +80,26 @@ def main():
     progress(2, f"Using device: {device}")
 
     # --- Stem separation ---
-    final_vocals = os.path.join(output_dir, f"{file_hash}_vocals.wav")
-    final_instrumental = os.path.join(output_dir, f"{file_hash}_instrumental.wav")
+    final_vocals_ogg = os.path.join(output_dir, f"{file_hash}_vocals.ogg")
+    final_instrumental_ogg = os.path.join(output_dir, f"{file_hash}_instrumental.ogg")
+    final_vocals_wav = os.path.join(output_dir, f"{file_hash}_vocals.wav")
+    final_instrumental_wav = os.path.join(output_dir, f"{file_hash}_instrumental.wav")
 
-    if os.path.isfile(final_vocals) and os.path.isfile(final_instrumental):
+    if os.path.isfile(final_vocals_ogg) and os.path.isfile(final_instrumental_ogg):
         progress(50, "Stems already cached, skipping separation")
-        vocals_path = final_vocals
+        vocals_path = final_vocals_ogg
+    elif os.path.isfile(final_vocals_wav) and os.path.isfile(final_instrumental_wav):
+        progress(50, "Converting legacy WAV stems to OGG...")
+        _convert_to_ogg(final_vocals_wav, final_vocals_ogg)
+        _convert_to_ogg(final_instrumental_wav, final_instrumental_ogg)
+        vocals_path = final_vocals_ogg
     else:
         with tempfile.TemporaryDirectory(prefix="nightingale_") as work_dir:
             vocals_path, instrumental_path = separate_stems(audio_path, work_dir, device)
             progress(92, "Saving stems to cache...")
-            shutil.move(vocals_path, final_vocals)
-            shutil.move(instrumental_path, final_instrumental)
-        vocals_path = final_vocals
+            _convert_to_ogg(vocals_path, final_vocals_ogg)
+            _convert_to_ogg(instrumental_path, final_instrumental_ogg)
+        vocals_path = final_vocals_ogg
 
     # --- Lyrics alignment or transcription ---
     if args.lyrics and os.path.isfile(args.lyrics):
