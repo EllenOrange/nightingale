@@ -68,9 +68,10 @@ if [ ! -f vendor-bin/uv ]; then
       exit 1
       ;;
   esac
-  tar -xzf /tmp/uv.tar.gz -C /tmp
-  find /tmp -maxdepth 3 -name 'uv' -not -name 'uvx' -type f -exec cp {} vendor-bin/uv \;
-  rm -rf /tmp/uv.tar.gz /tmp/uv-*/
+  mkdir -p /tmp/uvx
+  tar -xzf /tmp/uv.tar.gz -C /tmp/uvx
+  find /tmp/uvx -name 'uv' -not -name 'uvx' -type f -exec cp {} vendor-bin/uv \;
+  rm -rf /tmp/uv.tar.gz /tmp/uvx
   chmod +x vendor-bin/uv
   echo "uv downloaded"
 else
