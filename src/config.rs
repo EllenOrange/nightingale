@@ -65,6 +65,6 @@ impl AppConfig {
     }
 
     pub fn batch_size(&self) -> u32 {
-        self.batch_size.unwrap_or(8)
+        self.batch_size.unwrap_or(16)
     }
 }

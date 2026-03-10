@@ -125,7 +125,7 @@ pub struct ProfileLabelText;
 #[derive(Component)]
 pub struct ProfileNameLabel;
 
-use crate::scanner::metadata::AnalysisStatus;
+use crate::scanner::metadata::{AnalysisStatus, TranscriptSource};
 
 const FA_STAR: &str = "\u{f005}";
 const FA_STAR_HALF: &str = "\u{f5c0}";
@@ -184,7 +184,7 @@ pub fn build_song_card(
 
             let reanalyze_vis = if matches!(
                 song.analysis_status,
-                AnalysisStatus::Ready | AnalysisStatus::Failed(_)
+                AnalysisStatus::Ready(_) | AnalysisStatus::Failed(_)
             ) {
                 Visibility::Inherited
             } else {
@@ -277,7 +277,8 @@ fn spawn_mini_stars(
 
 fn badge_info<'a>(status: &AnalysisStatus, theme: &UiTheme) -> (&'a str, Color) {
     match status {
-        AnalysisStatus::Ready => ("READY", theme.badge_ready),
+        AnalysisStatus::Ready(TranscriptSource::Lyrics) => ("LYRICS", theme.badge_lyrics),
+        AnalysisStatus::Ready(TranscriptSource::Generated) => ("AI", theme.badge_ready),
         AnalysisStatus::NotAnalyzed => ("NOT ANALYZED", theme.badge_not_analyzed),
         AnalysisStatus::Queued => ("QUEUED", theme.badge_queued),
         AnalysisStatus::Analyzing => ("ANALYZING...", theme.badge_analyzing),

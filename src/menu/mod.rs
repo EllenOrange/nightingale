@@ -13,7 +13,7 @@ use bevy::prelude::*;
 
 use crate::analyzer::cache::CacheDir;
 use crate::analyzer::{AnalysisQueue, PlayTarget};
-use crate::scanner::metadata::{AnalysisStatus, SongLibrary};
+use crate::scanner::metadata::{AnalysisStatus, SongLibrary, TranscriptSource};
 use crate::profile::ProfileStore;
 use crate::states::AppState;
 use crate::ui::UiTheme;
@@ -271,7 +271,7 @@ fn build_main_area(
         let ready_count = library
             .songs
             .iter()
-            .filter(|s| s.analysis_status == AnalysisStatus::Ready)
+            .filter(|s| matches!(s.analysis_status, AnalysisStatus::Ready(_)))
             .count();
         main.spawn((
             StatsText,
@@ -425,7 +425,7 @@ fn activate_song(
         return;
     }
     match library.songs[idx].analysis_status {
-        AnalysisStatus::Ready => {
+        AnalysisStatus::Ready(_) => {
             commands.insert_resource(PlayTarget { song_index: idx });
             next_state.set(AppState::Playing);
         }
@@ -588,7 +588,8 @@ fn update_status_badges(
             continue;
         }
         let color = match &library.songs[badge.song_index].analysis_status {
-            AnalysisStatus::Ready => theme.badge_ready,
+            AnalysisStatus::Ready(TranscriptSource::Lyrics) => theme.badge_lyrics,
+            AnalysisStatus::Ready(TranscriptSource::Generated) => theme.badge_ready,
             AnalysisStatus::NotAnalyzed => theme.badge_not_analyzed,
             AnalysisStatus::Queued => theme.badge_queued,
             AnalysisStatus::Analyzing => theme.badge_analyzing,
@@ -602,7 +603,8 @@ fn update_status_badges(
             continue;
         }
         let new_text = match &library.songs[bt.song_index].analysis_status {
-            AnalysisStatus::Ready => "READY".into(),
+            AnalysisStatus::Ready(TranscriptSource::Lyrics) => "LYRICS".into(),
+            AnalysisStatus::Ready(TranscriptSource::Generated) => "AI".into(),
             AnalysisStatus::NotAnalyzed => "NOT ANALYZED".into(),
             AnalysisStatus::Queued => "QUEUED".into(),
             AnalysisStatus::Analyzing => {
@@ -621,7 +623,7 @@ fn update_status_badges(
         let ready_count = library
             .songs
             .iter()
-            .filter(|s| s.analysis_status == AnalysisStatus::Ready)
+            .filter(|s| matches!(s.analysis_status, AnalysisStatus::Ready(_)))
             .count();
         **stats = format!(
             "{} songs found · {} ready for karaoke",
@@ -654,7 +656,7 @@ fn update_status_badges(
         }
         *vis = if matches!(
             library.songs[btn.song_index].analysis_status,
-            AnalysisStatus::Ready | AnalysisStatus::Failed(_)
+            AnalysisStatus::Ready(_) | AnalysisStatus::Failed(_)
         ) {
             Visibility::Inherited
         } else {

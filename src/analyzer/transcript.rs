@@ -1,9 +1,15 @@
 use serde::{Deserialize, Serialize};
 
+fn default_source() -> String {
+    "generated".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transcript {
     pub language: String,
     pub segments: Vec<Segment>,
+    #[serde(default = "default_source")]
+    pub source: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

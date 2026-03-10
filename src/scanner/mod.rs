@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 use crate::analyzer::cache::CacheDir;
 use crate::states::AppState;
 use crate::ui::{self, UiTheme};
-use metadata::{AnalysisStatus, Song, SongLibrary};
+use metadata::{AnalysisStatus, Song, SongLibrary, TranscriptSource};
 
 pub struct ScannerPlugin;
 
@@ -147,11 +147,29 @@ pub fn scan_folder(folder: &Path, cache: &CacheDir) -> Vec<Song> {
     songs
 }
 
+fn read_transcript_source(cache: &CacheDir, hash: &str) -> TranscriptSource {
+    #[derive(serde::Deserialize)]
+    struct SourceOnly {
+        #[serde(default)]
+        source: Option<String>,
+    }
+    let path = cache.transcript_path(hash);
+    if let Ok(data) = std::fs::read_to_string(&path) {
+        if let Ok(parsed) = serde_json::from_str::<SourceOnly>(&data) {
+            if parsed.source.as_deref() == Some("lyrics") {
+                return TranscriptSource::Lyrics;
+            }
+        }
+    }
+    TranscriptSource::Generated
+}
+
 fn build_song(path: &Path, cache: &CacheDir) -> Result<Song, Box<dyn std::error::Error>> {
     let file_hash = compute_file_hash(path)?;
 
     let analysis_status = if cache.transcript_exists(&file_hash) {
-        AnalysisStatus::Ready
+        let source = read_transcript_source(cache, &file_hash);
+        AnalysisStatus::Ready(source)
     } else {
         AnalysisStatus::NotAnalyzed
     };

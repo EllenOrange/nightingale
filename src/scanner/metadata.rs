@@ -21,12 +21,18 @@ pub struct Song {
     pub analysis_status: AnalysisStatus,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TranscriptSource {
+    Lyrics,
+    Generated,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnalysisStatus {
     NotAnalyzed,
     Queued,
     Analyzing,
-    Ready,
+    Ready(TranscriptSource),
     Failed(String),
 }
 

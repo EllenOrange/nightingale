@@ -29,6 +29,10 @@ impl CacheDir {
         self.path.join(format!("{hash}_vocals.wav"))
     }
 
+    pub fn lyrics_path(&self, hash: &str) -> PathBuf {
+        self.path.join(format!("{hash}_lyrics.json"))
+    }
+
     pub fn transcript_exists(&self, hash: &str) -> bool {
         self.transcript_path(hash).is_file()
             && self.instrumental_path(hash).is_file()

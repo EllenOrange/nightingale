@@ -188,11 +188,13 @@ fn enter_playing(
     };
 
     let total_words: usize = transcript.segments.iter().map(|s| s.words.len()).sum();
+    let transcript_source = transcript.source.clone();
     info!(
-        "Loaded transcript: {} segments, {} words, lang={}",
+        "Loaded transcript: {} segments, {} words, lang={}, source={}",
         transcript.segments.len(),
         total_words,
-        transcript.language
+        transcript.language,
+        transcript_source,
     );
 
     transcript.split_long_segments(8);
@@ -356,10 +358,13 @@ fn enter_playing(
             },
         ))
         .with_children(|bar| {
+            let disclaimer = if transcript_source == "lyrics" {
+                "Timing is AI-generated and may not be perfectly accurate"
+            } else {
+                "Lyrics and timing are AI-generated and may not be perfectly accurate"
+            };
             bar.spawn((
-                Text::new(
-                    "Lyrics and timing are AI-generated and may not be perfectly accurate",
-                ),
+                Text::new(disclaimer),
                 TextFont {
                     font_size: 11.0,
                     ..default()

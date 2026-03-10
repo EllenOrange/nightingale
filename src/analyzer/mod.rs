@@ -11,7 +11,7 @@ use bevy::app::AppExit;
 use bevy::prelude::*;
 
 use cache::CacheDir;
-use crate::scanner::metadata::{AnalysisStatus, SongLibrary};
+use crate::scanner::metadata::{AnalysisStatus, Song, SongLibrary, TranscriptSource};
 
 pub struct AnalyzerPlugin;
 
@@ -107,17 +107,130 @@ fn parse_progress_line(line: &str) -> Option<(u32, String)> {
     Some((pct, msg))
 }
 
+fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
+    let title = song.display_title();
+    let artist = song.display_artist();
+    let duration = song.duration_secs.round() as u64;
+
+    if title.is_empty() || artist == "Unknown Artist" {
+        return None;
+    }
+
+    let agent = ureq::Agent::new_with_defaults();
+
+    let try_get = |album: &str| -> Option<serde_json::Value> {
+        let mut url = format!(
+            "https://lrclib.net/api/get?track_name={}&artist_name={}&duration={}",
+            urlencoding::encode(title),
+            urlencoding::encode(artist),
+            duration,
+        );
+        if !album.is_empty() {
+            url.push_str(&format!("&album_name={}", urlencoding::encode(album)));
+        }
+
+        let resp = agent
+            .get(&url)
+            .header("User-Agent", "Nightingale/1.0")
+            .call()
+            .ok()?;
+        if resp.status() != 200 {
+            return None;
+        }
+        resp.into_body().read_json().ok()
+    };
+
+    let try_search = || -> Option<serde_json::Value> {
+        let url = format!(
+            "https://lrclib.net/api/search?track_name={}&artist_name={}",
+            urlencoding::encode(title),
+            urlencoding::encode(artist),
+        );
+        let resp = agent
+            .get(&url)
+            .header("User-Agent", "Nightingale/1.0")
+            .call()
+            .ok()?;
+        let results: Vec<serde_json::Value> = resp.into_body().read_json().ok()?;
+        results
+            .into_iter()
+            .filter(|r| {
+                r.get("syncedLyrics")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| !s.is_empty())
+                    || r.get("plainLyrics")
+                        .and_then(|v| v.as_str())
+                        .is_some_and(|s| !s.is_empty())
+            })
+            .min_by_key(|r| {
+                let d = r.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                ((d - song.duration_secs).abs() * 10.0) as i64
+            })
+    };
+
+    eprintln!("[lrclib] Searching: \"{title}\" by \"{artist}\" ({}s)", duration);
+
+    let record = try_get(&song.album)
+        .or_else(|| if !song.album.is_empty() { try_get("") } else { None })
+        .or_else(try_search);
+
+    let record = record?;
+
+    let plain_str = record
+        .get("plainLyrics")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+    let synced_str = record
+        .get("syncedLyrics")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+
+    let lines: Vec<String> = if let Some(plain) = plain_str {
+        plain.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+    } else if let Some(synced) = synced_str {
+        synced
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                line.find(']').map(|i| line[i + 1..].trim().to_string())
+            })
+            .filter(|t| !t.is_empty())
+            .collect()
+    } else {
+        return None;
+    };
+
+    if lines.is_empty() {
+        return None;
+    }
+
+    let lyrics_json = serde_json::json!({"lines": lines});
+
+    let out = cache.lyrics_path(&song.file_hash);
+    match std::fs::write(&out, serde_json::to_string_pretty(&lyrics_json).unwrap()) {
+        Ok(_) => {
+            eprintln!("[lrclib] Lyrics saved to {}", out.display());
+            Some(out)
+        }
+        Err(e) => {
+            eprintln!("[lrclib] Failed to write lyrics: {e}");
+            None
+        }
+    }
+}
+
 fn spawn_analyzer(
     song_path: PathBuf,
     cache_path: PathBuf,
     file_hash: String,
+    song: Song,
     whisper_model: String,
     beam_size: u32,
     batch_size: u32,
 ) -> (Arc<Mutex<ProgressInfo>>, Arc<AtomicU32>, std::thread::JoinHandle<()>) {
     let progress = Arc::new(Mutex::new(ProgressInfo {
         percent: 0,
-        message: "Starting analyzer...".into(),
+        message: "Searching for lyrics...".into(),
         finished: None,
     }));
     let child_pid = Arc::new(AtomicU32::new(0));
@@ -128,8 +241,16 @@ fn spawn_analyzer(
     let python = find_python();
 
     let thread_handle = std::thread::spawn(move || {
-        let child = Command::new(&python)
-            .arg(&script)
+        let cache = CacheDir { path: cache_path.clone() };
+        let lyrics_path = fetch_lrclib_lyrics(&song, &cache);
+
+        {
+            let mut p = progress_clone.lock().unwrap();
+            p.message = "Starting analyzer...".into();
+        }
+
+        let mut cmd = Command::new(&python);
+        cmd.arg(&script)
             .arg(&song_path)
             .arg(&cache_path)
             .arg("--hash")
@@ -139,7 +260,13 @@ fn spawn_analyzer(
             .arg("--beam-size")
             .arg(beam_size.to_string())
             .arg("--batch-size")
-            .arg(batch_size.to_string())
+            .arg(batch_size.to_string());
+
+        if let Some(ref lp) = lyrics_path {
+            cmd.arg("--lyrics").arg(lp);
+        }
+
+        let child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn();
@@ -238,6 +365,7 @@ fn process_queue(
         song.path.clone(),
         cache.path.clone(),
         song.file_hash.clone(),
+        song.clone(),
         config.whisper_model().to_string(),
         config.beam_size(),
         config.batch_size(),
@@ -280,7 +408,12 @@ fn poll_active_job(
 
     if success && cache.transcript_exists(&library.songs[song_index].file_hash) {
         info!("Analysis complete for: {}", library.songs[song_index].path.display());
-        library.songs[song_index].analysis_status = AnalysisStatus::Ready;
+        let hash = &library.songs[song_index].file_hash;
+        let source = match transcript::Transcript::load(&cache.transcript_path(hash)) {
+            Ok(t) if t.source == "lyrics" => TranscriptSource::Lyrics,
+            _ => TranscriptSource::Generated,
+        };
+        library.songs[song_index].analysis_status = AnalysisStatus::Ready(source);
     } else {
         error!("Analysis failed: {}", finished_info.message);
         library.songs[song_index].analysis_status =
