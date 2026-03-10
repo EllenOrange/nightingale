@@ -120,6 +120,15 @@ def find_vocal_gaps(audio, sr: int = 16000, min_silence: float = 0.3,
     return final
 
 
+def highpass_filter(audio, sr: int = 16000, cutoff_hz: float = 80.0):
+    """Apply a simple highpass filter to remove sub-bass rumble from stems."""
+    from scipy.signal import butter, sosfilt
+    sos = butter(5, cutoff_hz, btype="high", fs=sr, output="sos")
+    filtered = sosfilt(sos, audio.astype(np.float64)).astype(audio.dtype)
+    print(f"[nightingale:LOG] Applied highpass filter at {cutoff_hz}Hz", flush=True)
+    return filtered
+
+
 def normalize_rms(audio, target_rms: float = 0.1, max_gain: float = 10.0):
     """Boost audio volume to a target RMS level. Returns normalized audio."""
     raw_rms = float(np.sqrt(np.mean(audio.astype(np.float64) ** 2)))

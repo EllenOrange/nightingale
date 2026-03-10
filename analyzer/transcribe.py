@@ -2,7 +2,7 @@
 
 import re
 
-from audio import detect_vocal_region, normalize_rms
+from audio import detect_vocal_region, highpass_filter, normalize_rms
 from hallucination import is_hallucination, remove_hallucinated_words
 from language import detect_language_multiwindow
 from whisper_compat import progress
@@ -46,6 +46,7 @@ def transcribe_vocals(
     trimmed_duration = len(audio) / 16000
     print(f"[nightingale:LOG] Trimmed to vocal region: {vocal_start:.1f}s-{vocal_end:.1f}s ({trimmed_duration:.1f}s)", flush=True)
 
+    audio = highpass_filter(audio)
     audio = normalize_rms(audio)
     print(f"[nightingale:LOG] Settings: model={model_name}, beam_size={beam_size}, batch_size={batch_size}", flush=True)
 
@@ -79,6 +80,14 @@ def transcribe_vocals(
     no_vad_asr = {
         "beam_size": beam_size,
         "initial_prompt": asr_options["initial_prompt"],
+        "temperatures": [0],
+        "condition_on_previous_text": False,
+        "compression_ratio_threshold": 10,
+        "log_prob_threshold": -10.0,
+        "no_speech_threshold": 0.0,
+        "repetition_penalty": 1,
+        "no_repeat_ngram_size": 0,
+        "suppress_blank": False,
     }
 
     model = whisperx.load_model(
@@ -86,7 +95,7 @@ def transcribe_vocals(
         task="transcribe", language=language,
         asr_options=no_vad_asr,
     )
-    print(f"[nightingale:LOG] Model loaded with lang={language} (VAD disabled, full audio)", flush=True)
+    print(f"[nightingale:LOG] Model loaded with lang={language} (VAD disabled, deterministic, no context carry, filters relaxed)", flush=True)
 
     progress(60, "Transcribing vocals...")
     result = model.transcribe(
