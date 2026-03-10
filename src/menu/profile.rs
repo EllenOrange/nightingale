@@ -461,10 +461,11 @@ fn despawn_overlay(commands: &mut Commands, overlay_query: &Query<Entity, With<P
 
 pub fn handle_profile_click(
     mut commands: Commands,
-    mut interaction_query: Query<
-        (&Interaction, &ProfileButton, &mut BackgroundColor, &mut BorderColor),
+    interaction_events: Query<
+        (&Interaction, &ProfileButton),
         Changed<Interaction>,
     >,
+    mut btn_styles: Query<(&ProfileButton, &mut BackgroundColor, &mut BorderColor)>,
     mut profiles: ResMut<ProfileStore>,
     input_state: Option<Res<ProfileInputState>>,
     overlay_query: Query<Entity, With<ProfileOverlay>>,
@@ -536,10 +537,9 @@ pub fn handle_profile_click(
             }
             return;
         }
-
     }
 
-    for (interaction, btn, mut bg, mut border) in &mut interaction_query {
+    for (interaction, btn) in &interaction_events {
         match interaction {
             Interaction::Pressed => {
                 match btn.action {
@@ -610,21 +610,24 @@ pub fn handle_profile_click(
             }
             Interaction::None => {}
         }
+    }
 
-        let focus_idx = profile_focus.as_ref().map(|pf| pf.0);
+    let focus_idx = profile_focus.as_ref().map(|pf| pf.0);
+    let profile_count = profiles.profiles.len();
+    for (btn, mut bg, mut border) in &mut btn_styles {
         let btn_focus_idx = match btn.action {
             ProfileAction::Switch(i) => Some(i),
-            ProfileAction::NewProfile => Some(profiles.profiles.len()),
-            ProfileAction::Close => Some(profiles.profiles.len() + 1),
+            ProfileAction::NewProfile => Some(profile_count),
+            ProfileAction::Close => Some(profile_count + 1),
             _ => None,
         };
         let is_focused = focus_idx.is_some() && btn_focus_idx == focus_idx;
-        *border = if is_focused {
+        border.set_if_neq(if is_focused {
             BorderColor::all(theme.accent)
         } else {
             BorderColor::all(Color::NONE)
-        };
-        *bg = match btn.action {
+        });
+        let target_bg = match btn.action {
             ProfileAction::Switch(_) | ProfileAction::Delete(_) => {
                 if is_focused {
                     BackgroundColor(theme.popup_btn_hover)
@@ -642,6 +645,7 @@ pub fn handle_profile_click(
                 }
             }
         };
+        bg.set_if_neq(target_bg);
     }
 }
 

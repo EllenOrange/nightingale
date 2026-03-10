@@ -510,12 +510,14 @@ pub fn handle_pause_input(
     nav: Res<crate::input::NavInput>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
-    mut continue_query: Query<
-        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+    continue_events: Query<&Interaction, (With<ContinueButton>, Changed<Interaction>)>,
+    exit_events: Query<&Interaction, (With<ExitToMenuButton>, Changed<Interaction>)>,
+    mut continue_style: Query<
+        (&mut BackgroundColor, &mut BorderColor),
         (With<ContinueButton>, Without<ExitToMenuButton>),
     >,
-    mut exit_query: Query<
-        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+    mut exit_style: Query<
+        (&mut BackgroundColor, &mut BorderColor),
         (With<ExitToMenuButton>, Without<ContinueButton>),
     >,
     overlay_query: Query<Entity, With<PauseOverlay>>,
@@ -553,7 +555,7 @@ pub fn handle_pause_input(
         }
     }
 
-    for (interaction, mut bg, mut border) in &mut continue_query {
+    for interaction in &continue_events {
         match interaction {
             Interaction::Pressed => {
                 for entity in &overlay_query {
@@ -563,6 +565,7 @@ pub fn handle_pause_input(
                 if let Some(karaoke) = &karaoke {
                     super::audio::resume_audio(karaoke, &mut audio_instances);
                 }
+                return;
             }
             Interaction::Hovered => {
                 if let Some(ref mut pf) = pause_focus {
@@ -571,17 +574,9 @@ pub fn handle_pause_input(
             }
             Interaction::None => {}
         }
-        let focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 0);
-        if focused {
-            *bg = BackgroundColor(theme.accent_hover);
-            *border = BorderColor::all(theme.accent);
-        } else {
-            *bg = BackgroundColor(theme.accent);
-            *border = BorderColor::all(Color::NONE);
-        }
     }
 
-    for (interaction, mut bg, mut border) in &mut exit_query {
+    for interaction in &exit_events {
         match interaction {
             Interaction::Pressed => {
                 for entity in &overlay_query {
@@ -589,6 +584,7 @@ pub fn handle_pause_input(
                 }
                 commands.remove_resource::<PauseFocus>();
                 next_state.set(AppState::Menu);
+                return;
             }
             Interaction::Hovered => {
                 if let Some(ref mut pf) = pause_focus {
@@ -597,13 +593,33 @@ pub fn handle_pause_input(
             }
             Interaction::None => {}
         }
-        let focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 1);
-        if focused {
-            *bg = BackgroundColor(theme.popup_btn_hover);
-            *border = BorderColor::all(theme.accent);
+    }
+
+    if let Ok((mut bg, mut border)) = continue_style.single_mut() {
+        let focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 0);
+        bg.set_if_neq(if focused {
+            BackgroundColor(theme.accent_hover)
         } else {
-            *bg = BackgroundColor(theme.popup_btn);
-            *border = BorderColor::all(Color::NONE);
-        }
+            BackgroundColor(theme.accent)
+        });
+        border.set_if_neq(if focused {
+            BorderColor::all(theme.accent)
+        } else {
+            BorderColor::all(Color::NONE)
+        });
+    }
+
+    if let Ok((mut bg, mut border)) = exit_style.single_mut() {
+        let focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 1);
+        bg.set_if_neq(if focused {
+            BackgroundColor(theme.popup_btn_hover)
+        } else {
+            BackgroundColor(theme.popup_btn)
+        });
+        border.set_if_neq(if focused {
+            BorderColor::all(theme.accent)
+        } else {
+            BorderColor::all(Color::NONE)
+        });
     }
 }

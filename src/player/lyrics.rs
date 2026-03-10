@@ -92,9 +92,8 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
                 wrapper.spawn((
                     CurrentLine,
                     Node {
-                        max_width: Val::Vw(80.0),
                         flex_direction: FlexDirection::Row,
-                        flex_wrap: FlexWrap::Wrap,
+                        flex_wrap: FlexWrap::NoWrap,
                         flex_shrink: 0.0,
                         justify_content: JustifyContent::Center,
                         column_gap: Val::Px(8.0),
@@ -116,7 +115,7 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
                 NextLine,
                 Node {
                     flex_direction: FlexDirection::Row,
-                    flex_wrap: FlexWrap::Wrap,
+                    flex_wrap: FlexWrap::NoWrap,
                     flex_shrink: 0.0,
                     justify_content: JustifyContent::Center,
                     column_gap: Val::Px(6.0),

@@ -368,13 +368,15 @@ fn dispatch_settings_action(
 
 pub fn handle_settings_click(
     mut commands: Commands,
-    mut bg_queries: ParamSet<(
-        Query<
-            (&Interaction, &SettingsButton, &mut BackgroundColor),
-            Changed<Interaction>,
-        >,
-        Query<(&SettingsRow, &mut BackgroundColor, &mut BorderColor)>,
-    )>,
+    interaction_events: Query<
+        (&Interaction, &SettingsButton),
+        Changed<Interaction>,
+    >,
+    mut row_styles: Query<(&SettingsRow, &mut BackgroundColor, &mut BorderColor)>,
+    mut btn_styles: Query<
+        (&Interaction, &SettingsButton, &mut BackgroundColor),
+        Without<SettingsRow>,
+    >,
     mut config: ResMut<crate::config::AppConfig>,
     overlay_query: Query<Entity, With<SettingsOverlay>>,
     mut value_texts: Query<(&SettingsValueText, &mut Text)>,
@@ -433,24 +435,9 @@ pub fn handle_settings_click(
                 return;
             }
         }
-
-        let any_nav = nav.up || nav.down || nav.left || nav.right || nav.confirm;
-
-        if any_nav {
-            let focus_idx = sf.0;
-            for (row, mut bg, mut border) in &mut bg_queries.p1() {
-                if row.0 == focus_idx {
-                    *bg = BackgroundColor(theme.popup_btn_hover);
-                    *border = BorderColor::all(theme.accent);
-                } else {
-                    *bg = BackgroundColor(theme.popup_btn);
-                    *border = BorderColor::all(Color::NONE);
-                }
-            }
-        }
     }
 
-    for (interaction, settings_btn, mut bg) in &mut bg_queries.p0() {
+    for (interaction, settings_btn) in &interaction_events {
         match interaction {
             Interaction::Pressed => {
                 dispatch_settings_action(
@@ -463,6 +450,7 @@ pub fn handle_settings_click(
                 );
                 if settings_btn.action == SettingsAction::Close {
                     commands.remove_resource::<SettingsFocus>();
+                    return;
                 }
             }
             Interaction::Hovered => {
@@ -477,34 +465,35 @@ pub fn handle_settings_click(
                 if let (Some(sf), Some(row)) = (&mut settings_focus, row_for_action) {
                     sf.0 = row;
                 }
-                *bg = match settings_btn.action {
-                    SettingsAction::RestoreDefaults | SettingsAction::Close => {
-                        BackgroundColor(theme.popup_btn_hover)
-                    }
-                    _ => BackgroundColor(theme.accent),
-                };
             }
-            Interaction::None => {
-                *bg = match settings_btn.action {
-                    SettingsAction::RestoreDefaults | SettingsAction::Close => {
-                        BackgroundColor(theme.popup_btn)
-                    }
-                    _ => BackgroundColor(theme.popup_btn_hover),
-                };
-            }
+            Interaction::None => {}
         }
+    }
+
+    for (interaction, _btn, mut bg) in &mut btn_styles {
+        let target = match interaction {
+            Interaction::Hovered | Interaction::Pressed => BackgroundColor(theme.accent),
+            Interaction::None => BackgroundColor(theme.popup_btn_hover),
+        };
+        bg.set_if_neq(target);
     }
 
     if let Some(ref sf) = settings_focus {
         let focus_idx = sf.0;
-        for (row, mut bg, mut border) in &mut bg_queries.p1() {
-            if row.0 == focus_idx {
-                *bg = BackgroundColor(theme.popup_btn_hover);
-                *border = BorderColor::all(theme.accent);
+        for (row, mut bg, mut border) in &mut row_styles {
+            let focused = row.0 == focus_idx;
+            let target_bg = if focused {
+                BackgroundColor(theme.popup_btn_hover)
             } else {
-                *bg = BackgroundColor(theme.popup_btn);
-                *border = BorderColor::all(Color::NONE);
-            }
+                BackgroundColor(theme.popup_btn)
+            };
+            let target_border = if focused {
+                BorderColor::all(theme.accent)
+            } else {
+                BorderColor::all(Color::NONE)
+            };
+            bg.set_if_neq(target_bg);
+            border.set_if_neq(target_border);
         }
     }
 }

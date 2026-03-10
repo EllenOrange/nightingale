@@ -518,12 +518,14 @@ pub fn handle_exit_input(
     nav: Res<crate::input::NavInput>,
     mut exit: MessageWriter<AppExit>,
     overlay_query: Query<Entity, With<ExitOverlay>>,
-    mut cancel_query: Query<
-        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+    cancel_events: Query<&Interaction, (With<ExitCancelButton>, Changed<Interaction>)>,
+    confirm_events: Query<&Interaction, (With<ExitConfirmButton>, Changed<Interaction>)>,
+    mut cancel_style: Query<
+        (&mut BackgroundColor, &mut BorderColor),
         (With<ExitCancelButton>, Without<ExitConfirmButton>),
     >,
-    mut confirm_query: Query<
-        (&Interaction, &mut BackgroundColor, &mut BorderColor),
+    mut confirm_style: Query<
+        (&mut BackgroundColor, &mut BorderColor),
         (With<ExitConfirmButton>, Without<ExitCancelButton>),
     >,
     theme: Res<UiTheme>,
@@ -572,7 +574,7 @@ pub fn handle_exit_input(
         }
     }
 
-    for (interaction, mut bg, mut border) in &mut cancel_query {
+    for interaction in &cancel_events {
         match interaction {
             Interaction::Pressed => {
                 commands.entity(overlay_entity).despawn();
@@ -586,17 +588,9 @@ pub fn handle_exit_input(
             }
             Interaction::None => {}
         }
-        let focused = exit_focus.as_ref().map(|f| f.0) == Some(0);
-        if focused {
-            *bg = BackgroundColor(theme.accent_hover);
-            *border = BorderColor::all(theme.accent);
-        } else {
-            *bg = BackgroundColor(theme.accent);
-            *border = BorderColor::all(Color::NONE);
-        }
     }
 
-    for (interaction, mut bg, mut border) in &mut confirm_query {
+    for interaction in &confirm_events {
         match interaction {
             Interaction::Pressed => {
                 exit.write(AppExit::Success);
@@ -609,13 +603,33 @@ pub fn handle_exit_input(
             }
             Interaction::None => {}
         }
-        let focused = exit_focus.as_ref().map(|f| f.0) == Some(1);
-        if focused {
-            *bg = BackgroundColor(theme.popup_btn_hover);
-            *border = BorderColor::all(theme.accent);
+    }
+
+    if let Ok((mut bg, mut border)) = cancel_style.single_mut() {
+        let focused = exit_focus.as_ref().map(|f| f.0) == Some(0);
+        bg.set_if_neq(if focused {
+            BackgroundColor(theme.accent_hover)
         } else {
-            *bg = BackgroundColor(theme.popup_btn);
-            *border = BorderColor::all(Color::NONE);
-        }
+            BackgroundColor(theme.accent)
+        });
+        border.set_if_neq(if focused {
+            BorderColor::all(theme.accent)
+        } else {
+            BorderColor::all(Color::NONE)
+        });
+    }
+
+    if let Ok((mut bg, mut border)) = confirm_style.single_mut() {
+        let focused = exit_focus.as_ref().map(|f| f.0) == Some(1);
+        bg.set_if_neq(if focused {
+            BackgroundColor(theme.popup_btn_hover)
+        } else {
+            BackgroundColor(theme.popup_btn)
+        });
+        border.set_if_neq(if focused {
+            BorderColor::all(theme.accent)
+        } else {
+            BorderColor::all(Color::NONE)
+        });
     }
 }
