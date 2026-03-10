@@ -28,7 +28,7 @@ jobs:
             uv_url: https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz
             uv_extract: mkdir -p /tmp/uvx && tar -xzf uv_dl -C /tmp/uvx && find /tmp/uvx -name 'uv' -type f -exec cp {} vendor-bin/uv \;
 
-          - os: macos-15-large
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             artifact: nightingale
             ffmpeg_url: https://www.osxexperts.net/ffmpeg7intel.zip
