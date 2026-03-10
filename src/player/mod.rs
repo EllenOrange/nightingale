@@ -150,14 +150,16 @@ fn spawn_skip_button(parent: &mut ChildSpawnerCommands, label: &str, component: 
                     Val::Px(6.0),
                     Val::Px(6.0),
                 ),
+                border: UiRect::all(Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(6.0)),
                 ..default()
             },
+            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.4)),
             BackgroundColor(SKIP_BTN_BG),
         ))
         .with_children(|btn| {
             btn.spawn((
-                Text::new(label),
+                Text::new(format!("{label}  ⏎")),
                 TextFont {
                     font_size: 13.0,
                     ..default()

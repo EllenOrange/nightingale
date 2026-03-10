@@ -5,12 +5,16 @@ mod menu;
 mod player;
 pub mod profile;
 mod scanner;
+mod setup;
 mod states;
 pub mod ui;
+pub mod vendor;
+pub mod vendor_scripts;
 
 use bevy::asset::{AssetPlugin, UnapprovedPathMode, load_internal_binary_asset};
 use bevy::prelude::*;
 use bevy::window::WindowMode;
+use bevy_embedded_assets::{EmbeddedAssetPlugin, PluginMode};
 use bevy_kira_audio::AudioPlugin;
 
 use analyzer::cache::CacheDir;
@@ -24,6 +28,13 @@ use ui::UiTheme;
 fn main() {
     dotenvy::dotenv().ok();
 
+    let force_setup = std::env::args().any(|a| a == "--setup");
+    if force_setup {
+        vendor::reset();
+    }
+
+    let vendor_ready = vendor::is_ready();
+
     let mut app = App::new();
 
     let config = AppConfig::load();
@@ -34,6 +45,12 @@ fn main() {
     } else {
         WindowMode::Windowed
     };
+
+    app.add_plugins(EmbeddedAssetPlugin {
+        mode: PluginMode::ReplaceAndFallback {
+            path: "assets".into(),
+        },
+    });
 
     app.add_plugins(
         DefaultPlugins
@@ -85,13 +102,18 @@ fn main() {
         .add_systems(Startup, (setup_camera, update_ui_scale))
         .add_systems(Update, toggle_fullscreen)
         .add_systems(PreUpdate, update_ui_scale)
+        .add_plugins(setup::SetupPlugin)
         .add_plugins(scanner::ScannerPlugin)
         .add_plugins(analyzer::AnalyzerPlugin)
         .add_plugins(menu::MenuPlugin)
         .add_plugins(player::PlayerPlugin);
 
-    if has_saved_folder {
-        app.add_systems(Startup, auto_open_saved_folder);
+    if vendor_ready {
+        app.add_systems(Startup, skip_setup);
+    }
+
+    if has_saved_folder && vendor_ready {
+        app.add_systems(Startup, auto_open_saved_folder.after(skip_setup));
     }
 
     app.run();
@@ -99,6 +121,10 @@ fn main() {
 
 fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
+}
+
+fn skip_setup(mut next_state: ResMut<NextState<AppState>>) {
+    next_state.set(AppState::Menu);
 }
 
 fn auto_open_saved_folder(

@@ -39,9 +39,13 @@ def compute_hash(path: str) -> str:
     return h.hexdigest()
 
 
+def _ffmpeg_bin():
+    return os.environ.get("FFMPEG_PATH", "ffmpeg")
+
+
 def _convert_to_ogg(src_wav, dest_ogg):
     subprocess.run(
-        ["ffmpeg", "-y", "-i", src_wav, "-c:a", "libvorbis", "-q:a", "6", "-v", "error", dest_ogg],
+        [_ffmpeg_bin(), "-y", "-i", src_wav, "-c:a", "libvorbis", "-q:a", "6", "-v", "error", dest_ogg],
         check=True,
     )
     if os.path.isfile(dest_ogg):

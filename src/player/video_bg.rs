@@ -175,13 +175,14 @@ struct PendingDownload {
 }
 
 fn fetch_video_listing(flavor: VideoFlavor) -> Vec<PendingDownload> {
-    let api_key = match std::env::var("PIXABAY_API_KEY") {
-        Ok(k) if !k.is_empty() => k,
-        _ => {
-            warn!("PIXABAY_API_KEY not set, cannot fetch videos");
-            return vec![];
-        }
-    };
+    let api_key = option_env!("PIXABAY_API_KEY")
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("PIXABAY_API_KEY").ok())
+        .unwrap_or_default();
+    if api_key.is_empty() {
+        warn!("PIXABAY_API_KEY not set, cannot fetch videos");
+        return vec![];
+    }
 
     let mut rng = rand::rng();
 
@@ -432,7 +433,7 @@ fn decode_video(
 ) -> bool {
     info!("Video decoder: playing {}", path.display());
 
-    let result = Command::new("ffmpeg")
+    let result = Command::new(crate::vendor::ffmpeg_path())
         .args([
             "-i",
             path.to_str().unwrap_or(""),

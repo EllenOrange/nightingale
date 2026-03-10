@@ -1,10 +1,24 @@
 """Demucs stem separation: vocals + instrumental."""
 
 import os
+import subprocess
 
 import torch
 
 from whisper_compat import progress
+
+
+def _ensure_wav(audio_path: str, work_dir: str) -> str:
+    """Convert input audio to WAV if needed so torchaudio can load it."""
+    if audio_path.lower().endswith(".wav"):
+        return audio_path
+    wav_path = os.path.join(work_dir, "input.wav")
+    ffmpeg = os.environ.get("FFMPEG_PATH", "ffmpeg")
+    subprocess.run(
+        [ffmpeg, "-y", "-i", audio_path, "-ar", "44100", "-ac", "2", "-v", "error", wav_path],
+        check=True,
+    )
+    return wav_path
 
 
 def separate_stems(audio_path: str, work_dir: str, device: str) -> tuple[str, str]:
@@ -23,7 +37,8 @@ def separate_stems(audio_path: str, work_dir: str, device: str) -> tuple[str, st
     model.to(actual_device)
 
     progress(10, "Loading audio file...")
-    wav, sr = torchaudio.load(audio_path)
+    load_path = _ensure_wav(audio_path, work_dir)
+    wav, sr = torchaudio.load(load_path)
     wav = wav.to(actual_device)
 
     ref = wav.mean(0)

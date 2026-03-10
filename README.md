@@ -1,137 +1,187 @@
-# Nightingale — AI Karaoke from Any Song
+<p align="center">
+  <img src="assets/images/logo.png" alt="Nightingale" width="400">
+</p>
 
-Turn any music folder into a karaoke machine. Nightingale scans your library, separates vocals from instrumentals using AI, transcribes lyrics with word-level timestamps, and plays it all back with synchronized highlighting and dynamic shader backgrounds.
+<p align="center">
+  Karaoke from any song in your music library, powered by neural networks.
+</p>
 
-## Prerequisites
+---
 
-### System
+Nightingale scans your music folder, separates vocals from instrumentals with [Demucs](https://github.com/facebookresearch/demucs), transcribes lyrics with word-level timestamps via [WhisperX](https://github.com/m-bain/whisperX), and plays it all back with synchronized highlighting, pitch scoring, profiles, and dynamic backgrounds.
 
-| Dependency | Version | Why |
-|---|---|---|
-| **Rust** | 1.85+ (edition 2024) | Builds the Bevy app |
-| **Python** | 3.10+ | Runs the Demucs/WhisperX analyzer |
-| **ffmpeg** | any recent | Required by both Demucs and WhisperX |
+Ships as a single binary. No manual installation of Python, ffmpeg, or ML models required — everything is bootstrapped automatically on first launch.
 
-### Hardware
+## Features
 
-The Python analyzer uses PyTorch and will auto-detect the best available backend:
+🎤 **Stem Separation** — isolates vocals and instrumentals from any audio file using Demucs, with adjustable guide vocal volume
 
-| Backend | Device | Notes |
-|---|---|---|
-| **CUDA** | NVIDIA GPU | Fastest. Needs `torch` built with CUDA support. |
-| **MPS** | Apple Silicon (M1/M2/M3/M4) | Works on macOS. WhisperX falls back to CPU for alignment. |
-| **CPU** | Any | Slowest but always works. |
+📝 **Word-Level Lyrics** — automatic transcription with alignment, or fetched from [LRCLIB](https://lrclib.net) when available
 
-A song typically takes 2–5 minutes to analyze on GPU, 10–20 minutes on CPU.
+🎯 **Pitch Scoring** — real-time microphone input with pitch detection, star ratings, and per-song scoreboards
 
-## Setup
+👤 **Profiles** — create and switch between player profiles; scores are tracked per profile
 
-### 1. Clone and build the Rust app
+🌌 **6 Background Themes** — 5 GPU shader backgrounds (Plasma, Aurora, Waves, Nebula, Starfield) plus Pixabay video backgrounds with 5 flavors (Nature, Underwater, Space, City, Countryside)
 
-```bash
-git clone <repo-url> nightingale
-cd nightingale
-cargo build --release
-```
+🎮 **Gamepad Support** — full navigation and control via gamepad (D-pad, sticks, face buttons)
 
-### 2. Set up the Python analyzer
+📺 **Adaptive UI Scaling** — scales to any resolution including 4K TVs
 
-```bash
-cd analyzer
-./setup.sh
-```
+📦 **Self-Contained** — ffmpeg and uv are bundled in the binary; Python, PyTorch, and ML packages are installed to `~/.nightingale/vendor/` on first run
 
-This creates a virtualenv at `analyzer/.venv` and installs `demucs`, `whisperx`, `torch`, and `torchaudio`.
+## Quick start
 
-**NVIDIA GPU users**: if you need a specific CUDA version of PyTorch, install it manually before running `setup.sh`:
+Download the latest release for your platform from the [Releases](../../releases) page and run it. On first launch, Nightingale will set up its Python environment and download ML models — this takes a few minutes and shows a progress screen.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements.txt
-```
-
-### 3. Verify ffmpeg is installed
-
-```bash
-ffmpeg -version
-```
-
-If missing: `brew install ffmpeg` (macOS) or `sudo apt install ffmpeg` (Linux).
-
-## Running
-
-```bash
-cargo run --release
-```
-
-On launch you'll see a folder picker. Select the root of your music library (it scans recursively for `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma` files).
-
-After scanning, click any song to start analysis (first time only — results are cached). Once analysis finishes, karaoke playback begins automatically.
+Supported formats: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`.
 
 ## Controls
 
-| Key | Action |
+### Navigation
+
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| Move | Arrow keys | D-pad / Left stick |
+| Confirm / Select | Enter | A (South) |
+| Back / Cancel | Escape | B (East) / Start |
+| Switch panel | Tab | — |
+| Search songs | Type to filter | — |
+
+### Playback
+
+| Action | Key |
 |---|---|
-| **Click a song** | Analyze (if needed) and play |
-| **Type** | Search/filter songs by title or artist |
-| **Backspace** | Delete search character |
-| **ESC** (in menu) | Clear search |
-| **ESC** (in player) | Return to menu |
-| **G** | Toggle guide vocals on/off (30% volume) |
-| **+** / **-** | Adjust guide vocal volume |
-| **T** | Cycle background theme (Plasma / Aurora / Waves) |
+| Toggle guide vocals | G |
+| Guide volume up/down | + / - |
+| Cycle background theme | T |
+| Cycle video flavor | F |
+| Toggle microphone | M |
+| Next microphone | N |
+| Toggle fullscreen | F11 |
 
 ## How it works
 
 ```
-Music File (.mp3/.flac/...)
+Music file (.mp3/.flac/...)
         │
         ▼
   ┌─────────────┐
-  │   Demucs     │  ──▶  instrumental.wav + vocals.wav
+  │   Demucs     │  ──▶  vocals.ogg + instrumental.ogg
   │ (htdemucs)   │
   └─────────────┘
-        │ vocals.wav
+        │
         ▼
   ┌─────────────┐
-  │  WhisperX    │  ──▶  transcript.json (word-level timestamps)
+  │  LRCLIB      │  ──▶  Fetches synced lyrics if available
+  └─────────────┘
+        │
+        ▼
+  ┌─────────────┐
+  │  WhisperX    │  ──▶  Transcription + word-level alignment
   │ (large-v3)   │
   └─────────────┘
         │
         ▼
   ┌─────────────┐
   │  Bevy App    │  ──▶  Plays instrumental + synced lyrics
-  │  (Rust)      │       with dynamic shader backgrounds
+  │  (Rust)      │       with pitch scoring & backgrounds
   └─────────────┘
 ```
 
-Analysis results are cached at `~/.nightingale/cache/` using blake3 file hashes. Re-analyzing only happens if the source file changes.
+Analysis results are cached at `~/.nightingale/cache/` using blake3 file hashes. Re-analysis only happens if the source file changes or is manually triggered.
 
-## Project structure
+## Hardware
+
+The Python analyzer uses PyTorch and auto-detects the best backend:
+
+| Backend | Device | Notes |
+|---|---|---|
+| CUDA | NVIDIA GPU | Fastest |
+| MPS | Apple Silicon | macOS; WhisperX alignment falls back to CPU |
+| CPU | Any | Slowest but always works |
+
+A song typically takes 2–5 minutes on GPU, 10–20 minutes on CPU.
+
+## Data storage
+
+Everything lives under `~/.nightingale/`:
 
 ```
-nightingale/
-├── analyzer/
-│   ├── analyze.py          # Demucs + WhisperX pipeline
-│   ├── requirements.txt
-│   └── setup.sh            # Virtualenv bootstrap
-├── assets/
-│   └── shaders/            # WGSL fragment shaders for backgrounds
-│       ├── plasma.wgsl
-│       ├── aurora.wgsl
-│       └── waves.wgsl
-├── src/
-│   ├── main.rs             # Bevy app entry, folder picker
-│   ├── states.rs           # AppState enum
-│   ├── scanner/            # Folder scan + metadata (lofty)
-│   ├── analyzer/           # Python subprocess orchestrator + cache
-│   ├── menu/               # Song list UI with search
-│   └── player/             # Audio, lyrics sync, background shaders
-├── Cargo.toml
-└── README.md
+~/.nightingale/
+├── cache/              # Stems, transcripts, lyrics per song
+├── config.json         # App settings
+├── profiles.json       # Player profiles and scores
+├── videos/             # Cached Pixabay video backgrounds
+├── sounds/             # Sound effects (celebration)
+├── vendor/
+│   ├── ffmpeg          # Bundled ffmpeg binary
+│   ├── uv              # Bundled uv binary
+│   ├── python/         # Python 3.11 installed via uv
+│   ├── venv/           # Virtual environment with ML packages
+│   ├── analyzer/       # Embedded analyzer Python scripts
+│   └── .ready          # Marker indicating setup is complete
+└── models/
+    ├── torch/          # Demucs model cache
+    └── huggingface/    # WhisperX model cache
 ```
+
+### Video backgrounds
+
+Video backgrounds use the [Pixabay API](https://pixabay.com/api/docs/). The API key is embedded in release builds. For development, create a `.env` file at the project root:
+
+```
+PIXABAY_API_KEY=your_key_here
+```
+
+In CI, the key is provided via the `PIXABAY_API_KEY` secret. The local release script (`make-release.sh`) sources `.env` automatically.
+
+## Building from source
+
+### Prerequisites
+
+| Tool | Version |
+|---|---|
+| Rust | 1.85+ (edition 2024) |
+| Linux only | `libasound2-dev`, `libudev-dev`, `libwayland-dev`, `libxkbcommon-dev` |
+
+### Development build
+
+```bash
+git clone <repo-url> nightingale
+cd nightingale
+scripts/fetch-vendor-bin.sh   # Downloads ffmpeg + uv for your platform into vendor-bin/
+cargo build --release
+```
+
+The `build.rs` script creates placeholder files in `vendor-bin/` if the real binaries are missing, so `cargo build` always succeeds — but the resulting binary won't be able to bootstrap without real binaries embedded.
+
+### Local release
+
+```bash
+scripts/make-release.sh
+```
+
+Fetches vendor binaries (if needed), builds the release binary, and packages it into `nightingale-<target>.tar.gz`.
+
+### CLI flags
+
+| Flag | Description |
+|---|---|
+| `--setup` | Force re-run of the first-launch bootstrap |
+
+## CI/CD
+
+Pushing a tag matching `v*` triggers the [release workflow](.github/workflows/release.yml), which builds for:
+
+| Platform | Target |
+|---|---|
+| Linux x86_64 | `x86_64-unknown-linux-gnu` |
+| macOS ARM | `aarch64-apple-darwin` |
+| macOS Intel | `x86_64-apple-darwin` |
+| Windows x86_64 | `x86_64-pc-windows-msvc` |
+
+Each build fetches the correct platform-specific ffmpeg and uv binaries, embeds them via `include_bytes!`, and uploads the packaged archive to a GitHub Release.
 
 ## License
 

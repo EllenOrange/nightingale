@@ -70,30 +70,11 @@ impl AnalysisQueue {
 }
 
 fn find_analyzer_script() -> PathBuf {
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
-
-    let candidates = [
-        Some(PathBuf::from("analyzer/analyze.py")),
-        exe_dir.map(|d| d.join("analyzer/analyze.py")),
-    ];
-
-    for candidate in candidates.iter().flatten() {
-        if candidate.is_file() {
-            return candidate.clone();
-        }
-    }
-
-    PathBuf::from("analyzer/analyze.py")
+    crate::vendor::analyzer_dir().join("analyze.py")
 }
 
 fn find_python() -> String {
-    let venv_python = PathBuf::from("analyzer/.venv/bin/python");
-    if venv_python.is_file() {
-        return venv_python.to_string_lossy().to_string();
-    }
-    "python3".to_string()
+    crate::vendor::python_path().to_string_lossy().to_string()
 }
 
 fn parse_progress_line(line: &str) -> Option<(u32, String)> {
@@ -249,8 +230,24 @@ fn spawn_analyzer(
             p.message = "Starting analyzer...".into();
         }
 
+        let models = crate::vendor::models_dir();
+        let ffmpeg = crate::vendor::ffmpeg_path();
+        let ffmpeg_dir = ffmpeg.parent().unwrap_or(std::path::Path::new("."));
+        let path_env = if let Some(existing) = std::env::var_os("PATH") {
+            let mut paths = std::env::split_paths(&existing).collect::<Vec<_>>();
+            paths.insert(0, ffmpeg_dir.to_path_buf());
+            std::env::join_paths(paths).unwrap_or(existing)
+        } else {
+            ffmpeg_dir.as_os_str().to_os_string()
+        };
         let mut cmd = Command::new(&python);
-        cmd.arg(&script)
+        cmd.env("PATH", path_env)
+            .env("TORCH_HOME", models.join("torch"))
+            .env("HF_HOME", models.join("huggingface"))
+            .env("FFMPEG_PATH", &ffmpeg)
+            .env("PYTHONWARNINGS", "ignore")
+            .env("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+            .arg(&script)
             .arg(&song_path)
             .arg(&cache_path)
             .arg("--hash")

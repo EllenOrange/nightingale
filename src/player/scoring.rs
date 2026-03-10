@@ -64,7 +64,7 @@ const VOCALS_SAMPLE_RATE: u32 = 44100;
 pub fn load_vocals_buffer(path: &Path) -> Option<VocalsBuffer> {
     use std::process::{Command, Stdio};
 
-    let result = Command::new("ffmpeg")
+    let result = Command::new(crate::vendor::ffmpeg_path())
         .args([
             "-i",
             path.to_str().unwrap_or(""),
