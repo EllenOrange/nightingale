@@ -244,8 +244,8 @@ fn spawn_sidebar_button(
 
 pub fn handle_sidebar_click(
     mut commands: Commands,
-    mut interaction_query: Query<
-        (&Interaction, &SidebarButton, &mut BackgroundColor, &mut BorderColor),
+    interaction_query: Query<
+        (&Interaction, &SidebarButton),
         Changed<Interaction>,
     >,
     mut config: ResMut<crate::config::AppConfig>,
@@ -259,15 +259,14 @@ pub fn handle_sidebar_click(
     profiles: Res<ProfileStore>,
     mut next_state: ResMut<NextState<AppState>>,
     asset_server: Res<AssetServer>,
-    keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
     mut focus: ResMut<super::MenuFocus>,
 ) {
     if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
         return;
     }
 
-    if keyboard.just_pressed(KeyCode::Enter)
-        && focus.active
+    if nav.confirm
         && focus.panel == super::FocusPanel::Sidebar
         && focus.sidebar_index < super::SIDEBAR_ACTIONS.len()
     {
@@ -287,7 +286,7 @@ pub fn handle_sidebar_click(
         return;
     }
 
-    for (interaction, sidebar_btn, mut bg, mut border) in &mut interaction_query {
+    for (interaction, sidebar_btn) in &interaction_query {
         match interaction {
             Interaction::Pressed => {
                 execute_sidebar_action(
@@ -304,25 +303,15 @@ pub fn handle_sidebar_click(
                 );
             }
             Interaction::Hovered => {
-                focus.active = false;
-                *bg = BackgroundColor(theme.sidebar_btn_hover);
-                *border = BorderColor::all(theme.accent);
-            }
-            Interaction::None => {
-                let idx = super::SIDEBAR_ACTIONS
+                if let Some(idx) = super::SIDEBAR_ACTIONS
                     .iter()
-                    .position(|&a| a == sidebar_btn.action);
-                let is_focused = focus.active
-                    && focus.panel == super::FocusPanel::Sidebar
-                    && idx == Some(focus.sidebar_index);
-                if is_focused {
-                    *bg = BackgroundColor(theme.sidebar_btn_hover);
-                    *border = BorderColor::all(theme.accent);
-                } else {
-                    *bg = BackgroundColor(theme.sidebar_btn);
-                    *border = BorderColor::all(Color::NONE);
+                    .position(|&a| a == sidebar_btn.action)
+                {
+                    focus.panel = super::FocusPanel::Sidebar;
+                    focus.sidebar_index = idx;
                 }
             }
+            Interaction::None => {}
         }
     }
 }
@@ -526,6 +515,7 @@ fn spawn_exit_popup(commands: &mut Commands, theme: &UiTheme) {
 pub fn handle_exit_input(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
     mut exit: MessageWriter<AppExit>,
     overlay_query: Query<Entity, With<ExitOverlay>>,
     mut cancel_query: Query<
@@ -545,7 +535,7 @@ pub fn handle_exit_input(
     let overlay_entity = overlay_query.single();
 
     if overlay_entity.is_err() {
-        if keyboard.just_pressed(KeyCode::Escape)
+        if nav.back
             && menu_state.search_query.is_empty()
             && settings_query.is_empty()
             && profile_query.is_empty()
@@ -557,21 +547,20 @@ pub fn handle_exit_input(
 
     let overlay_entity = overlay_entity.unwrap();
 
-    if keyboard.just_pressed(KeyCode::Escape) {
+    if nav.back {
         commands.entity(overlay_entity).despawn();
         commands.remove_resource::<ExitFocus>();
         return;
     }
 
     if let Some(ref mut ef) = exit_focus {
-        if keyboard.just_pressed(KeyCode::ArrowUp) || keyboard.just_pressed(KeyCode::ArrowDown)
-            || keyboard.just_pressed(KeyCode::ArrowLeft) || keyboard.just_pressed(KeyCode::ArrowRight)
+        if nav.up || nav.down || nav.left || nav.right
             || keyboard.just_pressed(KeyCode::Tab)
         {
             ef.0 = 1 - ef.0;
         }
 
-        if keyboard.just_pressed(KeyCode::Enter) {
+        if nav.confirm {
             if ef.0 == 0 {
                 commands.entity(overlay_entity).despawn();
                 commands.remove_resource::<ExitFocus>();
@@ -583,8 +572,6 @@ pub fn handle_exit_input(
         }
     }
 
-    let focus_idx = exit_focus.map(|f| f.0);
-
     for (interaction, mut bg, mut border) in &mut cancel_query {
         match interaction {
             Interaction::Pressed => {
@@ -593,19 +580,19 @@ pub fn handle_exit_input(
                 return;
             }
             Interaction::Hovered => {
-                *bg = BackgroundColor(theme.accent_hover);
-                *border = BorderColor::all(theme.accent);
-            }
-            Interaction::None => {
-                let focused = focus_idx == Some(0);
-                if focused {
-                    *bg = BackgroundColor(theme.accent_hover);
-                    *border = BorderColor::all(theme.accent);
-                } else {
-                    *bg = BackgroundColor(theme.accent);
-                    *border = BorderColor::all(Color::NONE);
+                if let Some(ref mut ef) = exit_focus {
+                    ef.0 = 0;
                 }
             }
+            Interaction::None => {}
+        }
+        let focused = exit_focus.as_ref().map(|f| f.0) == Some(0);
+        if focused {
+            *bg = BackgroundColor(theme.accent_hover);
+            *border = BorderColor::all(theme.accent);
+        } else {
+            *bg = BackgroundColor(theme.accent);
+            *border = BorderColor::all(Color::NONE);
         }
     }
 
@@ -616,19 +603,19 @@ pub fn handle_exit_input(
                 return;
             }
             Interaction::Hovered => {
-                *bg = BackgroundColor(theme.popup_btn_hover);
-                *border = BorderColor::all(theme.accent);
-            }
-            Interaction::None => {
-                let focused = focus_idx == Some(1);
-                if focused {
-                    *bg = BackgroundColor(theme.popup_btn_hover);
-                    *border = BorderColor::all(theme.accent);
-                } else {
-                    *bg = BackgroundColor(theme.popup_btn);
-                    *border = BorderColor::all(Color::NONE);
+                if let Some(ref mut ef) = exit_focus {
+                    ef.0 = 1;
                 }
             }
+            Interaction::None => {}
+        }
+        let focused = exit_focus.as_ref().map(|f| f.0) == Some(1);
+        if focused {
+            *bg = BackgroundColor(theme.popup_btn_hover);
+            *border = BorderColor::all(theme.accent);
+        } else {
+            *bg = BackgroundColor(theme.popup_btn);
+            *border = BorderColor::all(Color::NONE);
         }
     }
 }

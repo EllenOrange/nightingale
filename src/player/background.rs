@@ -45,9 +45,11 @@ impl Plugin for BackgroundPlugin {
         .init_resource::<ActiveTheme>()
         .add_systems(
             Update,
-            tick_material_time
-                .run_if(in_state(AppState::Playing))
-                .run_if(super::no_player_overlay),
+            (
+                tick_material_time.run_if(super::no_player_overlay),
+                fit_shader_to_window,
+            )
+                .run_if(in_state(AppState::Playing)),
         );
     }
 }
@@ -131,7 +133,7 @@ pub fn spawn_background(
     }
 
     let mesh = meshes.add(Rectangle::new(1.0, 1.0));
-    let transform = Transform::from_scale(Vec3::new(3000.0, 2000.0, 1.0))
+    let transform = Transform::from_scale(Vec3::splat(4000.0))
         .with_translation(Vec3::new(0.0, 0.0, -10.0));
 
     match theme.index % ActiveTheme::theme_count() {
@@ -146,6 +148,17 @@ pub fn spawn_background(
 pub fn despawn_background(commands: &mut Commands, query: &Query<Entity, With<BackgroundQuad>>) {
     for entity in query.iter() {
         commands.entity(entity).despawn();
+    }
+}
+
+fn fit_shader_to_window(
+    windows: Query<&Window>,
+    mut bg_query: Query<&mut Transform, With<BackgroundQuad>>,
+) {
+    let Ok(window) = windows.single() else { return };
+    for mut transform in &mut bg_query {
+        let scale = window.width().max(window.height());
+        transform.scale = Vec3::new(scale, scale, 1.0);
     }
 }
 

@@ -10,9 +10,26 @@ use audio::KaraokeAudio;
 use bevy_kira_audio::AudioInstance;
 
 const PITCH_BUFFER_SIZE: usize = 200;
-pub const DISPLAY_WIDTH: f32 = 480.0;
-pub const DISPLAY_HEIGHT: f32 = 56.0;
-pub const DISPLAY_TOP_OFFSET: f32 = 55.0;
+const BASE_DISPLAY_WIDTH: f32 = 480.0;
+const BASE_DISPLAY_HEIGHT: f32 = 56.0;
+const BASE_DISPLAY_TOP_OFFSET: f32 = 55.0;
+const REFERENCE_HEIGHT: f32 = 720.0;
+
+pub fn display_scale(window_height: f32) -> f32 {
+    (window_height / REFERENCE_HEIGHT).max(1.0)
+}
+
+pub fn display_width(window_height: f32) -> f32 {
+    BASE_DISPLAY_WIDTH * display_scale(window_height)
+}
+
+pub fn display_height(window_height: f32) -> f32 {
+    BASE_DISPLAY_HEIGHT * display_scale(window_height)
+}
+
+pub fn display_top_offset(window_height: f32) -> f32 {
+    BASE_DISPLAY_TOP_OFFSET * display_scale(window_height)
+}
 const PUSH_INTERVAL: f64 = 0.02;
 const SMOOTHING: f32 = 0.55;
 
@@ -331,8 +348,12 @@ pub fn draw_pitch_waves(
     let Ok(window) = windows.single() else {
         return;
     };
-    let half_h = window.height() / 2.0;
-    let center_y = half_h - DISPLAY_TOP_OFFSET;
+    let wh = window.height();
+    let half_h = wh / 2.0;
+    let dw = display_width(wh);
+    let dh = display_height(wh);
+    let dto = display_top_offset(wh);
+    let center_y = half_h - dto;
     let len = state.ref_pitches.len();
     if len < 2 {
         return;
@@ -340,11 +361,11 @@ pub fn draw_pitch_waves(
 
     let semi_to_y = |semi: f32| -> f32 {
         let normalized = ((semi - 45.0) / 36.0).clamp(0.0, 1.0);
-        center_y - DISPLAY_HEIGHT / 2.0 + normalized * DISPLAY_HEIGHT
+        center_y - dh / 2.0 + normalized * dh
     };
 
-    let x_step = DISPLAY_WIDTH / (PITCH_BUFFER_SIZE as f32 - 1.0);
-    let x_start = -DISPLAY_WIDTH / 2.0;
+    let x_step = dw / (PITCH_BUFFER_SIZE as f32 - 1.0);
+    let x_start = -dw / 2.0;
     let buf_offset = PITCH_BUFFER_SIZE.saturating_sub(len);
     let x_for = |i: usize| x_start + (buf_offset + i) as f32 * x_step;
     let age_alpha = |i: usize| {

@@ -31,7 +31,6 @@ pub struct MenuFocus {
     pub panel: FocusPanel,
     pub song_index: usize,
     pub sidebar_index: usize,
-    pub active: bool,
 }
 
 impl Default for MenuFocus {
@@ -40,7 +39,6 @@ impl Default for MenuFocus {
             panel: FocusPanel::SongList,
             song_index: 0,
             sidebar_index: 0,
-            active: false,
         }
     }
 }
@@ -103,6 +101,10 @@ impl Plugin for MenuPlugin {
                 Update,
                 (
                     handle_menu_nav
+                        .after(handle_song_click)
+                        .after(sidebar::handle_sidebar_click),
+                    apply_menu_focus_styling
+                        .after(handle_menu_nav)
                         .after(handle_song_click)
                         .after(sidebar::handle_sidebar_click),
                     scroll_to_focused.after(handle_menu_nav),
@@ -364,52 +366,36 @@ fn build_empty_state(parent: &mut ChildSpawnerCommands, theme: &UiTheme) {
 
 fn handle_song_click(
     mut commands: Commands,
-    mut interaction_query: Query<
-        (&Interaction, &SongCard, &mut BackgroundColor, &mut BorderColor),
+    interaction_query: Query<
+        (&Interaction, &SongCard),
         Changed<Interaction>,
     >,
     mut library: ResMut<SongLibrary>,
     mut next_state: ResMut<NextState<AppState>>,
     mut queue: ResMut<AnalysisQueue>,
-    theme: Res<UiTheme>,
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
     exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
     mut focus: ResMut<MenuFocus>,
-    keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
 ) {
     if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
         return;
     }
-    for (interaction, song_card, mut bg, mut border) in &mut interaction_query {
+    for (interaction, song_card) in &interaction_query {
         match interaction {
             Interaction::Pressed => {
                 activate_song(song_card.song_index, &mut commands, &mut library, &mut next_state, &mut queue);
             }
             Interaction::Hovered => {
-                focus.active = false;
-                *bg = BackgroundColor(theme.card_hover);
-                *border = BorderColor::all(theme.accent);
+                focus.panel = FocusPanel::SongList;
+                focus.song_index = song_card.song_index;
             }
-            Interaction::None => {
-                let is_focused = focus.active
-                    && focus.panel == FocusPanel::SongList
-                    && song_card.song_index == focus.song_index;
-                if is_focused {
-                    *bg = BackgroundColor(theme.card_hover);
-                    *border = BorderColor::all(theme.accent);
-                } else {
-                    *bg = BackgroundColor(theme.card_bg);
-                    *border = BorderColor::all(Color::NONE);
-                }
-            }
+            Interaction::None => {}
         }
     }
 
-    if keyboard.just_pressed(KeyCode::Enter)
-        && focus.active
-        && focus.panel == FocusPanel::SongList
-    {
+    if nav.confirm && focus.panel == FocusPanel::SongList {
         activate_song(focus.song_index, &mut commands, &mut library, &mut next_state, &mut queue);
     }
 }
@@ -562,7 +548,7 @@ fn handle_search_input(
         }
     }
 
-    if focus.active && focus.panel == FocusPanel::SongList && !current_still_visible {
+    if focus.panel == FocusPanel::SongList && !current_still_visible {
         if let Some(idx) = first_visible {
             focus.song_index = idx;
         }
@@ -738,19 +724,12 @@ fn on_scroll_handler(
 
 fn handle_menu_nav(
     keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
     mut focus: ResMut<MenuFocus>,
-    mut card_query: Query<
-        (&SongCard, &Node, &Interaction, &mut BackgroundColor, &mut BorderColor),
-        Without<SidebarButton>,
-    >,
-    mut sidebar_query: Query<
-        (&SidebarButton, &Interaction, &mut BackgroundColor, &mut BorderColor),
-        Without<SongCard>,
-    >,
+    card_query: Query<(&SongCard, &Node), Without<SidebarButton>>,
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
     exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
-    theme: Res<UiTheme>,
     time: Res<Time>,
     mut nav_repeat: ResMut<NavRepeat>,
 ) {
@@ -758,10 +737,8 @@ fn handle_menu_nav(
         return;
     }
 
-    let ud_just = keyboard.just_pressed(KeyCode::ArrowUp)
-        || keyboard.just_pressed(KeyCode::ArrowDown);
-    let ud_held = keyboard.pressed(KeyCode::ArrowUp)
-        || keyboard.pressed(KeyCode::ArrowDown);
+    let ud_just = nav.up || nav.down;
+    let ud_held = nav.up_held || nav.down_held;
 
     let mut ud_step = false;
     if ud_just {
@@ -779,18 +756,16 @@ fn handle_menu_nav(
     }
 
     let any_nav = ud_step
-        || keyboard.just_pressed(KeyCode::ArrowLeft)
-        || keyboard.just_pressed(KeyCode::ArrowRight)
+        || nav.left
+        || nav.right
         || keyboard.just_pressed(KeyCode::Tab);
     if !any_nav {
         return;
     }
 
-    focus.active = true;
-
-    if keyboard.just_pressed(KeyCode::ArrowLeft) {
+    if nav.left {
         focus.panel = FocusPanel::Sidebar;
-    } else if keyboard.just_pressed(KeyCode::ArrowRight) {
+    } else if nav.right {
         focus.panel = FocusPanel::SongList;
     } else if keyboard.just_pressed(KeyCode::Tab) {
         focus.panel = if focus.panel == FocusPanel::SongList {
@@ -800,16 +775,16 @@ fn handle_menu_nav(
         };
     }
 
-    let step_down = ud_step && keyboard.pressed(KeyCode::ArrowDown);
-    let step_up = ud_step && keyboard.pressed(KeyCode::ArrowUp);
+    let step_down = ud_step && nav.down_held;
+    let step_up = ud_step && nav.up_held;
 
     if step_down || step_up {
         match focus.panel {
             FocusPanel::SongList => {
                 let mut visible: Vec<usize> = card_query
                     .iter()
-                    .filter(|(_, node, _, _, _)| node.display != Display::None)
-                    .map(|(card, _, _, _, _)| card.song_index)
+                    .filter(|(_, node)| node.display != Display::None)
+                    .map(|(card, _)| card.song_index)
                     .collect();
                 visible.sort();
 
@@ -843,33 +818,49 @@ fn handle_menu_nav(
         }
     }
 
-    for (card, _, interaction, mut bg, mut border) in &mut card_query {
-        if *interaction != Interaction::None {
-            continue;
-        }
+}
+
+fn apply_menu_focus_styling(
+    focus: Res<MenuFocus>,
+    mut card_query: Query<
+        (&SongCard, &mut BackgroundColor, &mut BorderColor),
+        Without<SidebarButton>,
+    >,
+    mut sidebar_query: Query<
+        (&SidebarButton, &mut BackgroundColor, &mut BorderColor),
+        Without<SongCard>,
+    >,
+    theme: Res<UiTheme>,
+    overlay_query: Query<(), With<SettingsOverlay>>,
+    profile_overlay_query: Query<(), With<ProfileOverlay>>,
+    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
+) {
+    if !focus.is_changed() && !theme.is_changed() {
+        return;
+    }
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
+        return;
+    }
+    for (card, mut bg, mut border) in &mut card_query {
         let is_focused =
             focus.panel == FocusPanel::SongList && card.song_index == focus.song_index;
         if is_focused {
-            *bg = BackgroundColor(theme.card_hover);
-            *border = BorderColor::all(theme.accent);
+            bg.set_if_neq(BackgroundColor(theme.card_hover));
+            border.set_if_neq(BorderColor::all(theme.accent));
         } else {
-            *bg = BackgroundColor(theme.card_bg);
-            *border = BorderColor::all(Color::NONE);
+            bg.set_if_neq(BackgroundColor(theme.card_bg));
+            border.set_if_neq(BorderColor::all(Color::NONE));
         }
     }
-
-    for (btn, interaction, mut bg, mut border) in &mut sidebar_query {
-        if *interaction != Interaction::None {
-            continue;
-        }
+    for (btn, mut bg, mut border) in &mut sidebar_query {
         let idx = SIDEBAR_ACTIONS.iter().position(|&a| a == btn.action);
         let is_focused = focus.panel == FocusPanel::Sidebar && idx == Some(focus.sidebar_index);
         if is_focused {
-            *bg = BackgroundColor(theme.sidebar_btn_hover);
-            *border = BorderColor::all(theme.accent);
+            bg.set_if_neq(BackgroundColor(theme.sidebar_btn_hover));
+            border.set_if_neq(BorderColor::all(theme.accent));
         } else {
-            *bg = BackgroundColor(theme.sidebar_btn);
-            *border = BorderColor::all(Color::NONE);
+            bg.set_if_neq(BackgroundColor(theme.sidebar_btn));
+            border.set_if_neq(BorderColor::all(Color::NONE));
         }
     }
 }
@@ -879,7 +870,7 @@ fn scroll_to_focused(
     mut scroll_query: Query<(&mut ScrollPosition, &ComputedNode), With<SongListRoot>>,
     card_query: Query<(&SongCard, &Node, &ComputedNode)>,
 ) {
-    if !focus.is_changed() || !focus.active || focus.panel != FocusPanel::SongList {
+    if !focus.is_changed() || focus.panel != FocusPanel::SongList {
         return;
     }
 

@@ -394,7 +394,7 @@ pub fn spawn_results_overlay(
 }
 
 pub fn handle_results_input(
-    keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut btn_query: Query<
@@ -408,7 +408,7 @@ pub fn handle_results_input(
         return;
     }
 
-    if keyboard.just_pressed(KeyCode::Escape) || keyboard.just_pressed(KeyCode::Enter) {
+    if nav.back || nav.confirm {
         for entity in &overlay_query {
             commands.entity(entity).despawn();
         }
@@ -507,7 +507,7 @@ pub fn spawn_pause_overlay(
 }
 
 pub fn handle_pause_input(
-    keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut continue_query: Query<
@@ -529,10 +529,10 @@ pub fn handle_pause_input(
     }
 
     if let Some(ref mut pf) = pause_focus {
-        if keyboard.just_pressed(KeyCode::ArrowDown) || keyboard.just_pressed(KeyCode::ArrowUp) {
+        if nav.down || nav.up {
             pf.0 = if pf.0 == 0 { 1 } else { 0 };
         }
-        if keyboard.just_pressed(KeyCode::Enter) {
+        if nav.confirm {
             if pf.0 == 0 {
                 for entity in &overlay_query {
                     commands.entity(entity).despawn();
@@ -553,9 +553,6 @@ pub fn handle_pause_input(
         }
     }
 
-    let continue_focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 0);
-    let exit_focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 1);
-
     for (interaction, mut bg, mut border) in &mut continue_query {
         match interaction {
             Interaction::Pressed => {
@@ -568,18 +565,19 @@ pub fn handle_pause_input(
                 }
             }
             Interaction::Hovered => {
-                *bg = BackgroundColor(theme.accent_hover);
-                *border = BorderColor::all(theme.accent);
-            }
-            Interaction::None => {
-                if continue_focused {
-                    *bg = BackgroundColor(theme.accent_hover);
-                    *border = BorderColor::all(theme.accent);
-                } else {
-                    *bg = BackgroundColor(theme.accent);
-                    *border = BorderColor::all(Color::NONE);
+                if let Some(ref mut pf) = pause_focus {
+                    pf.0 = 0;
                 }
             }
+            Interaction::None => {}
+        }
+        let focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 0);
+        if focused {
+            *bg = BackgroundColor(theme.accent_hover);
+            *border = BorderColor::all(theme.accent);
+        } else {
+            *bg = BackgroundColor(theme.accent);
+            *border = BorderColor::all(Color::NONE);
         }
     }
 
@@ -593,18 +591,19 @@ pub fn handle_pause_input(
                 next_state.set(AppState::Menu);
             }
             Interaction::Hovered => {
-                *bg = BackgroundColor(theme.popup_btn_hover);
-                *border = BorderColor::all(theme.accent);
-            }
-            Interaction::None => {
-                if exit_focused {
-                    *bg = BackgroundColor(theme.popup_btn_hover);
-                    *border = BorderColor::all(theme.accent);
-                } else {
-                    *bg = BackgroundColor(theme.popup_btn);
-                    *border = BorderColor::all(Color::NONE);
+                if let Some(ref mut pf) = pause_focus {
+                    pf.0 = 1;
                 }
             }
+            Interaction::None => {}
+        }
+        let focused = pause_focus.as_ref().is_some_and(|pf| pf.0 == 1);
+        if focused {
+            *bg = BackgroundColor(theme.popup_btn_hover);
+            *border = BorderColor::all(theme.accent);
+        } else {
+            *bg = BackgroundColor(theme.popup_btn);
+            *border = BorderColor::all(Color::NONE);
         }
     }
 }

@@ -472,7 +472,7 @@ pub fn handle_profile_click(
     pending_delete: Option<Res<PendingDeleteProfile>>,
     asset_server: Res<AssetServer>,
     mut next_state: ResMut<NextState<AppState>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
     name_input_query: Query<(), With<ProfileNameInput>>,
     mut profile_focus: Option<ResMut<ProfileFocus>>,
 ) {
@@ -480,7 +480,7 @@ pub fn handle_profile_click(
         return;
     }
 
-    if keyboard.just_pressed(KeyCode::Escape) {
+    if nav.back {
         if pending_delete.is_some() {
             despawn_overlay(&mut commands, &overlay_query);
             commands.remove_resource::<PendingDeleteProfile>();
@@ -494,7 +494,7 @@ pub fn handle_profile_click(
         return;
     }
 
-    if keyboard.just_pressed(KeyCode::Enter) && !name_input_query.is_empty() {
+    if nav.confirm && !name_input_query.is_empty() {
         if let Some(ref input_state) = input_state {
             let name = input_state.text.trim().to_string();
             if !name.is_empty() {
@@ -509,13 +509,13 @@ pub fn handle_profile_click(
 
     if let Some(ref mut pf) = profile_focus {
         let item_count = profiles.profiles.len() + 2;
-        if keyboard.just_pressed(KeyCode::ArrowDown) {
+        if nav.down {
             pf.0 = (pf.0 + 1).min(item_count - 1);
         }
-        if keyboard.just_pressed(KeyCode::ArrowUp) {
+        if nav.up {
             pf.0 = pf.0.saturating_sub(1);
         }
-        if keyboard.just_pressed(KeyCode::Enter) && name_input_query.is_empty() {
+        if nav.confirm && name_input_query.is_empty() {
             let idx = pf.0;
             if idx < profiles.profiles.len() {
                 if let Some(name) = profiles.profiles.get(idx).cloned() {
@@ -598,52 +598,50 @@ pub fn handle_profile_click(
                 }
             }
             Interaction::Hovered => {
-                *border = BorderColor::all(theme.accent);
-                *bg = match btn.action {
-                    ProfileAction::Switch(_) | ProfileAction::Delete(_) => {
-                        BackgroundColor(theme.popup_btn_hover)
-                    }
-                    ProfileAction::Create => BackgroundColor(theme.accent_hover),
-                    ProfileAction::ConfirmDelete => {
-                        BackgroundColor(Color::srgb(0.88, 0.25, 0.25))
-                    }
-                    _ => BackgroundColor(theme.popup_btn_hover),
-                };
-            }
-            Interaction::None => {
-                let focus_idx = profile_focus.as_ref().map(|pf| pf.0);
                 let btn_focus_idx = match btn.action {
                     ProfileAction::Switch(i) => Some(i),
                     ProfileAction::NewProfile => Some(profiles.profiles.len()),
                     ProfileAction::Close => Some(profiles.profiles.len() + 1),
                     _ => None,
                 };
-                let is_focused = focus_idx.is_some() && btn_focus_idx == focus_idx;
-                *border = if is_focused {
-                    BorderColor::all(theme.accent)
-                } else {
-                    BorderColor::all(Color::NONE)
-                };
-                *bg = match btn.action {
-                    ProfileAction::Switch(_) | ProfileAction::Delete(_) => {
-                        if is_focused {
-                            BackgroundColor(theme.popup_btn_hover)
-                        } else {
-                            BackgroundColor(theme.popup_btn)
-                        }
-                    }
-                    ProfileAction::Create => BackgroundColor(theme.accent),
-                    ProfileAction::ConfirmDelete => BackgroundColor(theme.badge_failed),
-                    _ => {
-                        if is_focused {
-                            BackgroundColor(theme.popup_btn_hover)
-                        } else {
-                            BackgroundColor(theme.popup_btn)
-                        }
-                    }
-                };
+                if let (Some(pf), Some(idx)) = (&mut profile_focus, btn_focus_idx) {
+                    pf.0 = idx;
+                }
             }
+            Interaction::None => {}
         }
+
+        let focus_idx = profile_focus.as_ref().map(|pf| pf.0);
+        let btn_focus_idx = match btn.action {
+            ProfileAction::Switch(i) => Some(i),
+            ProfileAction::NewProfile => Some(profiles.profiles.len()),
+            ProfileAction::Close => Some(profiles.profiles.len() + 1),
+            _ => None,
+        };
+        let is_focused = focus_idx.is_some() && btn_focus_idx == focus_idx;
+        *border = if is_focused {
+            BorderColor::all(theme.accent)
+        } else {
+            BorderColor::all(Color::NONE)
+        };
+        *bg = match btn.action {
+            ProfileAction::Switch(_) | ProfileAction::Delete(_) => {
+                if is_focused {
+                    BackgroundColor(theme.popup_btn_hover)
+                } else {
+                    BackgroundColor(theme.popup_btn)
+                }
+            }
+            ProfileAction::Create => BackgroundColor(theme.accent),
+            ProfileAction::ConfirmDelete => BackgroundColor(theme.badge_failed),
+            _ => {
+                if is_focused {
+                    BackgroundColor(theme.popup_btn_hover)
+                } else {
+                    BackgroundColor(theme.popup_btn)
+                }
+            }
+        };
     }
 }
 

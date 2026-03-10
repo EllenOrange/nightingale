@@ -1,5 +1,6 @@
 mod analyzer;
 mod config;
+pub mod input;
 mod menu;
 mod player;
 pub mod profile;
@@ -70,8 +71,10 @@ fn main() {
     let profile_store = ProfileStore::load();
 
     app.add_plugins(AudioPlugin)
+        .add_plugins(input::InputPlugin)
         .add_plugins(BackgroundPlugin)
         .init_state::<AppState>()
+        .insert_resource(ClearColor(ui_theme.bg))
         .insert_resource(CacheDir::new())
         .insert_resource(SongLibrary { songs: vec![] })
         .insert_resource(config)
@@ -79,8 +82,9 @@ fn main() {
         .insert_resource(video_flavor)
         .insert_resource(ui_theme)
         .insert_resource(profile_store)
-        .add_systems(Startup, setup_camera)
+        .add_systems(Startup, (setup_camera, update_ui_scale))
         .add_systems(Update, toggle_fullscreen)
+        .add_systems(PreUpdate, update_ui_scale)
         .add_plugins(scanner::ScannerPlugin)
         .add_plugins(analyzer::AnalyzerPlugin)
         .add_plugins(menu::MenuPlugin)
@@ -110,6 +114,27 @@ fn auto_open_saved_folder(
             });
             next_state.set(AppState::Scanning);
         }
+    }
+}
+
+const REFERENCE_WIDTH: f32 = 1280.0;
+const REFERENCE_HEIGHT: f32 = 720.0;
+
+fn update_ui_scale(
+    windows: Query<&Window>,
+    mut ui_scale: ResMut<bevy::ui::UiScale>,
+    theme: Res<UiTheme>,
+    mut clear: ResMut<ClearColor>,
+) {
+    let Ok(window) = windows.single() else { return };
+    let factor = (window.width() / REFERENCE_WIDTH)
+        .min(window.height() / REFERENCE_HEIGHT)
+        .max(1.0);
+    if (ui_scale.0 - factor).abs() > 0.01 {
+        ui_scale.0 = factor;
+    }
+    if clear.0 != theme.bg {
+        clear.0 = theme.bg;
     }
 }
 

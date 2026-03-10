@@ -28,7 +28,7 @@ pub struct LyricWord {
 }
 
 const COUNTDOWN_DURATION: f64 = 3.0;
-const COUNTDOWN_GAP_THRESHOLD: f64 = 5.0;
+const COUNTDOWN_GAP_THRESHOLD: f64 = 3.5;
 const LYRICS_LEAD: f64 = 0.15;
 const WORD_HIGHLIGHT_LEAD: f64 = 0.25;
 

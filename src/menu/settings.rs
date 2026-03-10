@@ -380,14 +380,14 @@ pub fn handle_settings_click(
     mut value_texts: Query<(&SettingsValueText, &mut Text)>,
     theme: Res<UiTheme>,
     mut windows: Query<&mut Window>,
-    keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
     mut settings_focus: Option<ResMut<SettingsFocus>>,
 ) {
     if overlay_query.is_empty() {
         return;
     }
 
-    if keyboard.just_pressed(KeyCode::Escape) {
+    if nav.back {
         for entity in &overlay_query {
             commands.entity(entity).despawn();
         }
@@ -399,21 +399,21 @@ pub fn handle_settings_click(
         let rows = settings_rows();
         let mut action_to_dispatch: Option<SettingsAction> = None;
 
-        if keyboard.just_pressed(KeyCode::ArrowDown) {
+        if nav.down {
             sf.0 = (sf.0 + 1).min(SETTINGS_ROW_COUNT - 1);
         }
-        if keyboard.just_pressed(KeyCode::ArrowUp) {
+        if nav.up {
             sf.0 = sf.0.saturating_sub(1);
         }
-        if keyboard.just_pressed(KeyCode::Enter) {
+        if nav.confirm {
             action_to_dispatch = Some(rows[sf.0].enter);
         }
-        if keyboard.just_pressed(KeyCode::ArrowLeft) {
+        if nav.left {
             if let Some(a) = rows[sf.0].left {
                 action_to_dispatch = Some(a);
             }
         }
-        if keyboard.just_pressed(KeyCode::ArrowRight) {
+        if nav.right {
             if let Some(a) = rows[sf.0].right {
                 action_to_dispatch = Some(a);
             }
@@ -434,11 +434,7 @@ pub fn handle_settings_click(
             }
         }
 
-        let any_nav = keyboard.just_pressed(KeyCode::ArrowUp)
-            || keyboard.just_pressed(KeyCode::ArrowDown)
-            || keyboard.just_pressed(KeyCode::ArrowLeft)
-            || keyboard.just_pressed(KeyCode::ArrowRight)
-            || keyboard.just_pressed(KeyCode::Enter);
+        let any_nav = nav.up || nav.down || nav.left || nav.right || nav.confirm;
 
         if any_nav {
             let focus_idx = sf.0;
@@ -470,6 +466,17 @@ pub fn handle_settings_click(
                 }
             }
             Interaction::Hovered => {
+                let row_for_action = match settings_btn.action {
+                    SettingsAction::ToggleFullscreen => Some(0),
+                    SettingsAction::ModelPrev | SettingsAction::ModelNext => Some(1),
+                    SettingsAction::BeamDown | SettingsAction::BeamUp => Some(2),
+                    SettingsAction::BatchDown | SettingsAction::BatchUp => Some(3),
+                    SettingsAction::RestoreDefaults => Some(4),
+                    SettingsAction::Close => Some(5),
+                };
+                if let (Some(sf), Some(row)) = (&mut settings_focus, row_for_action) {
+                    sf.0 = row;
+                }
                 *bg = match settings_btn.action {
                     SettingsAction::RestoreDefaults | SettingsAction::Close => {
                         BackgroundColor(theme.popup_btn_hover)
@@ -484,6 +491,19 @@ pub fn handle_settings_click(
                     }
                     _ => BackgroundColor(theme.popup_btn_hover),
                 };
+            }
+        }
+    }
+
+    if let Some(ref sf) = settings_focus {
+        let focus_idx = sf.0;
+        for (row, mut bg, mut border) in &mut bg_queries.p1() {
+            if row.0 == focus_idx {
+                *bg = BackgroundColor(theme.popup_btn_hover);
+                *border = BorderColor::all(theme.accent);
+            } else {
+                *bg = BackgroundColor(theme.popup_btn);
+                *border = BorderColor::all(Color::NONE);
             }
         }
     }

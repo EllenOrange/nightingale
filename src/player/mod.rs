@@ -395,16 +395,12 @@ fn enter_playing(
         TextColor(Color::srgba(1.0, 1.0, 1.0, 0.3)),
     ));
 
-    let backdrop_pad = 12.0;
     commands.spawn((
         PlayerHud,
         PitchBackdrop,
         Sprite {
             color: ui_theme.lyric_backdrop,
-            custom_size: Some(Vec2::new(
-                scoring::DISPLAY_WIDTH + backdrop_pad * 2.0,
-                scoring::DISPLAY_HEIGHT + backdrop_pad * 2.0,
-            )),
+            custom_size: Some(Vec2::new(1.0, 1.0)),
             ..default()
         },
         Transform::from_translation(Vec3::new(0.0, 0.0, 5.0)),
@@ -428,9 +424,9 @@ pub fn no_player_overlay(
 fn update_pitch_backdrop(
     mic: Option<Res<microphone::MicrophoneCapture>>,
     windows: Query<&Window>,
-    mut query: Query<(&mut Transform, &mut Visibility), With<PitchBackdrop>>,
+    mut query: Query<(&mut Transform, &mut Visibility, &mut Sprite), With<PitchBackdrop>>,
 ) {
-    let Ok((mut transform, mut vis)) = query.single_mut() else {
+    let Ok((mut transform, mut vis, mut sprite)) = query.single_mut() else {
         return;
     };
 
@@ -443,10 +439,16 @@ fn update_pitch_backdrop(
 
     if mic_active {
         if let Ok(window) = windows.single() {
-            let half_h = window.height() / 2.0;
-            let center_y = half_h - scoring::DISPLAY_TOP_OFFSET;
+            let wh = window.height();
+            let half_h = wh / 2.0;
+            let center_y = half_h - scoring::display_top_offset(wh);
             transform.translation.x = 0.0;
             transform.translation.y = center_y;
+            let backdrop_pad = 12.0 * scoring::display_scale(wh);
+            sprite.custom_size = Some(Vec2::new(
+                scoring::display_width(wh) + backdrop_pad * 2.0,
+                scoring::display_height(wh) + backdrop_pad * 2.0,
+            ));
         }
     }
 }
@@ -784,7 +786,7 @@ fn check_mic_health(
 }
 
 fn handle_escape(
-    keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
     mut commands: Commands,
     results_q: Query<(), With<ResultsOverlay>>,
     pause_q: Query<Entity, With<PauseOverlay>>,
@@ -793,7 +795,7 @@ fn handle_escape(
     theme: Res<UiTheme>,
     asset_server: Res<AssetServer>,
 ) {
-    if !keyboard.just_pressed(KeyCode::Escape) {
+    if !nav.back {
         return;
     }
     if !results_q.is_empty() {
