@@ -32,6 +32,9 @@ pub struct StatsText;
 pub struct AnalysisHint;
 
 #[derive(Component)]
+pub struct AnalyzeAllButton;
+
+#[derive(Component)]
 pub struct AlbumArtSlot;
 
 #[derive(Component)]
@@ -292,7 +295,7 @@ fn spawn_mini_stars(
 fn badge_info<'a>(status: &AnalysisStatus, theme: &UiTheme) -> (&'a str, Color) {
     match status {
         AnalysisStatus::Ready(TranscriptSource::Lyrics) => ("LYRICS", theme.badge_lyrics),
-        AnalysisStatus::Ready(TranscriptSource::Generated) => ("AI", theme.badge_ready),
+        AnalysisStatus::Ready(TranscriptSource::Generated) => ("TRANSCRIPT", theme.badge_ready),
         AnalysisStatus::NotAnalyzed => ("NOT ANALYZED", theme.badge_not_analyzed),
         AnalysisStatus::Queued => ("QUEUED", theme.badge_queued),
         AnalysisStatus::Analyzing => ("ANALYZING...", theme.badge_analyzing),

@@ -12,12 +12,18 @@ HALLUCINATION_PHRASES = [
     "подписывайтесь на канал",
     "редактор субтитров",
     "корректор субтитров",
+    "субтитры подогнал",
+    "субтитры подогнала",
+    "субтитры сделал",
+    "субтитры сделала",
     "thanks for watching",
     "please subscribe",
     "like and subscribe",
     "satsang with mooji",
     "song lyrics",
     "all rights reserved",
+    "subtitles by",
+    "captions by",
 ]
 
 ATTRIBUTION_WORDS = {
@@ -29,6 +35,8 @@ ATTRIBUTION_WORDS = {
     "подготовил", "подготовила", "подготовили",
     "редактировал", "редактировала", "редактировали",
     "выполнил", "выполнила", "выполнили",
+    "подогнал", "подогнала", "подогнали",
+    "перевёл", "перевела", "перевели",
     "редактор", "корректор", "переводчик",
     "subtitles", "subtitle", "captions", "caption",
     "transcribed", "transcript", "transcription",

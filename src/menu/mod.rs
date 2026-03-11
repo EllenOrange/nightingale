@@ -33,6 +33,7 @@ pub struct MenuFocus {
     pub song_index: usize,
     pub sidebar_index: usize,
     pub nav_lock: u8,
+    pub analyze_all_focused: bool,
 }
 
 impl Default for MenuFocus {
@@ -42,6 +43,7 @@ impl Default for MenuFocus {
             song_index: 0,
             sidebar_index: 0,
             nav_lock: 0,
+            analyze_all_focused: false,
         }
     }
 }
@@ -89,6 +91,7 @@ impl Plugin for MenuPlugin {
                 (
                     handle_song_click,
                     handle_reanalyze_click,
+                    handle_analyze_all_click,
                     handle_language_button_click,
                     handle_language_picker_interaction,
                     handle_search_input,
@@ -246,34 +249,79 @@ fn build_main_area(
             return;
         }
 
-        main.spawn((
-            Node {
-                width: Val::Px(600.0),
-                height: Val::Px(44.0),
-                flex_shrink: 0.0,
-                padding: UiRect::horizontal(Val::Px(16.0)),
-                margin: UiRect::bottom(Val::Px(20.0)),
-                align_items: AlignItems::Center,
-                border_radius: BorderRadius::all(Val::Px(8.0)),
-                ..default()
-            },
-            BackgroundColor(theme.card_bg),
-        ))
-        .with_children(|bar| {
-            let display_text = if menu_state.search_query.is_empty() {
-                "Type to search songs..."
-            } else {
-                &menu_state.search_query
-            };
-            bar.spawn((
-                SearchText,
-                Text::new(display_text),
-                TextFont {
-                    font_size: 16.0,
+        main.spawn(Node {
+            width: Val::Px(700.0),
+            flex_shrink: 0.0,
+            flex_direction: FlexDirection::Row,
+            column_gap: Val::Px(8.0),
+            margin: UiRect::bottom(Val::Px(20.0)),
+            align_items: AlignItems::Center,
+            ..default()
+        })
+        .with_children(|top_row| {
+            top_row.spawn((
+                Node {
+                    flex_grow: 1.0,
+                    height: Val::Px(44.0),
+                    padding: UiRect::horizontal(Val::Px(16.0)),
+                    align_items: AlignItems::Center,
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
                     ..default()
                 },
-                TextColor(theme.text_secondary),
-            ));
+                BackgroundColor(theme.card_bg),
+            ))
+            .with_children(|bar| {
+                let (display_text, text_color) = if menu_state.search_query.is_empty() {
+                    ("Type to search songs...", theme.text_dim)
+                } else {
+                    (menu_state.search_query.as_str(), theme.text_primary)
+                };
+                bar.spawn((
+                    SearchText,
+                    Text::new(display_text),
+                    TextFont {
+                        font_size: 16.0,
+                        ..default()
+                    },
+                    TextColor(text_color),
+                ));
+            });
+
+            let has_unanalyzed = library.songs.iter().any(|s| {
+                matches!(s.analysis_status, AnalysisStatus::NotAnalyzed | AnalysisStatus::Failed(_))
+            });
+            let (btn_bg, btn_text_color) = if has_unanalyzed {
+                (theme.surface_hover, theme.text_primary)
+            } else {
+                (theme.surface, theme.text_dim)
+            };
+
+            top_row.spawn((
+                AnalyzeAllButton,
+                Button,
+                Node {
+                    height: Val::Px(44.0),
+                    flex_shrink: 0.0,
+                    padding: UiRect::horizontal(Val::Px(16.0)),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    border: UiRect::all(Val::Px(2.0)),
+                    ..default()
+                },
+                BorderColor::all(Color::NONE),
+                BackgroundColor(btn_bg),
+            ))
+            .with_children(|btn| {
+                btn.spawn((
+                    Text::new("Analyze All"),
+                    TextFont {
+                        font_size: 14.0,
+                        ..default()
+                    },
+                    TextColor(btn_text_color),
+                ));
+            });
         });
 
         let ready_count = library
@@ -413,10 +461,21 @@ fn handle_song_click(
                 if focus.nav_lock == 0 {
                     focus.panel = FocusPanel::SongList;
                     focus.song_index = song_card.song_index;
+                    focus.analyze_all_focused = false;
                 }
             }
             Interaction::None => {}
         }
+    }
+
+    if nav.confirm && focus.panel == FocusPanel::SongList && focus.analyze_all_focused {
+        for (i, song) in library.songs.iter_mut().enumerate() {
+            if matches!(song.analysis_status, AnalysisStatus::NotAnalyzed | AnalysisStatus::Failed(_)) {
+                song.analysis_status = AnalysisStatus::Queued;
+                queue.enqueue(i);
+            }
+        }
+        return;
     }
 
     if nav.confirm && focus.panel == FocusPanel::SongList {
@@ -484,6 +543,50 @@ fn handle_reanalyze_click(
             }
             Interaction::None => {
                 *bg = BackgroundColor(theme.sidebar_btn);
+            }
+        }
+    }
+}
+
+fn handle_analyze_all_click(
+    mut interaction_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<AnalyzeAllButton>),
+    >,
+    mut library: ResMut<SongLibrary>,
+    mut queue: ResMut<AnalysisQueue>,
+    theme: Res<UiTheme>,
+    overlay_query: Query<(), With<SettingsOverlay>>,
+    profile_overlay_query: Query<(), With<ProfileOverlay>>,
+    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
+    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
+) {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
+        return;
+    }
+    let has_unanalyzed = library.songs.iter().any(|s| {
+        matches!(s.analysis_status, AnalysisStatus::NotAnalyzed | AnalysisStatus::Failed(_))
+    });
+    for (interaction, mut bg) in &mut interaction_query {
+        if !has_unanalyzed {
+            *bg = BackgroundColor(theme.surface);
+            continue;
+        }
+        match interaction {
+            Interaction::Pressed => {
+                for (i, song) in library.songs.iter_mut().enumerate() {
+                    if matches!(song.analysis_status, AnalysisStatus::NotAnalyzed | AnalysisStatus::Failed(_)) {
+                        song.analysis_status = AnalysisStatus::Queued;
+                        queue.enqueue(i);
+                    }
+                }
+                *bg = BackgroundColor(theme.surface);
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(theme.card_hover);
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(theme.surface_hover);
             }
         }
     }
@@ -638,7 +741,8 @@ fn handle_language_picker_interaction(
 fn handle_search_input(
     mut key_events: MessageReader<KeyboardInput>,
     mut menu_state: ResMut<MenuState>,
-    mut search_text_query: Query<&mut Text, With<SearchText>>,
+    mut search_text_query: Query<(&mut Text, &mut TextColor), With<SearchText>>,
+    theme: Res<UiTheme>,
     library: Res<SongLibrary>,
     mut card_query: Query<(&SongCard, &mut Node)>,
     overlay_query: Query<(), With<SettingsOverlay>>,
@@ -687,11 +791,13 @@ fn handle_search_input(
         return;
     }
 
-    if let Ok(mut text) = search_text_query.single_mut() {
+    if let Ok((mut text, mut color)) = search_text_query.single_mut() {
         if menu_state.search_query.is_empty() {
             **text = "Type to search songs...".into();
+            *color = TextColor(theme.text_dim);
         } else {
             **text = menu_state.search_query.clone();
+            *color = TextColor(theme.text_primary);
         }
     }
 
@@ -783,7 +889,7 @@ fn update_status_badges(
         }
         let new_text = match &library.songs[bt.song_index].analysis_status {
             AnalysisStatus::Ready(TranscriptSource::Lyrics) => "LYRICS".into(),
-            AnalysisStatus::Ready(TranscriptSource::Generated) => "AI".into(),
+            AnalysisStatus::Ready(TranscriptSource::Generated) => "TRANSCRIPT".into(),
             AnalysisStatus::NotAnalyzed => "NOT ANALYZED".into(),
             AnalysisStatus::Queued => "QUEUED".into(),
             AnalysisStatus::Analyzing => {
@@ -1003,10 +1109,12 @@ fn handle_menu_nav(
 
     if nav.left {
         focus.panel = FocusPanel::Sidebar;
+        focus.analyze_all_focused = false;
     } else if nav.right {
         focus.panel = FocusPanel::SongList;
     } else if keyboard.just_pressed(KeyCode::Tab) {
         focus.panel = if focus.panel == FocusPanel::SongList {
+            focus.analyze_all_focused = false;
             FocusPanel::Sidebar
         } else {
             FocusPanel::SongList
@@ -1019,30 +1127,39 @@ fn handle_menu_nav(
     if step_down || step_up {
         match focus.panel {
             FocusPanel::SongList => {
-                let mut visible: Vec<usize> = card_query
-                    .iter()
-                    .filter(|(_, node)| node.display != Display::None)
-                    .map(|(card, _)| card.song_index)
-                    .collect();
-                visible.sort();
-
-                if !visible.is_empty() {
-                    let pos = visible.iter().position(|&i| i == focus.song_index);
+                if focus.analyze_all_focused {
                     if step_down {
-                        focus.song_index = match pos {
-                            Some(p) if p + 1 < visible.len() => visible[p + 1],
-                            None => visible[0],
-                            _ => focus.song_index,
-                        };
+                        focus.analyze_all_focused = false;
                     }
-                    if step_up {
-                        focus.song_index = match pos {
-                            Some(p) if p > 0 => visible[p - 1],
-                            None => visible[0],
-                            _ => focus.song_index,
-                        };
+                } else {
+                    let mut visible: Vec<usize> = card_query
+                        .iter()
+                        .filter(|(_, node)| node.display != Display::None)
+                        .map(|(card, _)| card.song_index)
+                        .collect();
+                    visible.sort();
+
+                    if !visible.is_empty() {
+                        let pos = visible.iter().position(|&i| i == focus.song_index);
+                        if step_down {
+                            focus.song_index = match pos {
+                                Some(p) if p + 1 < visible.len() => visible[p + 1],
+                                None => visible[0],
+                                _ => focus.song_index,
+                            };
+                        }
+                        if step_up {
+                            match pos {
+                                Some(0) | None => {
+                                    focus.analyze_all_focused = true;
+                                }
+                                Some(p) => {
+                                    focus.song_index = visible[p - 1];
+                                }
+                            }
+                        }
+                        focus.nav_lock = 2;
                     }
-                    focus.nav_lock = 2;
                 }
             }
             FocusPanel::Sidebar => {
@@ -1063,11 +1180,15 @@ fn apply_menu_focus_styling(
     focus: Res<MenuFocus>,
     mut card_query: Query<
         (&SongCard, &mut BackgroundColor, &mut BorderColor),
-        Without<SidebarButton>,
+        (Without<SidebarButton>, Without<AnalyzeAllButton>),
     >,
     mut sidebar_query: Query<
         (&SidebarButton, &mut BackgroundColor, &mut BorderColor),
-        Without<SongCard>,
+        (Without<SongCard>, Without<AnalyzeAllButton>),
+    >,
+    mut analyze_all_query: Query<
+        &mut BorderColor,
+        (With<AnalyzeAllButton>, Without<SongCard>, Without<SidebarButton>),
     >,
     theme: Res<UiTheme>,
     overlay_query: Query<(), With<SettingsOverlay>>,
@@ -1082,7 +1203,7 @@ fn apply_menu_focus_styling(
     }
     for (card, mut bg, mut border) in &mut card_query {
         let is_focused =
-            focus.panel == FocusPanel::SongList && card.song_index == focus.song_index;
+            focus.panel == FocusPanel::SongList && !focus.analyze_all_focused && card.song_index == focus.song_index;
         if is_focused {
             bg.set_if_neq(BackgroundColor(theme.card_hover));
             border.set_if_neq(BorderColor::all(theme.accent));
@@ -1099,6 +1220,14 @@ fn apply_menu_focus_styling(
             border.set_if_neq(BorderColor::all(theme.accent));
         } else {
             bg.set_if_neq(BackgroundColor(theme.sidebar_btn));
+            border.set_if_neq(BorderColor::all(Color::NONE));
+        }
+    }
+    let aa_focused = focus.panel == FocusPanel::SongList && focus.analyze_all_focused;
+    for mut border in &mut analyze_all_query {
+        if aa_focused {
+            border.set_if_neq(BorderColor::all(theme.accent));
+        } else {
             border.set_if_neq(BorderColor::all(Color::NONE));
         }
     }
