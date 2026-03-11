@@ -3,7 +3,9 @@ pub mod transcript;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+
+use crate::vendor::silent_command;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -250,7 +252,7 @@ fn spawn_analyzer(
         let mut current_batch_size = batch_size;
 
         loop {
-            let mut cmd = Command::new(&python);
+            let mut cmd = silent_command(&python);
             cmd.env("PATH", &path_env)
                 .env("TORCH_HOME", models.join("torch"))
                 .env("HF_HOME", models.join("huggingface"))
@@ -491,13 +493,13 @@ fn kill_analyzer_on_exit(
             info!("Killing analyzer subprocess (pid={pid})");
             #[cfg(unix)]
             {
-                let _ = Command::new("kill")
+                let _ = silent_command("kill")
                     .args(["-TERM", &pid.to_string()])
                     .spawn();
             }
             #[cfg(windows)]
             {
-                let _ = Command::new("taskkill")
+                let _ = silent_command("taskkill")
                     .args(["/PID", &pid.to_string(), "/F"])
                     .spawn();
             }

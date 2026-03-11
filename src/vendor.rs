@@ -2,6 +2,17 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::mpsc;
 
+pub fn silent_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 #[cfg(windows)]
 const EMBEDDED_FFMPEG: &[u8] = include_bytes!("../vendor-bin/ffmpeg.exe");
 #[cfg(not(windows))]
@@ -262,7 +273,7 @@ fn step_install_python(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), Strin
 
     send(tx, "Python", "Installing Python 3.11...");
 
-    let output = Command::new(uv_path())
+    let output = silent_command(uv_path())
         .args(["python", "install", "3.11", "--install-dir"])
         .arg(&python_dir)
         .output()
@@ -315,7 +326,7 @@ fn step_create_venv(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), String> 
     let installed_python = find_installed_python()
         .ok_or("Could not find installed Python — run python install first")?;
 
-    let output = Command::new(uv_path())
+    let output = silent_command(uv_path())
         .args(["venv"])
         .arg(&venv_dir)
         .arg("--python")
@@ -342,7 +353,7 @@ fn detect_gpu() -> &'static str {
 
     #[cfg(not(target_os = "macos"))]
     {
-        if Command::new("nvidia-smi")
+        if silent_command("nvidia-smi")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
@@ -379,7 +390,7 @@ fn step_install_packages(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), Str
         torch_args.extend(["--index-url", url]);
     }
 
-    let output = Command::new(&uv)
+    let output = silent_command(&uv)
         .args(&torch_args)
         .output()
         .map_err(|e| format!("Failed to run uv pip install torch: {e}"))?;
@@ -396,10 +407,11 @@ fn step_install_packages(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), Str
     };
     send(tx, "Packages", "Installing Demucs, WhisperX and audio-separator...");
 
-    let output = Command::new(&uv)
+    let output = silent_command(&uv)
         .args([
             "pip", "install",
             "demucs>=4.0.0", "whisperx>=3.3.0", "soundfile",
+            "huggingface_hub>=0.23.0",
             audio_sep_pkg,
             "--python",
         ])

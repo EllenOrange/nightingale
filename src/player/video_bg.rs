@@ -1,6 +1,6 @@
 use std::io::Read;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{Mutex, mpsc};
 use std::thread;
 
@@ -466,7 +466,7 @@ fn decode_video(
 ) -> bool {
     info!("Video decoder: playing {}", path.display());
 
-    let result = Command::new(crate::vendor::ffmpeg_path())
+    let result = crate::vendor::silent_command(crate::vendor::ffmpeg_path())
         .args([
             "-i",
             path.to_str().unwrap_or(""),
