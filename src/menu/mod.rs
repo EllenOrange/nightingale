@@ -88,6 +88,7 @@ impl Plugin for MenuPlugin {
                     handle_reanalyze_click,
                     handle_search_input,
                     update_status_badges,
+                    update_analysis_hint,
                     sidebar::handle_sidebar_click,
                     sidebar::handle_exit_input,
                     settings::handle_settings_click,
@@ -289,9 +290,24 @@ fn build_main_area(
             TextColor(theme.text_secondary),
             Node {
                 flex_shrink: 0.0,
-                margin: UiRect::bottom(Val::Px(16.0)),
                 ..default()
             },
+        ));
+
+        main.spawn((
+            AnalysisHint,
+            Text::new("First analysis per language downloads additional models and may take longer."),
+            TextFont {
+                font_size: 11.0,
+                ..default()
+            },
+            TextColor(theme.text_dim),
+            Node {
+                flex_shrink: 0.0,
+                margin: UiRect::bottom(Val::Px(12.0)),
+                ..default()
+            },
+            Visibility::Hidden,
         ));
 
         main.spawn((
@@ -552,6 +568,24 @@ fn handle_search_input(
         if let Some(idx) = first_visible {
             focus.song_index = idx;
         }
+    }
+}
+
+fn update_analysis_hint(
+    library: Res<SongLibrary>,
+    mut hint: Query<&mut Visibility, With<AnalysisHint>>,
+) {
+    let any_analyzing = library
+        .songs
+        .iter()
+        .any(|s| matches!(s.analysis_status, AnalysisStatus::Analyzing | AnalysisStatus::Queued));
+    if let Ok(mut vis) = hint.single_mut() {
+        let target = if any_analyzing {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        vis.set_if_neq(target);
     }
 }
 

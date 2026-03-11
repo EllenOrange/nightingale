@@ -38,3 +38,8 @@ dotenvy = "0.15"
 rand = "0.9"
 urlencoding = "2.1.3"
 bevy_embedded_assets = "0.15"
+image = { version = "0.25", default-features = false, features = ["png"] }
+winit = "0.30"
+
+[build-dependencies]
+winresource = "0.1"

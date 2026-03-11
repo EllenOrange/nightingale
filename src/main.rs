@@ -14,6 +14,7 @@ pub mod vendor_scripts;
 use bevy::asset::{AssetPlugin, UnapprovedPathMode, load_internal_binary_asset};
 use bevy::prelude::*;
 use bevy::window::WindowMode;
+use bevy::winit::WinitWindows;
 use bevy_embedded_assets::{EmbeddedAssetPlugin, PluginMode};
 use bevy_kira_audio::AudioPlugin;
 
@@ -99,7 +100,7 @@ fn main() {
         .insert_resource(video_flavor)
         .insert_resource(ui_theme)
         .insert_resource(profile_store)
-        .add_systems(Startup, (setup_camera, update_ui_scale))
+        .add_systems(Startup, (setup_camera, update_ui_scale, set_window_icon))
         .add_systems(Update, toggle_fullscreen)
         .add_systems(PreUpdate, update_ui_scale)
         .add_plugins(setup::SetupPlugin)
@@ -188,4 +189,26 @@ fn toggle_fullscreen(
             config.save();
         }
     }
+}
+
+fn set_window_icon(
+    winit_windows: Option<NonSend<WinitWindows>>,
+    windows: Query<Entity, With<bevy::window::PrimaryWindow>>,
+) {
+    let Some(winit_windows) = winit_windows else {
+        return;
+    };
+    let Ok(entity) = windows.single() else { return };
+    let Some(winit_window) = winit_windows.get_window(entity) else {
+        return;
+    };
+
+    let icon_bytes = include_bytes!("../assets/images/logo_square.png");
+    let img = image::load_from_memory(icon_bytes)
+        .expect("Failed to decode icon PNG")
+        .into_rgba8();
+    let (w, h) = img.dimensions();
+    let rgba = img.into_raw();
+    let icon = winit::window::Icon::from_rgba(rgba, w, h).expect("Failed to create window icon");
+    winit_window.set_window_icon(Some(icon));
 }

@@ -29,6 +29,9 @@ pub struct BadgeText {
 pub struct StatsText;
 
 #[derive(Component)]
+pub struct AnalysisHint;
+
+#[derive(Component)]
 pub struct AlbumArtSlot;
 
 #[derive(Component)]

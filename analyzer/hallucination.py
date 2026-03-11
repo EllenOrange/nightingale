@@ -15,6 +15,9 @@ HALLUCINATION_PHRASES = [
     "thanks for watching",
     "please subscribe",
     "like and subscribe",
+    "satsang with mooji",
+    "song lyrics",
+    "all rights reserved",
 ]
 
 ATTRIBUTION_WORDS = {
