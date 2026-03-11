@@ -533,6 +533,7 @@ pub fn handle_exit_input(
     menu_state: Res<super::MenuState>,
     settings_query: Query<(), With<SettingsOverlay>>,
     profile_query: Query<(), With<ProfileOverlay>>,
+    lang_picker_query: Query<(), With<super::song_card::LanguagePickerOverlay>>,
 ) {
     let overlay_entity = overlay_query.single();
 
@@ -541,6 +542,7 @@ pub fn handle_exit_input(
             && menu_state.search_query.is_empty()
             && settings_query.is_empty()
             && profile_query.is_empty()
+            && lang_picker_query.is_empty()
         {
             spawn_exit_popup(&mut commands, &theme);
         }

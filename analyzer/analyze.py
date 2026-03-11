@@ -63,6 +63,7 @@ def main():
     parser.add_argument("--separator", default="karaoke", choices=["karaoke", "demucs"],
                         help="Stem separation method: karaoke (UVR, cleaner) or demucs (faster)")
     parser.add_argument("--lyrics", help="Path to pre-fetched lyrics JSON (align-only mode)")
+    parser.add_argument("--language", default=None, help="Override automatic language detection")
     args = parser.parse_args()
 
     audio_path = os.path.abspath(args.audio_path)
@@ -120,6 +121,7 @@ def main():
         transcript = align_lyrics(
             args.lyrics, vocals_path, device,
             model_name=args.model,
+            language_override=args.language,
         )
     else:
         transcript = transcribe_vocals(
@@ -127,6 +129,7 @@ def main():
             model_name=args.model,
             beam_size=args.beam_size,
             batch_size=args.batch_size,
+            language_override=args.language,
         )
 
     # --- Write output ---

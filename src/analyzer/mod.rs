@@ -214,6 +214,7 @@ fn spawn_analyzer(
     beam_size: u32,
     batch_size: u32,
     separator: String,
+    language_override: Option<String>,
 ) -> (Arc<Mutex<ProgressInfo>>, Arc<AtomicU32>, std::thread::JoinHandle<()>) {
     let progress = Arc::new(Mutex::new(ProgressInfo {
         percent: 0,
@@ -274,6 +275,10 @@ fn spawn_analyzer(
 
             if let Some(ref lp) = lyrics_path {
                 cmd.arg("--lyrics").arg(lp);
+            }
+
+            if let Some(ref lang) = language_override {
+                cmd.arg("--language").arg(lang);
             }
 
             let child = cmd
@@ -395,6 +400,7 @@ fn process_queue(
         song.file_hash
     );
 
+    let lang_override = config.language_override(&song.file_hash).map(|s| s.to_string());
     let (progress, child_pid, thread_handle) = spawn_analyzer(
         song.path.clone(),
         cache.path.clone(),
@@ -404,6 +410,7 @@ fn process_queue(
         config.beam_size(),
         config.batch_size(),
         config.separator().to_string(),
+        lang_override,
     );
 
     library.songs[song_index].analysis_status = AnalysisStatus::Analyzing;
@@ -444,11 +451,26 @@ fn poll_active_job(
     if success && cache.transcript_exists(&library.songs[song_index].file_hash) {
         info!("Analysis complete for: {}", library.songs[song_index].path.display());
         let hash = &library.songs[song_index].file_hash;
-        let source = match transcript::Transcript::load(&cache.transcript_path(hash)) {
-            Ok(t) if t.source == "lyrics" => TranscriptSource::Lyrics,
-            _ => TranscriptSource::Generated,
-        };
-        library.songs[song_index].analysis_status = AnalysisStatus::Ready(source);
+        let transcript_path = cache.transcript_path(hash);
+        match transcript::Transcript::load(&transcript_path) {
+            Ok(t) => {
+                let source = if t.source == "lyrics" {
+                    TranscriptSource::Lyrics
+                } else {
+                    TranscriptSource::Generated
+                };
+                library.songs[song_index].analysis_status = AnalysisStatus::Ready(source);
+                library.songs[song_index].language = if t.language.is_empty() {
+                    None
+                } else {
+                    Some(t.language)
+                };
+            }
+            _ => {
+                library.songs[song_index].analysis_status =
+                    AnalysisStatus::Ready(TranscriptSource::Generated);
+            }
+        }
     } else {
         error!("Analysis failed: {}", finished_info.message);
         library.songs[song_index].analysis_status =

@@ -101,6 +101,33 @@ pub struct ReanalyzeButton {
 }
 
 #[derive(Component)]
+pub struct LanguageButton {
+    pub song_index: usize,
+}
+
+#[derive(Component)]
+pub struct LanguageText {
+    pub song_index: usize,
+}
+
+#[derive(Component)]
+pub struct LanguagePickerOverlay;
+
+#[derive(Component)]
+pub struct LanguagePickerItem {
+    pub lang_code: String,
+    pub song_index: usize,
+}
+
+#[derive(Component)]
+pub struct LanguagePickerClose;
+
+#[derive(Resource)]
+pub struct LanguagePickerTarget {
+    pub song_index: usize,
+}
+
+#[derive(Component)]
 pub struct EmptyStateRoot;
 
 #[derive(Component)]
@@ -135,6 +162,30 @@ use crate::scanner::metadata::{AnalysisStatus, TranscriptSource};
 
 const FA_STAR: &str = "\u{f005}";
 const FA_STAR_HALF: &str = "\u{f5c0}";
+const FA_GLOBE: &str = "\u{f0ac}";
+
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("en", "English"),
+    ("es", "Spanish"),
+    ("fr", "French"),
+    ("de", "German"),
+    ("it", "Italian"),
+    ("pt", "Portuguese"),
+    ("ru", "Russian"),
+    ("ja", "Japanese"),
+    ("ko", "Korean"),
+    ("zh", "Chinese"),
+    ("ar", "Arabic"),
+    ("hi", "Hindi"),
+    ("nl", "Dutch"),
+    ("pl", "Polish"),
+    ("sv", "Swedish"),
+    ("tr", "Turkish"),
+    ("uk", "Ukrainian"),
+    ("cs", "Czech"),
+    ("ro", "Romanian"),
+    ("hu", "Hungarian"),
+];
 
 pub fn build_song_card(
     parent: &mut ChildSpawnerCommands,
@@ -147,7 +198,6 @@ pub fn build_song_card(
     best_score: Option<u32>,
 ) {
     let (badge_text, badge_color) = badge_info(&song.analysis_status, theme);
-    let duration_str = format_duration(song.duration_secs);
     let display = if visible { Display::Flex } else { Display::None };
 
     parent
@@ -157,10 +207,10 @@ pub fn build_song_card(
             Node {
                 display,
                 width: Val::Percent(100.0),
-                min_height: Val::Px(72.0),
-                padding: UiRect::all(Val::Px(16.0)),
+                min_height: Val::Px(64.0),
+                padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(10.0), Val::Px(10.0)),
                 align_items: AlignItems::Center,
-                column_gap: Val::Px(16.0),
+                column_gap: Val::Px(12.0),
                 border_radius: BorderRadius::all(Val::Px(8.0)),
                 border: UiRect::left(Val::Px(3.0)),
                 ..default()
@@ -170,57 +220,8 @@ pub fn build_song_card(
         ))
         .with_children(|card| {
             spawn_album_art(card, index, art_handle, theme, icon_font);
-            spawn_song_info(card, song, theme, best_score, icon_font);
-
-            card.spawn((
-                Text::new(duration_str),
-                TextFont {
-                    font_size: 14.0,
-                    ..default()
-                },
-                TextColor(theme.text_secondary),
-                Node {
-                    flex_shrink: 0.0,
-                    margin: UiRect::right(Val::Px(12.0)),
-                    ..default()
-                },
-            ));
-
-            spawn_status_badge(card, index, badge_text, badge_color, theme);
-
-            let reanalyze_vis = if matches!(
-                song.analysis_status,
-                AnalysisStatus::Ready(_) | AnalysisStatus::Failed(_)
-            ) {
-                Visibility::Inherited
-            } else {
-                Visibility::Hidden
-            };
-            card.spawn((
-                ReanalyzeButton { song_index: index },
-                Button,
-                Node {
-                    flex_shrink: 0.0,
-                    padding: UiRect::new(Val::Px(8.0), Val::Px(8.0), Val::Px(6.0), Val::Px(6.0)),
-                    border_radius: BorderRadius::all(Val::Px(4.0)),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(theme.sidebar_btn),
-                reanalyze_vis,
-            ))
-            .with_children(|btn| {
-                btn.spawn((
-                    Text::new(FA_REFRESH),
-                    TextFont {
-                        font: icon_font.0.clone(),
-                        font_size: 13.0,
-                        ..default()
-                    },
-                    TextColor(theme.text_primary),
-                ));
-            });
+            spawn_song_info(card, song, theme, best_score, icon_font, index);
+            spawn_right_column(card, index, song, badge_text, badge_color, theme, icon_font);
         });
 }
 
@@ -242,6 +243,7 @@ fn spawn_mini_stars(
         .spawn(Node {
             flex_direction: FlexDirection::Row,
             column_gap: Val::Px(2.0),
+            flex_shrink: 0.0,
             ..default()
         })
         .with_children(|row| {
@@ -304,6 +306,7 @@ fn spawn_album_art(
         Node {
             width: Val::Px(48.0),
             height: Val::Px(48.0),
+            flex_shrink: 0.0,
             ..default()
         },
     ))
@@ -378,6 +381,7 @@ fn spawn_song_info(
     theme: &UiTheme,
     best_score: Option<u32>,
     icon_font: &IconFont,
+    index: usize,
 ) {
     card.spawn(Node {
         flex_direction: FlexDirection::Column,
@@ -387,60 +391,372 @@ fn spawn_song_info(
             x: OverflowAxis::Clip,
             y: OverflowAxis::Visible,
         },
-        row_gap: Val::Px(4.0),
+        row_gap: Val::Px(3.0),
         ..default()
     })
     .with_children(|info| {
-        info.spawn((
-            Text::new(song.display_title()),
-            TextFont {
-                font_size: 18.0,
+        info.spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(8.0),
+            ..default()
+        })
+        .with_children(|title_row| {
+            title_row.spawn((
+                Text::new(song.display_title()),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(theme.text_primary),
+                Node {
+                    flex_shrink: 1.0,
+                    overflow: Overflow {
+                        x: OverflowAxis::Clip,
+                        ..default()
+                    },
+                    ..default()
+                },
+            ));
+            if let Some(score) = best_score {
+                spawn_mini_stars(title_row, score, theme, icon_font);
+            }
+        });
+
+        info.spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(0.0),
+            ..default()
+        })
+        .with_children(|sub_row| {
+            let duration_str = format_duration(song.duration_secs);
+            let mut subtitle = format!("{} · {}", song.display_artist(), song.album);
+            if !subtitle.is_empty() {
+                subtitle.push_str(" · ");
+            }
+            subtitle.push_str(&duration_str);
+
+            sub_row.spawn((
+                Text::new(&subtitle),
+                TextFont {
+                    font_size: 13.0,
+                    ..default()
+                },
+                TextColor(theme.text_secondary),
+                Node {
+                    flex_shrink: 1.0,
+                    ..default()
+                },
+            ));
+
+            let lang_display = song
+                .language
+                .as_deref()
+                .map(|l| l.to_uppercase())
+                .unwrap_or_default();
+            let lang_vis = if song.language.is_some() {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            };
+
+            sub_row
+                .spawn((
+                    LanguageButton { song_index: index },
+                    Button,
+                    Node {
+                        flex_shrink: 0.0,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(0.0),
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                    lang_vis,
+                ))
+                .with_children(|lang_wrapper| {
+                    lang_wrapper.spawn((
+                        Text::new(" · "),
+                        TextFont {
+                            font_size: 13.0,
+                            ..default()
+                        },
+                        TextColor(theme.text_dim),
+                    ));
+                    lang_wrapper
+                        .spawn((
+                            Node {
+                                padding: UiRect::new(
+                                    Val::Px(5.0),
+                                    Val::Px(5.0),
+                                    Val::Px(1.0),
+                                    Val::Px(1.0),
+                                ),
+                                border_radius: BorderRadius::all(Val::Px(3.0)),
+                                border: UiRect::all(Val::Px(1.0)),
+                                align_items: AlignItems::Center,
+                                column_gap: Val::Px(3.0),
+                                ..default()
+                            },
+                            BorderColor::all(theme.accent.with_alpha(0.4)),
+                            BackgroundColor(theme.accent.with_alpha(0.1)),
+                        ))
+                        .with_children(|badge| {
+                            badge.spawn((
+                                Text::new(FA_GLOBE),
+                                TextFont {
+                                    font: icon_font.0.clone(),
+                                    font_size: 11.0,
+                                    ..default()
+                                },
+                                TextColor(theme.accent),
+                            ));
+                            badge.spawn((
+                                LanguageText { song_index: index },
+                                Text::new(lang_display),
+                                TextFont {
+                                    font_size: 12.0,
+                                    ..default()
+                                },
+                                TextColor(theme.accent),
+                            ));
+                        });
+                });
+        });
+    });
+}
+
+fn spawn_right_column(
+    card: &mut ChildSpawnerCommands,
+    index: usize,
+    song: &Song,
+    badge_text: &str,
+    badge_color: Color,
+    theme: &UiTheme,
+    icon_font: &IconFont,
+) {
+    card.spawn(Node {
+        flex_direction: FlexDirection::Column,
+        flex_shrink: 0.0,
+        align_items: AlignItems::End,
+        row_gap: Val::Px(4.0),
+        ..default()
+    })
+    .with_children(|col| {
+        spawn_status_badge(col, index, badge_text, badge_color, theme);
+
+        let reanalyze_vis = if matches!(
+            song.analysis_status,
+            AnalysisStatus::Ready(_) | AnalysisStatus::Failed(_)
+        ) {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        col.spawn((
+            ReanalyzeButton { song_index: index },
+            Button,
+            Node {
+                flex_shrink: 0.0,
+                padding: UiRect::new(Val::Px(6.0), Val::Px(6.0), Val::Px(4.0), Val::Px(4.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
                 ..default()
             },
-            TextColor(theme.text_primary),
-        ));
-        info.spawn((
-            Text::new(format!("{} · {}", song.display_artist(), song.album)),
-            TextFont {
-                font_size: 14.0,
-                ..default()
-            },
-            TextColor(theme.text_secondary),
-        ));
-        if let Some(score) = best_score {
-            spawn_mini_stars(info, score, theme, icon_font);
-        }
+            BackgroundColor(theme.sidebar_btn),
+            reanalyze_vis,
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(FA_REFRESH),
+                TextFont {
+                    font: icon_font.0.clone(),
+                    font_size: 12.0,
+                    ..default()
+                },
+                TextColor(theme.text_primary),
+            ));
+        });
     });
 }
 
 fn spawn_status_badge(
-    card: &mut ChildSpawnerCommands,
+    parent: &mut ChildSpawnerCommands,
     index: usize,
     text: &str,
     color: Color,
     theme: &UiTheme,
 ) {
-    card.spawn((
-        StatusBadge { song_index: index },
-        Node {
-            flex_shrink: 0.0,
-            padding: UiRect::new(Val::Px(10.0), Val::Px(10.0), Val::Px(4.0), Val::Px(4.0)),
-            border_radius: BorderRadius::all(Val::Px(4.0)),
-            ..default()
-        },
-        BackgroundColor(color),
-    ))
-    .with_children(|badge| {
-        badge.spawn((
-            BadgeText { song_index: index },
-            Text::new(text),
-            TextFont {
-                font_size: 11.0,
+    parent
+        .spawn((
+            StatusBadge { song_index: index },
+            Node {
+                flex_shrink: 0.0,
+                padding: UiRect::new(Val::Px(8.0), Val::Px(8.0), Val::Px(3.0), Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
                 ..default()
             },
-            TextColor(theme.text_primary),
-        ));
-    });
+            BackgroundColor(color),
+        ))
+        .with_children(|badge| {
+            badge.spawn((
+                BadgeText { song_index: index },
+                Text::new(text),
+                TextFont {
+                    font_size: 10.0,
+                    ..default()
+                },
+                TextColor(theme.text_primary),
+            ));
+        });
+}
+
+pub fn spawn_language_picker(
+    commands: &mut Commands,
+    song_index: usize,
+    theme: &UiTheme,
+    icon_font: &IconFont,
+) {
+    commands.insert_resource(LanguagePickerTarget { song_index });
+
+    commands
+        .spawn((
+            LanguagePickerOverlay,
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            GlobalZIndex(10),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+        ))
+        .with_children(|overlay| {
+            overlay
+                .spawn((
+                    Node {
+                        width: Val::Px(320.0),
+                        max_height: Val::Percent(70.0),
+                        flex_direction: FlexDirection::Column,
+                        padding: UiRect::all(Val::Px(20.0)),
+                        border_radius: BorderRadius::all(Val::Px(12.0)),
+                        row_gap: Val::Px(12.0),
+                        ..default()
+                    },
+                    BackgroundColor(theme.surface),
+                ))
+                .with_children(|card| {
+                    card.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        justify_content: JustifyContent::SpaceBetween,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    })
+                    .with_children(|header| {
+                        header.spawn((
+                            Text::new("Select Language"),
+                            TextFont {
+                                font_size: 18.0,
+                                ..default()
+                            },
+                            TextColor(theme.text_primary),
+                        ));
+                        header
+                            .spawn((
+                                LanguagePickerClose,
+                                Button,
+                                Node {
+                                    padding: UiRect::new(
+                                        Val::Px(8.0),
+                                        Val::Px(8.0),
+                                        Val::Px(4.0),
+                                        Val::Px(4.0),
+                                    ),
+                                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(theme.popup_btn),
+                            ))
+                            .with_children(|btn| {
+                                btn.spawn((
+                                    Text::new("✕"),
+                                    TextFont {
+                                        font_size: 14.0,
+                                        ..default()
+                                    },
+                                    TextColor(theme.text_secondary),
+                                ));
+                            });
+                    });
+
+                    card.spawn(Node {
+                        flex_direction: FlexDirection::Column,
+                        overflow: Overflow::scroll_y(),
+                        row_gap: Val::Px(2.0),
+                        flex_grow: 1.0,
+                        ..default()
+                    })
+                    .with_children(|list| {
+                        for &(code, name) in LANGUAGES {
+                            list.spawn((
+                                LanguagePickerItem {
+                                    lang_code: code.to_string(),
+                                    song_index,
+                                },
+                                Button,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    padding: UiRect::new(
+                                        Val::Px(12.0),
+                                        Val::Px(12.0),
+                                        Val::Px(8.0),
+                                        Val::Px(8.0),
+                                    ),
+                                    border_radius: BorderRadius::all(Val::Px(6.0)),
+                                    align_items: AlignItems::Center,
+                                    column_gap: Val::Px(10.0),
+                                    ..default()
+                                },
+                                BackgroundColor(Color::NONE),
+                            ))
+                            .with_children(|row| {
+                                row.spawn((
+                                    Text::new(FA_GLOBE),
+                                    TextFont {
+                                        font: icon_font.0.clone(),
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(theme.text_dim),
+                                ));
+                                row.spawn((
+                                    Text::new(code.to_uppercase()),
+                                    TextFont {
+                                        font_size: 13.0,
+                                        ..default()
+                                    },
+                                    TextColor(theme.accent),
+                                    Node {
+                                        min_width: Val::Px(28.0),
+                                        ..default()
+                                    },
+                                ));
+                                row.spawn((
+                                    Text::new(name),
+                                    TextFont {
+                                        font_size: 14.0,
+                                        ..default()
+                                    },
+                                    TextColor(theme.text_primary),
+                                ));
+                            });
+                        }
+                    });
+                });
+        });
 }
 
 pub fn format_duration(secs: f64) -> String {

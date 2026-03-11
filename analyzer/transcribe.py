@@ -15,6 +15,7 @@ def transcribe_vocals(
     model_name: str = "large-v3",
     beam_size: int = 5,
     batch_size: int = 16,
+    language_override: str | None = None,
 ) -> dict:
     """Transcribe vocals with WhisperX to get word-level timestamps.
 
@@ -67,15 +68,20 @@ def transcribe_vocals(
         "min_duration_off": 0.6,
     }
 
-    progress(58, "Detecting language from vocals (multi-window)...")
-    lang_model = whisperx.load_model(
-        model_name, device, compute_type=compute_type, task="transcribe",
-        asr_options=asr_options, vad_options=vad_options,
-    )
-    language = detect_language_multiwindow(lang_model, full_audio)
-    del lang_model
-    print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
-    progress(59, f"Detected language: {language}")
+    if language_override:
+        language = language_override
+        print(f"[nightingale:LOG] Using language override: '{language}'", flush=True)
+        progress(59, f"Language override: {language}")
+    else:
+        progress(58, "Detecting language from vocals (multi-window)...")
+        lang_model = whisperx.load_model(
+            model_name, device, compute_type=compute_type, task="transcribe",
+            asr_options=asr_options, vad_options=vad_options,
+        )
+        language = detect_language_multiwindow(lang_model, full_audio)
+        del lang_model
+        print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
+        progress(59, f"Detected language: {language}")
 
     no_vad_asr = {
         "beam_size": beam_size,

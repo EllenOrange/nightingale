@@ -19,6 +19,7 @@ pub struct Song {
     pub duration_secs: f64,
     pub album_art: Option<Arc<Vec<u8>>>,
     pub analysis_status: AnalysisStatus,
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +38,12 @@ pub enum AnalysisStatus {
 }
 
 impl Song {
-    pub fn from_path(path: &Path, file_hash: String, analysis_status: AnalysisStatus) -> Self {
+    pub fn from_path(
+        path: &Path,
+        file_hash: String,
+        analysis_status: AnalysisStatus,
+        language: Option<String>,
+    ) -> Self {
         let (title, artist, album, duration_secs, album_art) = read_metadata(path);
         Self {
             path: path.to_path_buf(),
@@ -48,6 +54,7 @@ impl Song {
             duration_secs,
             album_art,
             analysis_status,
+            language,
         }
     }
 

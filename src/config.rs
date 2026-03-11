@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use bevy::prelude::*;
@@ -17,6 +18,7 @@ pub struct AppConfig {
     pub batch_size: Option<u32>,
     pub last_video_flavor: Option<usize>,
     pub separator: Option<String>,
+    pub language_overrides: Option<HashMap<String, String>>,
 }
 
 impl AppConfig {
@@ -71,5 +73,17 @@ impl AppConfig {
 
     pub fn separator(&self) -> &str {
         self.separator.as_deref().unwrap_or("karaoke")
+    }
+
+    pub fn language_override(&self, hash: &str) -> Option<&str> {
+        self.language_overrides
+            .as_ref()
+            .and_then(|m| m.get(hash).map(|s| s.as_str()))
+    }
+
+    pub fn set_language_override(&mut self, hash: String, lang: String) {
+        self.language_overrides
+            .get_or_insert_with(HashMap::new)
+            .insert(hash, lang);
     }
 }

@@ -13,6 +13,7 @@ use bevy::prelude::*;
 
 use crate::analyzer::cache::CacheDir;
 use crate::analyzer::{AnalysisQueue, PlayTarget};
+use crate::config::AppConfig;
 use crate::scanner::metadata::{AnalysisStatus, SongLibrary, TranscriptSource};
 use crate::profile::ProfileStore;
 use crate::states::AppState;
@@ -88,6 +89,8 @@ impl Plugin for MenuPlugin {
                 (
                     handle_song_click,
                     handle_reanalyze_click,
+                    handle_language_button_click,
+                    handle_language_picker_interaction,
                     handle_search_input,
                     update_status_badges,
                     update_analysis_hint,
@@ -394,10 +397,11 @@ fn handle_song_click(
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
     exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
+    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
     mut focus: ResMut<MenuFocus>,
     nav: Res<crate::input::NavInput>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
         return;
     }
     for (interaction, song_card) in &interaction_query {
@@ -455,8 +459,9 @@ fn handle_reanalyze_click(
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
     exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
+    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
         return;
     }
     for (interaction, btn, mut bg) in &mut interaction_query {
@@ -484,6 +489,117 @@ fn handle_reanalyze_click(
     }
 }
 
+fn handle_language_button_click(
+    mut commands: Commands,
+    interaction_query: Query<
+        (&Interaction, &LanguageButton),
+        Changed<Interaction>,
+    >,
+    theme: Res<UiTheme>,
+    icon_font: Res<IconFont>,
+    picker_query: Query<(), With<LanguagePickerOverlay>>,
+    library: Res<SongLibrary>,
+) {
+    if !picker_query.is_empty() {
+        return;
+    }
+    for (interaction, btn) in &interaction_query {
+        if *interaction == Interaction::Pressed {
+            if btn.song_index < library.songs.len() {
+                let status = &library.songs[btn.song_index].analysis_status;
+                if matches!(status, AnalysisStatus::Analyzing | AnalysisStatus::Queued) {
+                    continue;
+                }
+            }
+            spawn_language_picker(&mut commands, btn.song_index, &theme, &icon_font);
+        }
+    }
+}
+
+fn handle_language_picker_interaction(
+    mut commands: Commands,
+    mut item_query: Query<
+        (&Interaction, &LanguagePickerItem, &mut BackgroundColor),
+        (Changed<Interaction>, Without<LanguagePickerClose>),
+    >,
+    mut close_query: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<LanguagePickerClose>, Without<LanguagePickerItem>),
+    >,
+    overlay_query: Query<Entity, With<LanguagePickerOverlay>>,
+    mut library: ResMut<SongLibrary>,
+    mut queue: ResMut<AnalysisQueue>,
+    cache: Res<CacheDir>,
+    mut config: ResMut<AppConfig>,
+    theme: Res<UiTheme>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    nav: Res<crate::input::NavInput>,
+) {
+    if overlay_query.is_empty() {
+        return;
+    }
+
+    if keyboard.just_pressed(KeyCode::Escape) || nav.back {
+        for entity in &overlay_query {
+            commands.entity(entity).despawn();
+        }
+        commands.remove_resource::<LanguagePickerTarget>();
+        return;
+    }
+
+    for (interaction, mut bg) in &mut close_query {
+        match interaction {
+            Interaction::Pressed => {
+                for entity in &overlay_query {
+                    commands.entity(entity).despawn();
+                }
+                commands.remove_resource::<LanguagePickerTarget>();
+                return;
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(theme.popup_btn_hover);
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(theme.popup_btn);
+            }
+        }
+    }
+
+    for (interaction, item, mut bg) in &mut item_query {
+        match interaction {
+            Interaction::Pressed => {
+                let idx = item.song_index;
+                let lang = item.lang_code.clone();
+                if idx < library.songs.len() {
+                    let hash = library.songs[idx].file_hash.clone();
+                    config.set_language_override(hash.clone(), lang.clone());
+                    config.save();
+
+                    let transcript = cache.transcript_path(&hash);
+                    if transcript.is_file() {
+                        let _ = std::fs::remove_file(&transcript);
+                    }
+
+                    library.songs[idx].language = Some(lang);
+                    library.songs[idx].analysis_status = AnalysisStatus::Queued;
+                    queue.enqueue(idx);
+                }
+                for entity in &overlay_query {
+                    commands.entity(entity).despawn();
+                }
+                commands.remove_resource::<LanguagePickerTarget>();
+                return;
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(theme.surface_hover);
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(Color::NONE);
+            }
+        }
+    }
+}
+
 fn handle_search_input(
     mut key_events: MessageReader<KeyboardInput>,
     mut menu_state: ResMut<MenuState>,
@@ -493,9 +609,10 @@ fn handle_search_input(
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
     exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
+    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
     mut focus: ResMut<MenuFocus>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
         return;
     }
     let mut changed = false;
@@ -599,13 +716,15 @@ fn update_status_badges(
     time: Res<Time>,
     theme: Res<UiTheme>,
     mut badge_query: Query<(&StatusBadge, &mut BackgroundColor), Without<SpinnerOverlay>>,
-    mut badge_text_query: Query<(&BadgeText, &mut Text), Without<StatsText>>,
-    mut stats_query: Query<&mut Text, With<StatsText>>,
+    mut badge_text_query: Query<(&BadgeText, &mut Text), (Without<StatsText>, Without<LanguageText>)>,
+    mut stats_query: Query<&mut Text, (With<StatsText>, Without<BadgeText>, Without<LanguageText>)>,
     mut spinner_query: Query<
         (&SpinnerOverlay, &mut Visibility, &mut BackgroundColor),
-        (Without<ReanalyzeButton>, Without<StatusBadge>),
+        (Without<ReanalyzeButton>, Without<StatusBadge>, Without<LanguageButton>),
     >,
-    mut reanalyze_query: Query<(&ReanalyzeButton, &mut Visibility), Without<SpinnerOverlay>>,
+    mut reanalyze_query: Query<(&ReanalyzeButton, &mut Visibility), (Without<SpinnerOverlay>, Without<LanguageButton>)>,
+    mut lang_text_query: Query<(&LanguageText, &mut Text), (Without<BadgeText>, Without<StatsText>)>,
+    mut lang_btn_query: Query<(&LanguageButton, &mut Visibility), (Without<SpinnerOverlay>, Without<ReanalyzeButton>)>,
 ) {
     for (badge, mut bg) in &mut badge_query {
         if badge.song_index >= library.songs.len() {
@@ -686,6 +805,32 @@ fn update_status_badges(
         } else {
             Visibility::Hidden
         };
+    }
+
+    for (lt, mut text) in &mut lang_text_query {
+        if lt.song_index >= library.songs.len() {
+            continue;
+        }
+        let new_lang = library.songs[lt.song_index]
+            .language
+            .as_deref()
+            .map(|l| l.to_uppercase())
+            .unwrap_or_default();
+        if **text != new_lang {
+            **text = new_lang;
+        }
+    }
+
+    for (lb, mut vis) in &mut lang_btn_query {
+        if lb.song_index >= library.songs.len() {
+            continue;
+        }
+        let target = if library.songs[lb.song_index].language.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        vis.set_if_neq(target);
     }
 }
 
@@ -768,10 +913,11 @@ fn handle_menu_nav(
     overlay_query: Query<(), With<SettingsOverlay>>,
     profile_overlay_query: Query<(), With<ProfileOverlay>>,
     exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
+    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
     time: Res<Time>,
     mut nav_repeat: ResMut<NavRepeat>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
+    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
         return;
     }
 
@@ -959,6 +1105,7 @@ fn cleanup_menu(
     settings_query: Query<Entity, With<SettingsOverlay>>,
     profile_query: Query<Entity, With<ProfileOverlay>>,
     exit_query: Query<Entity, With<sidebar::ExitOverlay>>,
+    lang_picker_query: Query<Entity, With<LanguagePickerOverlay>>,
 ) {
     for entity in &query {
         commands.entity(entity).despawn();
@@ -972,6 +1119,9 @@ fn cleanup_menu(
     for entity in &exit_query {
         commands.entity(entity).despawn();
     }
+    for entity in &lang_picker_query {
+        commands.entity(entity).despawn();
+    }
     commands.remove_resource::<AlbumArtCache>();
     commands.remove_resource::<IconFont>();
     commands.remove_resource::<profile::ProfileInputState>();
@@ -979,4 +1129,5 @@ fn cleanup_menu(
     commands.remove_resource::<profile::ProfileFocus>();
     commands.remove_resource::<settings::SettingsFocus>();
     commands.remove_resource::<sidebar::ExitFocus>();
+    commands.remove_resource::<LanguagePickerTarget>();
 }
