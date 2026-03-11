@@ -8,13 +8,13 @@
 
 ---
 
-Nightingale scans your music folder, separates vocals from instrumentals with [Demucs](https://github.com/facebookresearch/demucs), transcribes lyrics with word-level timestamps via [WhisperX](https://github.com/m-bain/whisperX), and plays it all back with synchronized highlighting, pitch scoring, profiles, and dynamic backgrounds.
+Nightingale scans your music folder, separates lead vocals from instrumentals using the [UVR Karaoke model](https://github.com/Anjok07/ultimatevocalremovergui) (or [Demucs](https://github.com/facebookresearch/demucs)), transcribes lyrics with word-level timestamps via [WhisperX](https://github.com/m-bain/whisperX), and plays it all back with synchronized highlighting, pitch scoring, profiles, and dynamic backgrounds.
 
 Ships as a single binary. No manual installation of Python, ffmpeg, or ML models required — everything is bootstrapped automatically on first launch.
 
 ## Features
 
-🎤 **Stem Separation** — isolates vocals and instrumentals from any audio file using Demucs, with adjustable guide vocal volume
+🎤 **Stem Separation** — isolates lead vocals from instrumentals using the UVR Karaoke model (default) or Demucs, with adjustable guide vocal volume. The karaoke model preserves backing vocals in the instrumental for a more natural sound
 
 📝 **Word-Level Lyrics** — automatic transcription with alignment, or fetched from [LRCLIB](https://lrclib.net) when available
 
@@ -28,7 +28,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 📺 **Adaptive UI Scaling** — scales to any resolution including 4K TVs
 
-📦 **Self-Contained** — ffmpeg and uv are bundled in the binary; Python, PyTorch, and ML packages are installed to `~/.nightingale/vendor/` on first run
+📦 **Self-Contained** — ffmpeg and uv are bundled in the binary; Python, PyTorch, and ML packages are installed to `~/.nightingale/vendor/` on first run. Video backgrounds are pre-downloaded during setup so the first session is ready to go
 
 ## Quick start
 
@@ -50,15 +50,18 @@ Supported formats: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`.
 
 ### Playback
 
-| Action | Key |
-|---|---|
-| Toggle guide vocals | G |
-| Guide volume up/down | + / - |
-| Cycle background theme | T |
-| Cycle video flavor | F |
-| Toggle microphone | M |
-| Next microphone | N |
-| Toggle fullscreen | F11 |
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| Pause / Resume | Space | Start |
+| Exit to menu | Escape | B (East) |
+| Toggle guide vocals | G | — |
+| Guide volume up/down | + / - | — |
+| Cycle background theme | T | — |
+| Cycle video flavor | F | — |
+| Toggle microphone | M | — |
+| Next microphone | N | — |
+| Toggle fullscreen | F11 | — |
+| Skip Intro / Skip Outro | On-screen buttons | A (South) |
 
 ## How it works
 
@@ -66,27 +69,27 @@ Supported formats: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`.
 Music file (.mp3/.flac/...)
         │
         ▼
-  ┌─────────────┐
-  │   Demucs     │  ──▶  vocals.ogg + instrumental.ogg
-  │ (htdemucs)   │
-  └─────────────┘
+  ┌─────────────────┐
+  │  UVR Karaoke /   │  ──▶  vocals.ogg + instrumental.ogg
+  │  Demucs          │
+  └─────────────────┘
         │
         ▼
-  ┌─────────────┐
-  │  LRCLIB      │  ──▶  Fetches synced lyrics if available
-  └─────────────┘
+  ┌─────────────────┐
+  │  LRCLIB          │  ──▶  Fetches synced lyrics if available
+  └─────────────────┘
         │
         ▼
-  ┌─────────────┐
-  │  WhisperX    │  ──▶  Transcription + word-level alignment
-  │ (large-v3)   │
-  └─────────────┘
+  ┌─────────────────┐
+  │  WhisperX        │  ──▶  Transcription + word-level alignment
+  │  (large-v3)      │
+  └─────────────────┘
         │
         ▼
-  ┌─────────────┐
-  │  Bevy App    │  ──▶  Plays instrumental + synced lyrics
-  │  (Rust)      │       with pitch scoring & backgrounds
-  └─────────────┘
+  ┌─────────────────┐
+  │  Bevy App        │  ──▶  Plays instrumental + synced lyrics
+  │  (Rust)          │       with pitch scoring & backgrounds
+  └─────────────────┘
 ```
 
 Analysis results are cached at `~/.nightingale/cache/` using blake3 file hashes. Re-analysis only happens if the source file changes or is manually triggered.
@@ -100,6 +103,8 @@ The Python analyzer uses PyTorch and auto-detects the best backend:
 | CUDA | NVIDIA GPU | Fastest |
 | MPS | Apple Silicon | macOS; WhisperX alignment falls back to CPU |
 | CPU | Any | Slowest but always works |
+
+The UVR Karaoke model uses ONNX Runtime and enables CUDA acceleration automatically on NVIDIA GPUs, or CoreML on Apple Silicon.
 
 A song typically takes 2–5 minutes on GPU, 10–20 minutes on CPU.
 
@@ -123,7 +128,8 @@ Everything lives under `~/.nightingale/`:
 │   └── .ready          # Marker indicating setup is complete
 └── models/
     ├── torch/          # Demucs model cache
-    └── huggingface/    # WhisperX model cache
+    ├── huggingface/    # WhisperX model cache
+    └── audio_separator/ # UVR Karaoke model cache
 ```
 
 ### Video backgrounds
