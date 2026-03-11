@@ -303,10 +303,18 @@ fn build_disk_usage_widget(
                 ];
 
                 for &(action, label) in clear_actions {
+                    let visible = match action {
+                        CacheClearAction::All => stats.total() > 0,
+                        CacheClearAction::Videos => stats.clearable_videos_bytes > 0,
+                        CacheClearAction::Models => stats.models_bytes > 0,
+                    };
+                    let display = if visible { Display::Flex } else { Display::None };
+
                     row.spawn((
                         ClearCacheButton { category: action },
                         Button,
                         Node {
+                            display,
                             flex_grow: 1.0,
                             padding: UiRect::new(
                                 Val::Px(8.0),
@@ -409,9 +417,9 @@ pub fn handle_clear_cache_click(
         Changed<Interaction>,
     >,
     cache: Res<CacheDir>,
-    mut stats: ResMut<CacheStats>,
+    mut library: ResMut<crate::scanner::metadata::SongLibrary>,
+    stats: Res<CacheStats>,
     theme: Res<UiTheme>,
-    mut next_state: ResMut<NextState<AppState>>,
 ) {
     for (interaction, btn, mut bg) in &mut interaction_query {
         match interaction {
@@ -424,22 +432,23 @@ pub fn handle_clear_cache_click(
                         cache.clear_all();
                         crate::vendor::clear_videos();
                         crate::vendor::clear_models();
-                        *stats = CacheStats::default();
-                        next_state.set(AppState::Menu);
+                        for song in &mut library.songs {
+                            song.analysis_status =
+                                crate::scanner::metadata::AnalysisStatus::NotAnalyzed;
+                            song.language = None;
+                        }
                     }
                     CacheClearAction::Videos => {
                         if stats.clearable_videos_bytes == 0 {
                             continue;
                         }
                         crate::vendor::clear_videos();
-                        stats.clearable_videos_bytes = 0;
                     }
                     CacheClearAction::Models => {
                         if stats.models_bytes == 0 {
                             continue;
                         }
                         crate::vendor::clear_models();
-                        stats.models_bytes = 0;
                     }
                 }
                 start_cache_stats_computation(&mut commands);

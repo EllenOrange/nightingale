@@ -10,13 +10,13 @@ use audio::KaraokeAudio;
 use bevy_kira_audio::AudioInstance;
 
 const PITCH_BUFFER_SIZE: usize = 200;
-const BASE_DISPLAY_WIDTH: f32 = 480.0;
-const BASE_DISPLAY_HEIGHT: f32 = 56.0;
-const BASE_DISPLAY_TOP_OFFSET: f32 = 55.0;
-const REFERENCE_HEIGHT: f32 = 720.0;
+const BASE_DISPLAY_WIDTH: f32 = 400.0;
+const BASE_DISPLAY_HEIGHT: f32 = 44.0;
+const BASE_DISPLAY_TOP_OFFSET: f32 = 50.0;
+const REFERENCE_HEIGHT: f32 = 1080.0;
 
 pub fn display_scale(window_height: f32) -> f32 {
-    (window_height / REFERENCE_HEIGHT).max(1.0)
+    (window_height / REFERENCE_HEIGHT).max(0.75)
 }
 
 pub fn display_width(window_height: f32) -> f32 {
