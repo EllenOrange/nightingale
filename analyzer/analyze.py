@@ -26,7 +26,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from whisper_compat import progress, detect_device
-from stems import separate_stems
+from stems import separate_stems, separate_stems_uvr
 from align import align_lyrics
 from transcribe import transcribe_vocals
 
@@ -60,6 +60,8 @@ def main():
     parser.add_argument("--model", default="large-v3-turbo", help="Whisper model name")
     parser.add_argument("--beam-size", type=int, default=5, help="Beam size for decoding")
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size for transcription")
+    parser.add_argument("--separator", default="karaoke", choices=["karaoke", "demucs"],
+                        help="Stem separation method: karaoke (UVR, cleaner) or demucs (faster)")
     parser.add_argument("--lyrics", help="Path to pre-fetched lyrics JSON (align-only mode)")
     args = parser.parse_args()
 
@@ -99,7 +101,14 @@ def main():
         vocals_path = final_vocals_ogg
     else:
         with tempfile.TemporaryDirectory(prefix="nightingale_") as work_dir:
-            vocals_path, instrumental_path = separate_stems(audio_path, work_dir, device)
+            if args.separator == "karaoke":
+                torch_home = os.environ.get("TORCH_HOME", "")
+                models_base = os.path.dirname(torch_home) if torch_home else output_dir
+                uvr_models_dir = os.path.join(models_base, "audio_separator")
+                os.makedirs(uvr_models_dir, exist_ok=True)
+                vocals_path, instrumental_path = separate_stems_uvr(audio_path, work_dir, uvr_models_dir)
+            else:
+                vocals_path, instrumental_path = separate_stems(audio_path, work_dir, device)
             progress(92, "Saving stems to cache...")
             _convert_to_ogg(vocals_path, final_vocals_ogg)
             _convert_to_ogg(instrumental_path, final_instrumental_ogg)
@@ -124,10 +133,6 @@ def main():
     progress(95, "Writing transcript...")
     with open(transcript_path, "w", encoding="utf-8") as f:
         json.dump(transcript, f, ensure_ascii=False, indent=2)
-
-    if args.lyrics and os.path.isfile(args.lyrics):
-        os.remove(args.lyrics)
-        print(f"[nightingale:LOG] Cleaned up lyrics file: {args.lyrics}", flush=True)
 
     progress(100, "DONE")
 

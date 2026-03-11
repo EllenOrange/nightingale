@@ -55,6 +55,8 @@ pub struct ThemeToggleIcon;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsAction {
     ToggleFullscreen,
+    SeparatorPrev,
+    SeparatorNext,
     ModelPrev,
     ModelNext,
     BeamUp,
@@ -78,6 +80,7 @@ pub struct SettingsRow(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsField {
+    Separator,
     Model,
     Beam,
     Batch,

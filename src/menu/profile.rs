@@ -34,9 +34,7 @@ pub fn spawn_profile_popup(
     asset_server: &AssetServer,
 ) {
     commands.insert_resource(ProfileInputState::default());
-    if profiles.active.is_some() {
-        commands.insert_resource(ProfileFocus(0));
-    }
+    commands.insert_resource(ProfileFocus(0));
     let icon_font: Handle<Font> = asset_server.load("fonts/fa-solid-900.ttf");
 
     commands
@@ -294,11 +292,13 @@ fn spawn_primary_btn(
                     Val::Px(10.0),
                     Val::Px(10.0),
                 ),
+                border: UiRect::all(Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(BTN_RADIUS)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderColor::all(Color::NONE),
             BackgroundColor(theme.accent),
         ))
         .with_children(|btn| {
@@ -363,11 +363,13 @@ fn spawn_danger_btn(
                     Val::Px(10.0),
                     Val::Px(10.0),
                 ),
+                border: UiRect::all(Val::Px(2.0)),
                 border_radius: BorderRadius::all(Val::Px(BTN_RADIUS)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
+            BorderColor::all(Color::NONE),
             BackgroundColor(theme.badge_failed),
         ))
         .with_children(|btn| {
@@ -384,6 +386,7 @@ fn spawn_danger_btn(
 
 fn spawn_new_profile_input(commands: &mut Commands, theme: &UiTheme) {
     commands.insert_resource(ProfileInputState::default());
+    commands.insert_resource(ProfileFocus(0));
 
     commands
         .spawn((
@@ -419,6 +422,7 @@ fn spawn_new_profile_input(commands: &mut Commands, theme: &UiTheme) {
 }
 
 fn spawn_delete_confirm(commands: &mut Commands, theme: &UiTheme, name: &str) {
+    commands.insert_resource(ProfileFocus(1));
     commands
         .spawn((
             ProfileOverlay,
@@ -481,10 +485,18 @@ pub fn handle_profile_click(
         return;
     }
 
+    let has_name_input = !name_input_query.is_empty();
+    let has_pending_delete = pending_delete.is_some();
+    let is_new_profile_form = has_name_input && profiles.active.is_some();
+
     if nav.back {
-        if pending_delete.is_some() {
+        if has_pending_delete {
             despawn_overlay(&mut commands, &overlay_query);
             commands.remove_resource::<PendingDeleteProfile>();
+            commands.remove_resource::<ProfileFocus>();
+            spawn_profile_popup(&mut commands, &theme, &profiles, &asset_server);
+        } else if is_new_profile_form {
+            despawn_overlay(&mut commands, &overlay_query);
             commands.remove_resource::<ProfileFocus>();
             spawn_profile_popup(&mut commands, &theme, &profiles, &asset_server);
         } else {
@@ -495,28 +507,64 @@ pub fn handle_profile_click(
         return;
     }
 
-    if nav.confirm && !name_input_query.is_empty() {
-        if let Some(ref input_state) = input_state {
-            let name = input_state.text.trim().to_string();
-            if !name.is_empty() {
-                profiles.create_profile(name);
-                despawn_overlay(&mut commands, &overlay_query);
-                commands.remove_resource::<ProfileFocus>();
-                next_state.set(AppState::Menu);
-                return;
-            }
-        }
-    }
-
     if let Some(ref mut pf) = profile_focus {
-        let item_count = profiles.profiles.len() + 2;
+        let item_count = if has_pending_delete || has_name_input {
+            2
+        } else {
+            profiles.profiles.len() + 2
+        };
         if nav.down {
             pf.0 = (pf.0 + 1).min(item_count - 1);
         }
         if nav.up {
             pf.0 = pf.0.saturating_sub(1);
         }
-        if nav.confirm && name_input_query.is_empty() {
+    }
+
+    if nav.confirm {
+        if has_pending_delete {
+            let focus = profile_focus.as_ref().map(|pf| pf.0).unwrap_or(1);
+            if focus == 0 {
+                if let Some(ref pending) = pending_delete {
+                    profiles.delete_profile(&pending.name);
+                }
+                despawn_overlay(&mut commands, &overlay_query);
+                commands.remove_resource::<PendingDeleteProfile>();
+                commands.remove_resource::<ProfileFocus>();
+                next_state.set(AppState::Menu);
+            } else {
+                despawn_overlay(&mut commands, &overlay_query);
+                commands.remove_resource::<PendingDeleteProfile>();
+                commands.remove_resource::<ProfileFocus>();
+                spawn_profile_popup(&mut commands, &theme, &profiles, &asset_server);
+            }
+            return;
+        }
+
+        if has_name_input {
+            let focus = profile_focus.as_ref().map(|pf| pf.0).unwrap_or(0);
+            if focus == 0 {
+                if let Some(ref input_state) = input_state {
+                    let name = input_state.text.trim().to_string();
+                    if !name.is_empty() {
+                        profiles.create_profile(name);
+                        despawn_overlay(&mut commands, &overlay_query);
+                        commands.remove_resource::<ProfileFocus>();
+                        next_state.set(AppState::Menu);
+                    }
+                }
+            } else if is_new_profile_form {
+                despawn_overlay(&mut commands, &overlay_query);
+                commands.remove_resource::<ProfileFocus>();
+                spawn_profile_popup(&mut commands, &theme, &profiles, &asset_server);
+            } else {
+                despawn_overlay(&mut commands, &overlay_query);
+                commands.remove_resource::<ProfileFocus>();
+            }
+            return;
+        }
+
+        if let Some(ref pf) = profile_focus {
             let idx = pf.0;
             if idx < profiles.profiles.len() {
                 if let Some(name) = profiles.profiles.get(idx).cloned() {
@@ -525,7 +573,6 @@ pub fn handle_profile_click(
                 despawn_overlay(&mut commands, &overlay_query);
                 commands.remove_resource::<ProfileFocus>();
                 next_state.set(AppState::Menu);
-                return;
             } else if idx == profiles.profiles.len() {
                 despawn_overlay(&mut commands, &overlay_query);
                 commands.remove_resource::<ProfileFocus>();
@@ -598,12 +645,12 @@ pub fn handle_profile_click(
                 }
             }
             Interaction::Hovered => {
-                let btn_focus_idx = match btn.action {
-                    ProfileAction::Switch(i) => Some(i),
-                    ProfileAction::NewProfile => Some(profiles.profiles.len()),
-                    ProfileAction::Close => Some(profiles.profiles.len() + 1),
-                    _ => None,
-                };
+                let btn_focus_idx = focus_index_for_btn(
+                    &btn.action,
+                    has_pending_delete,
+                    has_name_input,
+                    profiles.profiles.len(),
+                );
                 if let (Some(pf), Some(idx)) = (&mut profile_focus, btn_focus_idx) {
                     pf.0 = idx;
                 }
@@ -613,14 +660,13 @@ pub fn handle_profile_click(
     }
 
     let focus_idx = profile_focus.as_ref().map(|pf| pf.0);
-    let profile_count = profiles.profiles.len();
     for (btn, mut bg, mut border) in &mut btn_styles {
-        let btn_focus_idx = match btn.action {
-            ProfileAction::Switch(i) => Some(i),
-            ProfileAction::NewProfile => Some(profile_count),
-            ProfileAction::Close => Some(profile_count + 1),
-            _ => None,
-        };
+        let btn_focus_idx = focus_index_for_btn(
+            &btn.action,
+            has_pending_delete,
+            has_name_input,
+            profiles.profiles.len(),
+        );
         let is_focused = focus_idx.is_some() && btn_focus_idx == focus_idx;
         border.set_if_neq(if is_focused {
             BorderColor::all(theme.accent)
@@ -646,6 +692,34 @@ pub fn handle_profile_click(
             }
         };
         bg.set_if_neq(target_bg);
+    }
+}
+
+fn focus_index_for_btn(
+    action: &ProfileAction,
+    has_pending_delete: bool,
+    has_name_input: bool,
+    profile_count: usize,
+) -> Option<usize> {
+    if has_pending_delete {
+        match action {
+            ProfileAction::ConfirmDelete => Some(0),
+            ProfileAction::CancelDelete => Some(1),
+            _ => None,
+        }
+    } else if has_name_input {
+        match action {
+            ProfileAction::Create => Some(0),
+            ProfileAction::Close | ProfileAction::CancelDelete => Some(1),
+            _ => None,
+        }
+    } else {
+        match action {
+            ProfileAction::Switch(i) => Some(*i),
+            ProfileAction::NewProfile => Some(profile_count),
+            ProfileAction::Close => Some(profile_count + 1),
+            _ => None,
+        }
     }
 }
 

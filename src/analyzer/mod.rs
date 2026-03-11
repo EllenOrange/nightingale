@@ -136,12 +136,9 @@ fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
         results
             .into_iter()
             .filter(|r| {
-                r.get("syncedLyrics")
+                r.get("plainLyrics")
                     .and_then(|v| v.as_str())
                     .is_some_and(|s| !s.is_empty())
-                    || r.get("plainLyrics")
-                        .and_then(|v| v.as_str())
-                        .is_some_and(|s| !s.is_empty())
             })
             .min_by_key(|r| {
                 let d = r.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -161,25 +158,16 @@ fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
         .get("plainLyrics")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty());
-    let synced_str = record
-        .get("syncedLyrics")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty());
 
-    let lines: Vec<String> = if let Some(plain) = plain_str {
-        plain.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
-    } else if let Some(synced) = synced_str {
-        synced
-            .lines()
-            .filter_map(|line| {
-                let line = line.trim();
-                line.find(']').map(|i| line[i + 1..].trim().to_string())
-            })
-            .filter(|t| !t.is_empty())
-            .collect()
-    } else {
+    let Some(plain) = plain_str else {
         return None;
     };
+
+    let lines: Vec<String> = plain
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
 
     if lines.is_empty() {
         return None;
@@ -208,6 +196,7 @@ fn spawn_analyzer(
     whisper_model: String,
     beam_size: u32,
     batch_size: u32,
+    separator: String,
 ) -> (Arc<Mutex<ProgressInfo>>, Arc<AtomicU32>, std::thread::JoinHandle<()>) {
     let progress = Arc::new(Mutex::new(ProgressInfo {
         percent: 0,
@@ -262,7 +251,9 @@ fn spawn_analyzer(
                 .arg("--beam-size")
                 .arg(beam_size.to_string())
                 .arg("--batch-size")
-                .arg(current_batch_size.to_string());
+                .arg(current_batch_size.to_string())
+                .arg("--separator")
+                .arg(&separator);
 
             if let Some(ref lp) = lyrics_path {
                 cmd.arg("--lyrics").arg(lp);
@@ -395,6 +386,7 @@ fn process_queue(
         config.whisper_model().to_string(),
         config.beam_size(),
         config.batch_size(),
+        config.separator().to_string(),
     );
 
     library.songs[song_index].analysis_status = AnalysisStatus::Analyzing;

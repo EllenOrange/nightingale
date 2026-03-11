@@ -69,6 +69,7 @@ fn spawn_setup_ui(mut commands: Commands, theme: Res<UiTheme>, asset_server: Res
                 ImageNode::new(asset_server.load("images/logo.png")),
                 Node {
                     width: Val::Vw(25.0),
+                    max_width: Val::Px(400.0),
                     ..default()
                 },
             ));

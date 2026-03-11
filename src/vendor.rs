@@ -326,12 +326,13 @@ fn step_install_packages(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), Str
         return Err(format!("PyTorch install failed: {stderr}"));
     }
 
-    send(tx, "Packages", "Installing Demucs and WhisperX...");
+    send(tx, "Packages", "Installing Demucs, WhisperX and audio-separator...");
 
     let output = Command::new(&uv)
         .args([
             "pip", "install",
             "demucs>=4.0.0", "whisperx>=3.3.0", "soundfile",
+            "audio-separator>=0.25",
             "--python",
         ])
         .arg(&py)

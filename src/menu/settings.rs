@@ -4,12 +4,16 @@ use bevy::window::WindowMode;
 use super::song_card::*;
 use crate::ui::{self, UiTheme};
 
+const SEPARATORS: &[(&str, &str)] = &[
+    ("karaoke", "UVR Karaoke"),
+    ("demucs", "Demucs"),
+];
 const MODELS: &[&str] = &["large-v3-turbo", "large-v3"];
 
 #[derive(Resource)]
 pub struct SettingsFocus(pub usize);
 
-const SETTINGS_ROW_COUNT: usize = 6;
+const SETTINGS_ROW_COUNT: usize = 7;
 
 struct SettingsRowMapping {
     enter: SettingsAction,
@@ -28,6 +32,11 @@ const fn row_mapping(
 fn settings_rows() -> [SettingsRowMapping; SETTINGS_ROW_COUNT] {
     [
         row_mapping(SettingsAction::ToggleFullscreen, None, None),
+        row_mapping(
+            SettingsAction::SeparatorNext,
+            Some(SettingsAction::SeparatorPrev),
+            Some(SettingsAction::SeparatorNext),
+        ),
         row_mapping(
             SettingsAction::ModelNext,
             Some(SettingsAction::ModelPrev),
@@ -100,18 +109,23 @@ pub fn spawn_settings_popup(
                         "Toggle between fullscreen and windowed mode", 0);
 
                     spawn_settings_section(card, theme, "Analyzer");
+                    let sep_label = separator_display(config.separator());
+                    spawn_settings_row(card, theme, "Separator", sep_label,
+                        SettingsValueText(SettingsField::Separator),
+                        &[("<", SettingsAction::SeparatorPrev), (">", SettingsAction::SeparatorNext)],
+                        "Karaoke removes backing vocals for cleaner lyrics; Demucs is faster", 1);
                     spawn_settings_row(card, theme, "Model", config.whisper_model(),
                         SettingsValueText(SettingsField::Model),
                         &[("<", SettingsAction::ModelPrev), (">", SettingsAction::ModelNext)],
-                        "turbo is fastest, v3 is most accurate", 1);
+                        "turbo is fastest, v3 is most accurate", 2);
                     spawn_settings_row(card, theme, "Beam size", &config.beam_size().to_string(),
                         SettingsValueText(SettingsField::Beam),
                         &[("-", SettingsAction::BeamDown), ("+", SettingsAction::BeamUp)],
-                        "Higher values improve accuracy at the cost of speed", 2);
+                        "Higher values improve accuracy at the cost of speed", 3);
                     spawn_settings_row(card, theme, "Batch size", &config.batch_size().to_string(),
                         SettingsValueText(SettingsField::Batch),
                         &[("-", SettingsAction::BatchDown), ("+", SettingsAction::BatchUp)],
-                        "Higher values use more memory but process faster", 3);
+                        "Higher values use more memory but process faster", 4);
 
                     card.spawn((
                         Text::new("Changes apply to future analyses. Use the re-analyze button on song cards to apply."),
@@ -123,8 +137,8 @@ pub fn spawn_settings_popup(
                         },
                     ));
 
-                    spawn_settings_wide_btn(card, "Restore Defaults", SettingsAction::RestoreDefaults, theme, 4);
-                    spawn_settings_wide_btn(card, "Close", SettingsAction::Close, theme, 5);
+                    spawn_settings_wide_btn(card, "Restore Defaults", SettingsAction::RestoreDefaults, theme, 5);
+                    spawn_settings_wide_btn(card, "Close", SettingsAction::Close, theme, 6);
                 });
         });
 }
@@ -302,6 +316,19 @@ fn dispatch_settings_action(
                 set_settings_text(value_texts, SettingsField::Fullscreen, new_label);
             }
         }
+        SettingsAction::SeparatorPrev | SettingsAction::SeparatorNext => {
+            let current = config.separator();
+            let idx = SEPARATORS.iter().position(|(k, _)| *k == current).unwrap_or(0);
+            let next_idx = if matches!(action, SettingsAction::SeparatorNext) {
+                (idx + 1) % SEPARATORS.len()
+            } else {
+                (idx + SEPARATORS.len() - 1) % SEPARATORS.len()
+            };
+            let (key, _) = SEPARATORS[next_idx];
+            config.separator = Some(key.to_string());
+            config.save();
+            set_settings_text(value_texts, SettingsField::Separator, separator_display(key));
+        }
         SettingsAction::ModelPrev | SettingsAction::ModelNext => {
             let current = config.whisper_model();
             let idx = MODELS.iter().position(|&m| m == current).unwrap_or(0);
@@ -340,11 +367,13 @@ fn dispatch_settings_action(
             set_settings_text(value_texts, SettingsField::Batch, &new_val.to_string());
         }
         SettingsAction::RestoreDefaults => {
+            config.separator = None;
             config.whisper_model = None;
             config.beam_size = None;
             config.batch_size = None;
             config.fullscreen = None;
             config.save();
+            set_settings_text(value_texts, SettingsField::Separator, separator_display(config.separator()));
             set_settings_text(value_texts, SettingsField::Model, config.whisper_model());
             set_settings_text(value_texts, SettingsField::Beam, &config.beam_size().to_string());
             set_settings_text(value_texts, SettingsField::Batch, &config.batch_size().to_string());
@@ -456,11 +485,12 @@ pub fn handle_settings_click(
             Interaction::Hovered => {
                 let row_for_action = match settings_btn.action {
                     SettingsAction::ToggleFullscreen => Some(0),
-                    SettingsAction::ModelPrev | SettingsAction::ModelNext => Some(1),
-                    SettingsAction::BeamDown | SettingsAction::BeamUp => Some(2),
-                    SettingsAction::BatchDown | SettingsAction::BatchUp => Some(3),
-                    SettingsAction::RestoreDefaults => Some(4),
-                    SettingsAction::Close => Some(5),
+                    SettingsAction::SeparatorPrev | SettingsAction::SeparatorNext => Some(1),
+                    SettingsAction::ModelPrev | SettingsAction::ModelNext => Some(2),
+                    SettingsAction::BeamDown | SettingsAction::BeamUp => Some(3),
+                    SettingsAction::BatchDown | SettingsAction::BatchUp => Some(4),
+                    SettingsAction::RestoreDefaults => Some(5),
+                    SettingsAction::Close => Some(6),
                 };
                 if let (Some(sf), Some(row)) = (&mut settings_focus, row_for_action) {
                     sf.0 = row;
@@ -496,6 +526,14 @@ pub fn handle_settings_click(
             border.set_if_neq(target_border);
         }
     }
+}
+
+fn separator_display(key: &str) -> &str {
+    SEPARATORS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, label)| *label)
+        .unwrap_or(key)
 }
 
 fn set_settings_text(

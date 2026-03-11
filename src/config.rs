@@ -16,6 +16,7 @@ pub struct AppConfig {
     pub beam_size: Option<u32>,
     pub batch_size: Option<u32>,
     pub last_video_flavor: Option<usize>,
+    pub separator: Option<String>,
 }
 
 impl AppConfig {
@@ -66,5 +67,9 @@ impl AppConfig {
 
     pub fn batch_size(&self) -> u32 {
         self.batch_size.unwrap_or(16)
+    }
+
+    pub fn separator(&self) -> &str {
+        self.separator.as_deref().unwrap_or("karaoke")
     }
 }
