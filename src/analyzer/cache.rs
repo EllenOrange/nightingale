@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
@@ -38,4 +38,37 @@ impl CacheDir {
             && self.instrumental_path(hash).is_file()
             && self.vocals_path(hash).is_file()
     }
+
+    pub fn delete_song_cache(&self, hash: &str) {
+        for path in [
+            self.transcript_path(hash),
+            self.instrumental_path(hash),
+            self.vocals_path(hash),
+            self.lyrics_path(hash),
+        ] {
+            if path.is_file() {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+
+    pub fn clear_all(&self) {
+        if self.path.is_dir() {
+            let _ = std::fs::remove_dir_all(&self.path);
+            let _ = std::fs::create_dir_all(&self.path);
+        }
+    }
+}
+
+pub fn dir_size(path: &Path) -> u64 {
+    if !path.is_dir() {
+        return 0;
+    }
+    walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter_map(|e| e.metadata().ok())
+        .map(|m| m.len())
+        .sum()
 }

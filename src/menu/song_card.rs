@@ -104,6 +104,11 @@ pub struct ReanalyzeButton {
 }
 
 #[derive(Component)]
+pub struct DeleteCacheButton {
+    pub song_index: usize,
+}
+
+#[derive(Component)]
 pub struct LanguageButton {
     pub song_index: usize,
 }
@@ -172,6 +177,7 @@ use crate::scanner::metadata::{AnalysisStatus, TranscriptSource};
 const FA_STAR: &str = "\u{f005}";
 const FA_STAR_HALF: &str = "\u{f5c0}";
 const FA_GLOBE: &str = "\u{f0ac}";
+const FA_TRASH: &str = "\u{f1f8}";
 
 pub const LANGUAGES: &[(&str, &str)] = &[
     ("en", "English"),
@@ -220,8 +226,8 @@ pub fn build_song_card(
                 padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(10.0), Val::Px(10.0)),
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(12.0),
-                border_radius: BorderRadius::all(Val::Px(8.0)),
-                border: UiRect::left(Val::Px(3.0)),
+                border_radius: BorderRadius::all(Val::Px(6.0)),
+                border: UiRect::all(Val::Px(2.0)),
                 ..default()
             },
             BorderColor::all(Color::NONE),
@@ -326,7 +332,7 @@ fn spawn_album_art(
                 Node {
                     width: Val::Px(48.0),
                     height: Val::Px(48.0),
-                    border_radius: BorderRadius::all(Val::Px(6.0)),
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
                     ..default()
                 },
             ));
@@ -338,7 +344,7 @@ fn spawn_album_art(
                         height: Val::Px(48.0),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
-                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        border_radius: BorderRadius::all(Val::Px(4.0)),
                         ..default()
                     },
                     BackgroundColor(theme.surface_hover),
@@ -364,7 +370,7 @@ fn spawn_album_art(
                     height: Val::Px(48.0),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
-                    border_radius: BorderRadius::all(Val::Px(6.0)),
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
                     ..default()
                 },
                 BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
@@ -545,49 +551,82 @@ fn spawn_right_column(
     theme: &UiTheme,
     icon_font: &IconFont,
 ) {
+    let action_vis = if matches!(
+        song.analysis_status,
+        AnalysisStatus::Ready(_) | AnalysisStatus::Failed(_)
+    ) {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+
     card.spawn(Node {
-        flex_direction: FlexDirection::Column,
+        flex_direction: FlexDirection::Row,
         flex_shrink: 0.0,
-        align_items: AlignItems::End,
-        row_gap: Val::Px(4.0),
+        align_items: AlignItems::Center,
+        column_gap: Val::Px(6.0),
         ..default()
     })
-    .with_children(|col| {
-        spawn_status_badge(col, index, badge_text, badge_color, theme);
-
-        let reanalyze_vis = if matches!(
-            song.analysis_status,
-            AnalysisStatus::Ready(_) | AnalysisStatus::Failed(_)
-        ) {
-            Visibility::Inherited
-        } else {
-            Visibility::Hidden
-        };
-        col.spawn((
-            ReanalyzeButton { song_index: index },
+    .with_children(|row| {
+        row.spawn((
+            DeleteCacheButton { song_index: index },
             Button,
             Node {
                 flex_shrink: 0.0,
-                padding: UiRect::new(Val::Px(6.0), Val::Px(6.0), Val::Px(4.0), Val::Px(4.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
+                width: Val::Px(26.0),
+                height: Val::Px(26.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(theme.sidebar_btn),
-            reanalyze_vis,
+            BackgroundColor(theme.surface_hover),
+            BorderColor::all(theme.text_dim.with_alpha(0.2)),
+            action_vis,
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(FA_TRASH),
+                TextFont {
+                    font: icon_font.0.clone(),
+                    font_size: 11.0,
+                    ..default()
+                },
+                TextColor(theme.text_dim),
+            ));
+        });
+
+        row.spawn((
+            ReanalyzeButton { song_index: index },
+            Button,
+            Node {
+                flex_shrink: 0.0,
+                width: Val::Px(26.0),
+                height: Val::Px(26.0),
+                border: UiRect::all(Val::Px(1.0)),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(theme.surface_hover),
+            BorderColor::all(theme.text_dim.with_alpha(0.2)),
+            action_vis,
         ))
         .with_children(|btn| {
             btn.spawn((
                 Text::new(FA_REFRESH),
                 TextFont {
                     font: icon_font.0.clone(),
-                    font_size: 12.0,
+                    font_size: 11.0,
                     ..default()
                 },
-                TextColor(theme.text_primary),
+                TextColor(theme.text_dim),
             ));
         });
+
+        spawn_status_badge(row, index, badge_text, badge_color, theme);
     });
 }
 
@@ -652,7 +691,7 @@ pub fn spawn_language_picker(
                         max_height: Val::Percent(70.0),
                         flex_direction: FlexDirection::Column,
                         padding: UiRect::all(Val::Px(20.0)),
-                        border_radius: BorderRadius::all(Val::Px(12.0)),
+                        border_radius: BorderRadius::all(Val::Px(8.0)),
                         row_gap: Val::Px(12.0),
                         ..default()
                     },
@@ -725,7 +764,7 @@ pub fn spawn_language_picker(
                                         Val::Px(8.0),
                                         Val::Px(8.0),
                                     ),
-                                    border_radius: BorderRadius::all(Val::Px(6.0)),
+                                    border_radius: BorderRadius::all(Val::Px(4.0)),
                                     align_items: AlignItems::Center,
                                     column_gap: Val::Px(10.0),
                                     ..default()

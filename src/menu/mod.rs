@@ -34,6 +34,7 @@ pub struct MenuFocus {
     pub sidebar_index: usize,
     pub nav_lock: u8,
     pub analyze_all_focused: bool,
+    pub active: bool,
 }
 
 impl Default for MenuFocus {
@@ -44,6 +45,7 @@ impl Default for MenuFocus {
             sidebar_index: 0,
             nav_lock: 0,
             analyze_all_focused: false,
+            active: false,
         }
     }
 }
@@ -82,15 +84,18 @@ impl Plugin for MenuPlugin {
         app.init_resource::<MenuState>()
             .init_resource::<MenuFocus>()
             .init_resource::<NavRepeat>()
+            .init_resource::<sidebar::CacheStats>()
+            .init_resource::<sidebar::CacheStatsTimer>()
             .add_systems(
                 OnEnter(AppState::Menu),
-                (load_album_art, build_menu).chain(),
+                (load_album_art, build_menu, kick_off_cache_stats).chain(),
             )
             .add_systems(
                 Update,
                 (
                     handle_song_click,
                     handle_reanalyze_click,
+                    handle_delete_cache_click,
                     handle_analyze_all_click,
                     handle_language_button_click,
                     handle_language_picker_interaction,
@@ -99,6 +104,9 @@ impl Plugin for MenuPlugin {
                     update_analysis_hint,
                     sidebar::handle_sidebar_click,
                     sidebar::handle_exit_input,
+                    sidebar::poll_cache_stats,
+                    sidebar::update_disk_usage_display,
+                    sidebar::handle_clear_cache_click,
                     settings::handle_settings_click,
                     profile::handle_profile_click,
                     folder::poll_folder_result,
@@ -109,13 +117,16 @@ impl Plugin for MenuPlugin {
             .add_systems(
                 Update,
                 (
+                    clear_focus_on_empty_hover
+                        .before(handle_menu_nav),
                     handle_menu_nav
                         .after(handle_song_click)
                         .after(sidebar::handle_sidebar_click),
                     apply_menu_focus_styling
                         .after(handle_menu_nav)
                         .after(handle_song_click)
-                        .after(sidebar::handle_sidebar_click),
+                        .after(sidebar::handle_sidebar_click)
+                        .after(clear_focus_on_empty_hover),
                     scroll_to_focused.after(handle_menu_nav),
                 )
                     .run_if(in_state(AppState::Menu)),
@@ -191,6 +202,10 @@ fn load_album_art(
     commands.insert_resource(AlbumArtCache { handles });
 }
 
+fn kick_off_cache_stats(mut commands: Commands) {
+    sidebar::start_cache_stats_computation(&mut commands);
+}
+
 fn build_menu(
     mut commands: Commands,
     library: Res<SongLibrary>,
@@ -200,6 +215,7 @@ fn build_menu(
     config: Res<crate::config::AppConfig>,
     asset_server: Res<AssetServer>,
     profiles: Res<ProfileStore>,
+    cache_stats: Res<sidebar::CacheStats>,
     mut focus: ResMut<MenuFocus>,
 ) {
     *focus = MenuFocus::default();
@@ -221,7 +237,7 @@ fn build_menu(
             BackgroundColor(theme.bg),
         ))
         .with_children(|root| {
-            sidebar::build_sidebar(root, &theme, has_folder, logo_handle, &icon_font, &profiles);
+            sidebar::build_sidebar(root, &theme, has_folder, logo_handle, &icon_font, &profiles, &cache_stats);
             build_main_area(root, &library, &menu_state, &art_cache, &theme, &icon_font, &profiles);
         });
 }
@@ -265,7 +281,7 @@ fn build_main_area(
                     height: Val::Px(44.0),
                     padding: UiRect::horizontal(Val::Px(16.0)),
                     align_items: AlignItems::Center,
-                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    border_radius: BorderRadius::all(Val::Px(6.0)),
                     ..default()
                 },
                 BackgroundColor(theme.card_bg),
@@ -305,7 +321,7 @@ fn build_main_area(
                     padding: UiRect::horizontal(Val::Px(16.0)),
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
-                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    border_radius: BorderRadius::all(Val::Px(6.0)),
                     border: UiRect::all(Val::Px(2.0)),
                     ..default()
                 },
@@ -462,6 +478,7 @@ fn handle_song_click(
                     focus.panel = FocusPanel::SongList;
                     focus.song_index = song_card.song_index;
                     focus.analyze_all_focused = false;
+                    focus.active = true;
                 }
             }
             Interaction::None => {}
@@ -542,7 +559,57 @@ fn handle_reanalyze_click(
                 *bg = BackgroundColor(theme.sidebar_btn_hover);
             }
             Interaction::None => {
-                *bg = BackgroundColor(theme.sidebar_btn);
+                *bg = BackgroundColor(theme.surface_hover);
+            }
+        }
+    }
+}
+
+fn handle_delete_cache_click(
+    mut commands: Commands,
+    mut interaction_query: Query<
+        (&Interaction, &DeleteCacheButton, &mut BackgroundColor),
+        Changed<Interaction>,
+    >,
+    mut library: ResMut<SongLibrary>,
+    cache: Res<CacheDir>,
+    theme: Res<UiTheme>,
+    overlay_query: Query<(), With<SettingsOverlay>>,
+    profile_overlay_query: Query<(), With<ProfileOverlay>>,
+    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
+    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
+) {
+    if !overlay_query.is_empty()
+        || !profile_overlay_query.is_empty()
+        || !exit_overlay_query.is_empty()
+        || !lang_picker_query.is_empty()
+    {
+        return;
+    }
+    for (interaction, btn, mut bg) in &mut interaction_query {
+        match interaction {
+            Interaction::Pressed => {
+                let idx = btn.song_index;
+                if idx >= library.songs.len() {
+                    continue;
+                }
+                let song = &mut library.songs[idx];
+                if !matches!(
+                    song.analysis_status,
+                    AnalysisStatus::Ready(_) | AnalysisStatus::Failed(_)
+                ) {
+                    continue;
+                }
+                cache.delete_song_cache(&song.file_hash);
+                song.analysis_status = AnalysisStatus::NotAnalyzed;
+                song.language = None;
+                sidebar::start_cache_stats_computation(&mut commands);
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(theme.sidebar_btn_hover);
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(theme.surface_hover);
             }
         }
     }
@@ -863,7 +930,8 @@ fn update_status_badges(
         (&SpinnerOverlay, &mut Visibility, &mut BackgroundColor),
         (Without<ReanalyzeButton>, Without<StatusBadge>, Without<LanguageButton>),
     >,
-    mut reanalyze_query: Query<(&ReanalyzeButton, &mut Visibility), (Without<SpinnerOverlay>, Without<LanguageButton>)>,
+    mut reanalyze_query: Query<(&ReanalyzeButton, &mut Visibility), (Without<SpinnerOverlay>, Without<LanguageButton>, Without<DeleteCacheButton>)>,
+    mut delete_btn_query: Query<(&DeleteCacheButton, &mut Visibility), (Without<SpinnerOverlay>, Without<LanguageButton>, Without<ReanalyzeButton>)>,
     mut lang_text_query: Query<(&LanguageText, &mut Text), (Without<BadgeText>, Without<StatsText>)>,
     mut lang_btn_query: Query<(&LanguageButton, &mut Visibility), (Without<SpinnerOverlay>, Without<ReanalyzeButton>)>,
     mut lang_inner_query: Query<(&LanguageBadgeInner, &mut BackgroundColor, &mut BorderColor), (Without<StatusBadge>, Without<SpinnerOverlay>)>,
@@ -936,6 +1004,20 @@ fn update_status_badges(
     }
 
     for (btn, mut vis) in &mut reanalyze_query {
+        if btn.song_index >= library.songs.len() {
+            continue;
+        }
+        *vis = if matches!(
+            library.songs[btn.song_index].analysis_status,
+            AnalysisStatus::Ready(_) | AnalysisStatus::Failed(_)
+        ) {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
+
+    for (btn, mut vis) in &mut delete_btn_query {
         if btn.song_index >= library.songs.len() {
             continue;
         }
@@ -1061,6 +1143,28 @@ fn on_scroll_handler(
     }
 }
 
+fn clear_focus_on_empty_hover(
+    mut cursor_events: MessageReader<bevy::window::CursorMoved>,
+    mut focus: ResMut<MenuFocus>,
+    card_query: Query<&Interaction, With<SongCard>>,
+    sidebar_query: Query<&Interaction, With<SidebarButton>>,
+    analyze_all_query: Query<&Interaction, With<AnalyzeAllButton>>,
+) {
+    if cursor_events.read().next().is_none() {
+        return;
+    }
+
+    let any_hovered = card_query
+        .iter()
+        .chain(sidebar_query.iter())
+        .chain(analyze_all_query.iter())
+        .any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
+
+    if !any_hovered {
+        focus.active = false;
+    }
+}
+
 fn handle_menu_nav(
     keyboard: Res<ButtonInput<KeyCode>>,
     nav: Res<crate::input::NavInput>,
@@ -1106,6 +1210,8 @@ fn handle_menu_nav(
     if !any_nav {
         return;
     }
+
+    focus.active = true;
 
     if nav.left {
         focus.panel = FocusPanel::Sidebar;
@@ -1202,8 +1308,10 @@ fn apply_menu_focus_styling(
         return;
     }
     for (card, mut bg, mut border) in &mut card_query {
-        let is_focused =
-            focus.panel == FocusPanel::SongList && !focus.analyze_all_focused && card.song_index == focus.song_index;
+        let is_focused = focus.active
+            && focus.panel == FocusPanel::SongList
+            && !focus.analyze_all_focused
+            && card.song_index == focus.song_index;
         if is_focused {
             bg.set_if_neq(BackgroundColor(theme.card_hover));
             border.set_if_neq(BorderColor::all(theme.accent));
@@ -1214,7 +1322,8 @@ fn apply_menu_focus_styling(
     }
     for (btn, mut bg, mut border) in &mut sidebar_query {
         let idx = SIDEBAR_ACTIONS.iter().position(|&a| a == btn.action);
-        let is_focused = focus.panel == FocusPanel::Sidebar && idx == Some(focus.sidebar_index);
+        let is_focused =
+            focus.active && focus.panel == FocusPanel::Sidebar && idx == Some(focus.sidebar_index);
         if is_focused {
             bg.set_if_neq(BackgroundColor(theme.sidebar_btn_hover));
             border.set_if_neq(BorderColor::all(theme.accent));
@@ -1223,7 +1332,7 @@ fn apply_menu_focus_styling(
             border.set_if_neq(BorderColor::all(Color::NONE));
         }
     }
-    let aa_focused = focus.panel == FocusPanel::SongList && focus.analyze_all_focused;
+    let aa_focused = focus.active && focus.panel == FocusPanel::SongList && focus.analyze_all_focused;
     for mut border in &mut analyze_all_query {
         if aa_focused {
             border.set_if_neq(BorderColor::all(theme.accent));

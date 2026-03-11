@@ -8,10 +8,10 @@ use crate::ui::{self, UiTheme};
 
 const OVERLAY_DIM: Color = Color::srgba(0.0, 0.0, 0.0, 0.6);
 const CARD_WIDTH: f32 = 360.0;
-const CARD_RADIUS: f32 = 12.0;
+const CARD_RADIUS: f32 = 8.0;
 const CARD_PADDING: f32 = 24.0;
-const BTN_RADIUS: f32 = 6.0;
-const ITEM_RADIUS: f32 = 6.0;
+const BTN_RADIUS: f32 = 5.0;
+const ITEM_RADIUS: f32 = 5.0;
 const FA_TRASH: &str = "\u{f2ed}";
 
 #[derive(Resource)]

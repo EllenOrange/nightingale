@@ -85,7 +85,7 @@ pub fn spawn_settings_popup(
                         flex_direction: FlexDirection::Column,
                         padding: UiRect::all(Val::Px(32.0)),
                         row_gap: Val::Px(8.0),
-                        border_radius: BorderRadius::all(Val::Px(14.0)),
+                        border_radius: BorderRadius::all(Val::Px(8.0)),
                         ..default()
                     },
                     BackgroundColor(theme.surface),
@@ -179,7 +179,7 @@ fn spawn_settings_row(
                         align_items: AlignItems::Center,
                         padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(8.0), Val::Px(8.0)),
                         border: UiRect::all(Val::Px(2.0)),
-                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        border_radius: BorderRadius::all(Val::Px(4.0)),
                         ..default()
                     },
                     BorderColor::all(Color::NONE),
@@ -252,7 +252,7 @@ fn spawn_settings_btn(
                 width,
                 padding,
                 margin: UiRect::left(Val::Px(4.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -280,7 +280,7 @@ fn spawn_settings_wide_btn(
                 width: Val::Percent(100.0),
                 padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(10.0), Val::Px(10.0)),
                 border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(4.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()

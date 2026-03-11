@@ -158,7 +158,7 @@ fn spawn_setup_ui(mut commands: Commands, theme: Res<UiTheme>, asset_server: Res
                         ),
                         margin: UiRect::top(Val::Px(16.0)),
                         border: UiRect::all(Val::Px(1.0)),
-                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        border_radius: BorderRadius::all(Val::Px(8.0)),
                         ..default()
                     },
                     BorderColor::all(theme.text_dim),

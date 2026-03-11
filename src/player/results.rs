@@ -10,9 +10,9 @@ const FA_STAR_HALF: &str = "\u{f5c0}";
 const FA_EXCLAMATION_TRIANGLE: &str = "\u{f071}";
 
 const OVERLAY_DIM: Color = Color::srgba(0.0, 0.0, 0.0, 0.6);
-const CARD_RADIUS: f32 = 12.0;
+const CARD_RADIUS: f32 = 8.0;
 const CARD_PADDING: f32 = 28.0;
-const BTN_RADIUS: f32 = 6.0;
+const BTN_RADIUS: f32 = 5.0;
 
 #[derive(Resource, Clone)]
 pub struct SongResult {

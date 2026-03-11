@@ -8,7 +8,7 @@ use super::folder::{PendingFolderPick, PendingRescan};
 use super::settings::spawn_settings_popup;
 use super::song_card::*;
 use super::{IconFont, FA_MOON, FA_SUN, FA_USER};
-use crate::analyzer::cache::CacheDir;
+use crate::analyzer::cache::{dir_size, CacheDir};
 use crate::profile::ProfileStore;
 use crate::scanner::metadata::Song;
 use crate::states::AppState;
@@ -16,6 +16,443 @@ use crate::ui::{self, UiTheme};
 
 const FA_GEAR: &str = "\u{f013}";
 const FA_RIGHT_FROM_BRACKET: &str = "\u{f2f5}";
+
+#[derive(Resource, Default, Clone)]
+pub struct CacheStats {
+    pub songs_bytes: u64,
+    pub videos_bytes: u64,
+    pub models_bytes: u64,
+    pub other_bytes: u64,
+    pub clearable_videos_bytes: u64,
+}
+
+impl CacheStats {
+    pub fn total(&self) -> u64 {
+        self.songs_bytes + self.videos_bytes + self.models_bytes + self.other_bytes
+    }
+}
+
+#[derive(Resource)]
+pub struct PendingCacheStats {
+    result: Arc<Mutex<Option<CacheStats>>>,
+}
+
+pub fn start_cache_stats_computation(commands: &mut Commands) {
+    let result: Arc<Mutex<Option<CacheStats>>> = Arc::new(Mutex::new(None));
+    let r = Arc::clone(&result);
+    std::thread::spawn(move || {
+        let base = dirs::home_dir()
+            .expect("could not find home directory")
+            .join(".nightingale");
+        let songs_bytes = dir_size(&base.join("cache"));
+        let videos_bytes = dir_size(&base.join("videos"));
+        let models_bytes = dir_size(&base.join("models"));
+        let other_bytes = dir_size(&base.join("vendor"))
+            + dir_size(&base.join("sounds"))
+            + base
+                .join("nightingale.log")
+                .metadata()
+                .map(|m| m.len())
+                .unwrap_or(0)
+            + base
+                .join("config.json")
+                .metadata()
+                .map(|m| m.len())
+                .unwrap_or(0)
+            + base
+                .join("profiles.json")
+                .metadata()
+                .map(|m| m.len())
+                .unwrap_or(0);
+        let clearable_videos_bytes = crate::vendor::clearable_video_bytes();
+        *r.lock().unwrap() = Some(CacheStats {
+            songs_bytes,
+            videos_bytes,
+            models_bytes,
+            other_bytes,
+            clearable_videos_bytes,
+        });
+    });
+    commands.insert_resource(PendingCacheStats { result });
+}
+
+#[derive(Resource)]
+pub struct CacheStatsTimer(pub Timer);
+
+impl Default for CacheStatsTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(5.0, TimerMode::Repeating))
+    }
+}
+
+pub fn poll_cache_stats(
+    mut commands: Commands,
+    pending: Option<Res<PendingCacheStats>>,
+    mut stats: ResMut<CacheStats>,
+    time: Res<Time>,
+    mut timer: ResMut<CacheStatsTimer>,
+) {
+    if let Some(pending) = pending {
+        if let Some(computed) = pending.result.lock().unwrap().take() {
+            *stats = computed;
+            commands.remove_resource::<PendingCacheStats>();
+        }
+        return;
+    }
+
+    timer.0.tick(time.delta());
+    if timer.0.just_finished() {
+        start_cache_stats_computation(&mut commands);
+    }
+}
+
+#[derive(Component)]
+pub(crate) struct DiskUsageTotalLabel;
+
+#[derive(Component)]
+pub(crate) struct DiskUsageBarSegment {
+    pub category: CacheCategory,
+}
+
+#[derive(Component)]
+pub(crate) struct DiskUsageCategorySize {
+    pub category: CacheCategory,
+}
+
+#[derive(Component)]
+pub(crate) struct ClearCacheButton {
+    pub category: CacheClearAction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheCategory {
+    Songs,
+    Videos,
+    Models,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheClearAction {
+    All,
+    Videos,
+    Models,
+}
+
+impl CacheCategory {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Songs => "Songs",
+            Self::Videos => "Videos",
+            Self::Models => "Models",
+            Self::Other => "Other",
+        }
+    }
+
+    fn color(&self, theme: &UiTheme) -> Color {
+        match self {
+            Self::Songs => theme.accent,
+            Self::Videos => Color::srgb(0.28, 0.72, 0.42),
+            Self::Models => Color::srgb(0.88, 0.62, 0.18),
+            Self::Other => theme.text_dim,
+        }
+    }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.0} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+fn build_disk_usage_widget(
+    parent: &mut ChildSpawnerCommands,
+    theme: &UiTheme,
+    stats: &CacheStats,
+) {
+    parent
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(6.0),
+            padding: UiRect::new(Val::Px(4.0), Val::Px(4.0), Val::Px(8.0), Val::Px(0.0)),
+            ..default()
+        })
+        .with_children(|col| {
+            col.spawn((
+                DiskUsageTotalLabel,
+                Text::new(format!("{} used", format_bytes(stats.total()))),
+                TextFont {
+                    font_size: 12.0,
+                    ..default()
+                },
+                TextColor(theme.text_primary),
+            ));
+
+            let total = stats.total().max(1) as f32;
+            col.spawn(Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(6.0),
+                border_radius: BorderRadius::all(Val::Px(3.0)),
+                overflow: Overflow::clip(),
+                ..default()
+            })
+            .with_children(|bar| {
+                for cat in [
+                    CacheCategory::Songs,
+                    CacheCategory::Videos,
+                    CacheCategory::Models,
+                    CacheCategory::Other,
+                ] {
+                    let bytes = match cat {
+                        CacheCategory::Songs => stats.songs_bytes,
+                        CacheCategory::Videos => stats.videos_bytes,
+                        CacheCategory::Models => stats.models_bytes,
+                        CacheCategory::Other => stats.other_bytes,
+                    };
+                    let pct = (bytes as f32 / total * 100.0).max(0.0);
+                    bar.spawn((
+                        DiskUsageBarSegment { category: cat },
+                        Node {
+                            width: Val::Percent(pct),
+                            height: Val::Percent(100.0),
+                            ..default()
+                        },
+                        BackgroundColor(cat.color(theme)),
+                    ));
+                }
+            });
+
+            for cat in [
+                CacheCategory::Songs,
+                CacheCategory::Videos,
+                CacheCategory::Models,
+                CacheCategory::Other,
+            ] {
+                let bytes = match cat {
+                    CacheCategory::Songs => stats.songs_bytes,
+                    CacheCategory::Videos => stats.videos_bytes,
+                    CacheCategory::Models => stats.models_bytes,
+                    CacheCategory::Other => stats.other_bytes,
+                };
+
+                col.spawn(Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(6.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn((
+                        Node {
+                            width: Val::Px(8.0),
+                            height: Val::Px(8.0),
+                            border_radius: BorderRadius::all(Val::Px(4.0)),
+                            ..default()
+                        },
+                        BackgroundColor(cat.color(theme)),
+                    ));
+                    row.spawn((
+                        Text::new(cat.label()),
+                        TextFont {
+                            font_size: 11.0,
+                            ..default()
+                        },
+                        TextColor(theme.text_secondary),
+                        Node {
+                            flex_grow: 1.0,
+                            ..default()
+                        },
+                    ));
+                    row.spawn((
+                        DiskUsageCategorySize { category: cat },
+                        Text::new(format_bytes(bytes)),
+                        TextFont {
+                            font_size: 11.0,
+                            ..default()
+                        },
+                        TextColor(theme.text_dim),
+                    ));
+                });
+            }
+
+            col.spawn(Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                flex_wrap: FlexWrap::Wrap,
+                column_gap: Val::Px(6.0),
+                row_gap: Val::Px(4.0),
+                margin: UiRect::top(Val::Px(2.0)),
+                ..default()
+            })
+            .with_children(|row| {
+                let clear_actions: &[(CacheClearAction, &str)] = &[
+                    (CacheClearAction::All, "Clear All"),
+                    (CacheClearAction::Videos, "Videos"),
+                    (CacheClearAction::Models, "Models"),
+                ];
+
+                for &(action, label) in clear_actions {
+                    row.spawn((
+                        ClearCacheButton { category: action },
+                        Button,
+                        Node {
+                            flex_grow: 1.0,
+                            padding: UiRect::new(
+                                Val::Px(8.0),
+                                Val::Px(8.0),
+                                Val::Px(4.0),
+                                Val::Px(4.0),
+                            ),
+                            border: UiRect::all(Val::Px(1.0)),
+                            border_radius: BorderRadius::all(Val::Px(4.0)),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        BackgroundColor(theme.sidebar_btn),
+                        BorderColor::all(theme.text_dim.with_alpha(0.2)),
+                    ))
+                    .with_children(|btn| {
+                        btn.spawn((
+                            Text::new(label),
+                            TextFont {
+                                font_size: 10.0,
+                                ..default()
+                            },
+                            TextColor(theme.text_secondary),
+                        ));
+                    });
+                }
+            });
+        });
+}
+
+pub fn update_disk_usage_display(
+    stats: Res<CacheStats>,
+    theme: Res<UiTheme>,
+    mut total_query: Query<&mut Text, With<DiskUsageTotalLabel>>,
+    mut bar_query: Query<(&DiskUsageBarSegment, &mut Node), Without<DiskUsageTotalLabel>>,
+    mut size_query: Query<
+        (&DiskUsageCategorySize, &mut Text),
+        (Without<DiskUsageTotalLabel>, Without<DiskUsageBarSegment>),
+    >,
+    mut clear_query: Query<
+        (&ClearCacheButton, &Children, &mut Node),
+        (Without<DiskUsageTotalLabel>, Without<DiskUsageBarSegment>, Without<DiskUsageCategorySize>),
+    >,
+    mut text_colors: Query<&mut TextColor>,
+) {
+    if !stats.is_changed() {
+        return;
+    }
+
+    for mut text in &mut total_query {
+        **text = format!("{} used", format_bytes(stats.total()));
+    }
+
+    let total = stats.total().max(1) as f32;
+    for (seg, mut node) in &mut bar_query {
+        let bytes = match seg.category {
+            CacheCategory::Songs => stats.songs_bytes,
+            CacheCategory::Videos => stats.videos_bytes,
+            CacheCategory::Models => stats.models_bytes,
+            CacheCategory::Other => stats.other_bytes,
+        };
+        node.width = Val::Percent((bytes as f32 / total * 100.0).max(0.0));
+    }
+
+    for (cat_size, mut text) in &mut size_query {
+        let bytes = match cat_size.category {
+            CacheCategory::Songs => stats.songs_bytes,
+            CacheCategory::Videos => stats.videos_bytes,
+            CacheCategory::Models => stats.models_bytes,
+            CacheCategory::Other => stats.other_bytes,
+        };
+        **text = format_bytes(bytes);
+    }
+
+    for (btn, children, mut node) in &mut clear_query {
+        let (enabled, visible) = match btn.category {
+            CacheClearAction::All => (stats.total() > 0, true),
+            CacheClearAction::Videos => (stats.clearable_videos_bytes > 0, stats.clearable_videos_bytes > 0),
+            CacheClearAction::Models => (stats.models_bytes > 0, stats.models_bytes > 0),
+        };
+        node.display = if visible { Display::Flex } else { Display::None };
+        let color = if enabled {
+            theme.text_secondary
+        } else {
+            theme.text_dim
+        };
+        for child in children.iter() {
+            if let Ok(mut tc) = text_colors.get_mut(child) {
+                tc.0 = color;
+            }
+        }
+    }
+}
+
+pub fn handle_clear_cache_click(
+    mut commands: Commands,
+    mut interaction_query: Query<
+        (&Interaction, &ClearCacheButton, &mut BackgroundColor),
+        Changed<Interaction>,
+    >,
+    cache: Res<CacheDir>,
+    mut stats: ResMut<CacheStats>,
+    theme: Res<UiTheme>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    for (interaction, btn, mut bg) in &mut interaction_query {
+        match interaction {
+            Interaction::Pressed => {
+                match btn.category {
+                    CacheClearAction::All => {
+                        if stats.total() == 0 {
+                            continue;
+                        }
+                        cache.clear_all();
+                        crate::vendor::clear_videos();
+                        crate::vendor::clear_models();
+                        *stats = CacheStats::default();
+                        next_state.set(AppState::Menu);
+                    }
+                    CacheClearAction::Videos => {
+                        if stats.clearable_videos_bytes == 0 {
+                            continue;
+                        }
+                        crate::vendor::clear_videos();
+                        stats.clearable_videos_bytes = 0;
+                    }
+                    CacheClearAction::Models => {
+                        if stats.models_bytes == 0 {
+                            continue;
+                        }
+                        crate::vendor::clear_models();
+                        stats.models_bytes = 0;
+                    }
+                }
+                start_cache_stats_computation(&mut commands);
+            }
+            Interaction::Hovered => {
+                *bg = BackgroundColor(theme.sidebar_btn_hover);
+            }
+            Interaction::None => {
+                *bg = BackgroundColor(theme.sidebar_btn);
+            }
+        }
+    }
+}
 
 #[derive(Component)]
 pub struct ExitOverlay;
@@ -36,6 +473,7 @@ pub fn build_sidebar(
     logo: Handle<Image>,
     icon_font: &IconFont,
     profiles: &ProfileStore,
+    cache_stats: &CacheStats,
 ) {
     root.spawn((
         Node {
@@ -155,6 +593,8 @@ pub fn build_sidebar(
                     theme.text_primary,
                 );
             });
+
+        build_disk_usage_widget(sidebar, theme, cache_stats);
     });
 }
 
@@ -187,7 +627,7 @@ fn spawn_icon_btn(
                 flex_shrink: 0.0,
                 flex_grow: 1.0,
                 border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -229,7 +669,7 @@ fn spawn_sidebar_button(
                 width: Val::Percent(100.0),
                 padding: UiRect::new(Val::Px(14.0), Val::Px(14.0), Val::Px(10.0), Val::Px(10.0)),
                 border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(5.0)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 ..default()
@@ -289,6 +729,7 @@ pub fn handle_sidebar_click(
                     {
                         focus.panel = super::FocusPanel::Sidebar;
                         focus.sidebar_index = idx;
+                        focus.active = true;
                     }
                 }
                 Interaction::None => {}
@@ -416,7 +857,7 @@ fn spawn_exit_popup(commands: &mut Commands, theme: &UiTheme) {
                         align_items: AlignItems::Center,
                         padding: UiRect::all(Val::Px(28.0)),
                         row_gap: Val::Px(6.0),
-                        border_radius: BorderRadius::all(Val::Px(12.0)),
+                        border_radius: BorderRadius::all(Val::Px(8.0)),
                         ..default()
                     },
                     BackgroundColor(theme.surface),
@@ -460,7 +901,7 @@ fn spawn_exit_popup(commands: &mut Commands, theme: &UiTheme) {
                                 Val::Px(10.0),
                             ),
                             border: UiRect::all(Val::Px(2.0)),
-                            border_radius: BorderRadius::all(Val::Px(6.0)),
+                            border_radius: BorderRadius::all(Val::Px(5.0)),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             ..default()
@@ -491,7 +932,7 @@ fn spawn_exit_popup(commands: &mut Commands, theme: &UiTheme) {
                                 Val::Px(10.0),
                             ),
                             border: UiRect::all(Val::Px(2.0)),
-                            border_radius: BorderRadius::all(Val::Px(6.0)),
+                            border_radius: BorderRadius::all(Val::Px(5.0)),
                             justify_content: JustifyContent::Center,
                             align_items: AlignItems::Center,
                             ..default()

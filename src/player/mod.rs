@@ -151,7 +151,7 @@ fn spawn_skip_button(parent: &mut ChildSpawnerCommands, label: &str, component: 
                     Val::Px(6.0),
                 ),
                 border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(6.0)),
+                border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
             BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.4)),
