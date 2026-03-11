@@ -58,16 +58,11 @@ def align_lyrics(
     print(f"[nightingale:LOG] Detected language: '{language}'", flush=True)
     progress(59, f"Detected language: {language}")
 
-    best_start = _probe_start_offset(
-        whisperx, audio, clean_lines, vocal_start, vocal_end,
-        language, a_device, model_name,
-    )
-
-    progress(80, f"Final alignment from {best_start:.1f}s...")
+    progress(80, f"Final alignment from {vocal_start:.1f}s...")
     print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{a_device}'", flush=True)
     align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
     full_text = " ".join(clean_lines)
-    raw_segments = [{"text": full_text, "start": best_start, "end": vocal_end}]
+    raw_segments = [{"text": full_text, "start": vocal_start, "end": vocal_end}]
     align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
     del align_model
 
@@ -79,68 +74,6 @@ def align_lyrics(
         print(f"[nightingale:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
 
     return {"language": language, "segments": segments, "source": "lyrics"}
-
-
-def _probe_start_offset(whisperx, audio, clean_lines, vocal_start, vocal_end,
-                         language, a_device, model_name) -> float:
-    """Try multiple start offsets and pick the one where the first word aligns best."""
-    first_line_word_count = len(clean_lines[0].split()) if clean_lines else 5
-    full_text = " ".join(clean_lines)
-
-    progress(60, "Aligning lyrics to audio...")
-    print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{a_device}'", flush=True)
-    align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
-
-    early_accept = 0.9
-    max_probes = 8
-    best_start = vocal_start
-    best_score = -1.0
-
-    current_start = vocal_start
-    print(f"[nightingale:LOG] Probing for best start offset: max_probes={max_probes}, lines={len(clean_lines)}", flush=True)
-
-    for probe in range(max_probes):
-        if current_start >= vocal_end:
-            print(f"[nightingale:LOG] Offset {current_start:.1f}s >= vocal_end {vocal_end:.1f}s, stopping probes", flush=True)
-            break
-
-        probe_segs = [{"text": full_text, "start": current_start, "end": vocal_end}]
-        print(f"[nightingale:LOG] Probe {probe + 1}: segment {current_start:.1f}s-{vocal_end:.1f}s", flush=True)
-        progress(62 + probe, f"Probing start offset ({probe + 1}/{max_probes}, {current_start:.1f}s)...")
-
-        result = whisperx.align(probe_segs, align_model, metadata, audio, a_device)
-        all_words = _collect_words(result)
-
-        if not all_words:
-            print(f"[nightingale:LOG]   no aligned words", flush=True)
-            current_start += 5.0
-            continue
-
-        first = all_words[0]
-        score = first.get("score", 0.0) or 0.0
-        print(f"[nightingale:LOG]   first word: {first.get('word', '?')}({first.get('start', '?')}-{first.get('end', '?')}, score={score:.3f})", flush=True)
-
-        first_word_end = first.get("end", current_start + 5.0)
-        next_start = max(first_word_end - 3.0, current_start + 2.0)
-        step = next_start - current_start
-
-        print(f"[nightingale:LOG] Probe {probe + 1} result: score={score:.3f}, first_word_end={first_word_end}s, next_probe={current_start + step:.1f}s", flush=True)
-
-        if score > best_score:
-            best_score = score
-            best_start = current_start
-            print(f"[nightingale:LOG]   -> New best start! offset={best_start:.1f}s, score={best_score:.3f}", flush=True)
-
-        if score >= early_accept:
-            print(f"[nightingale:LOG] Score {score:.3f} >= {early_accept}, early accept", flush=True)
-            break
-
-        current_start += step
-
-    del align_model
-    print(f"[nightingale:LOG] Best start offset: {best_start:.1f}s (score={best_score:.3f})", flush=True)
-    return best_start
-
 
 def _collect_words(align_result: dict) -> list[dict]:
     """Extract all words with timestamps from alignment result."""
