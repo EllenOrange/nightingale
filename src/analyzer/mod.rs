@@ -240,97 +240,126 @@ fn spawn_analyzer(
         } else {
             ffmpeg_dir.as_os_str().to_os_string()
         };
-        let mut cmd = Command::new(&python);
-        cmd.env("PATH", path_env)
-            .env("TORCH_HOME", models.join("torch"))
-            .env("HF_HOME", models.join("huggingface"))
-            .env("FFMPEG_PATH", &ffmpeg)
-            .env("PYTHONWARNINGS", "ignore")
-            .env("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-            .arg(&script)
-            .arg(&song_path)
-            .arg(&cache_path)
-            .arg("--hash")
-            .arg(&file_hash)
-            .arg("--model")
-            .arg(&whisper_model)
-            .arg("--beam-size")
-            .arg(beam_size.to_string())
-            .arg("--batch-size")
-            .arg(batch_size.to_string());
+        let mut current_batch_size = batch_size;
 
-        if let Some(ref lp) = lyrics_path {
-            cmd.arg("--lyrics").arg(lp);
-        }
+        loop {
+            let mut cmd = Command::new(&python);
+            cmd.env("PATH", &path_env)
+                .env("TORCH_HOME", models.join("torch"))
+                .env("HF_HOME", models.join("huggingface"))
+                .env("FFMPEG_PATH", &ffmpeg)
+                .env("PYTHONWARNINGS", "ignore")
+                .env("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+                .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+                .env("HF_HUB_DISABLE_SYMLINKS", "1")
+                .arg(&script)
+                .arg(&song_path)
+                .arg(&cache_path)
+                .arg("--hash")
+                .arg(&file_hash)
+                .arg("--model")
+                .arg(&whisper_model)
+                .arg("--beam-size")
+                .arg(beam_size.to_string())
+                .arg("--batch-size")
+                .arg(current_batch_size.to_string());
 
-        let child = cmd
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn();
+            if let Some(ref lp) = lyrics_path {
+                cmd.arg("--lyrics").arg(lp);
+            }
 
-        match child {
-            Ok(mut child) => {
-                pid_clone.store(child.id(), Ordering::Relaxed);
-                use std::io::{BufRead, BufReader};
+            let child = cmd
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn();
 
-                let stderr_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-                let stderr_clone = Arc::clone(&stderr_lines);
-                let stderr_thread = child.stderr.take().map(|stderr| {
-                    std::thread::spawn(move || {
-                        let reader = BufReader::new(stderr);
+            match child {
+                Ok(mut child) => {
+                    pid_clone.store(child.id(), Ordering::Relaxed);
+                    use std::io::{BufRead, BufReader};
+
+                    let stderr_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+                    let stderr_clone = Arc::clone(&stderr_lines);
+                    let stderr_thread = child.stderr.take().map(|stderr| {
+                        std::thread::spawn(move || {
+                            let reader = BufReader::new(stderr);
+                            for line in reader.lines() {
+                                if let Ok(line) = line {
+                                    eprintln!("[analyzer stderr] {}", line);
+                                    stderr_clone.lock().unwrap().push(line);
+                                }
+                            }
+                        })
+                    });
+
+                    if let Some(stdout) = child.stdout.take() {
+                        let reader = BufReader::new(stdout);
                         for line in reader.lines() {
                             if let Ok(line) = line {
-                                eprintln!("[analyzer stderr] {}", line);
-                                stderr_clone.lock().unwrap().push(line);
+                                if let Some((pct, msg)) = parse_progress_line(&line) {
+                                    let mut p = progress_clone.lock().unwrap();
+                                    p.percent = pct;
+                                    p.message = msg;
+                                }
+                                eprintln!("[analyzer] {}", line);
                             }
-                        }
-                    })
-                });
-
-                if let Some(stdout) = child.stdout.take() {
-                    let reader = BufReader::new(stdout);
-                    for line in reader.lines() {
-                        if let Ok(line) = line {
-                            if let Some((pct, msg)) = parse_progress_line(&line) {
-                                let mut p = progress_clone.lock().unwrap();
-                                p.percent = pct;
-                                p.message = msg;
-                            }
-                            eprintln!("[analyzer] {}", line);
                         }
                     }
-                }
 
-                if let Some(handle) = stderr_thread {
-                    let _ = handle.join();
-                }
+                    if let Some(handle) = stderr_thread {
+                        let _ = handle.join();
+                    }
 
-                match child.wait() {
-                    Ok(status) => {
-                        let mut p = progress_clone.lock().unwrap();
-                        p.finished = Some(status.success());
-                        if !status.success() {
+                    match child.wait() {
+                        Ok(status) => {
+                            if status.success() {
+                                let mut p = progress_clone.lock().unwrap();
+                                p.finished = Some(true);
+                                break;
+                            }
+
                             let err_lines = stderr_lines.lock().unwrap();
+                            let all_stderr = err_lines.join("\n");
+                            let is_oom = all_stderr.contains("CUDA out of memory")
+                                || all_stderr.contains("OutOfMemoryError");
+
+                            if is_oom && current_batch_size > 1 {
+                                let new_batch = current_batch_size / 2;
+                                eprintln!(
+                                    "[analyzer] CUDA OOM detected, retrying with batch_size={new_batch} (was {current_batch_size})"
+                                );
+                                current_batch_size = new_batch;
+                                let mut p = progress_clone.lock().unwrap();
+                                p.percent = 0;
+                                p.message = format!("CUDA OOM — retrying with batch size {new_batch}...");
+                                continue;
+                            }
+
                             let last_err = err_lines
                                 .iter()
                                 .rev()
                                 .find(|l| !l.trim().is_empty())
                                 .cloned()
                                 .unwrap_or_else(|| format!("exit code: {status}"));
+                            let mut p = progress_clone.lock().unwrap();
+                            p.finished = Some(false);
                             p.message = last_err;
+                            break;
+                        }
+                        Err(e) => {
+                            let mut p = progress_clone.lock().unwrap();
+                            p.finished = Some(false);
+                            p.message = format!("Error: {e}");
+                            break;
                         }
                     }
-                    Err(e) => {
-                        let mut p = progress_clone.lock().unwrap();
-                        p.finished = Some(false);
-                        p.message = format!("Error: {e}");
-                    }
                 }
-            }
             Err(e) => {
                 let mut p = progress_clone.lock().unwrap();
                 p.finished = Some(false);
                 p.message = format!("Failed to start: {e}");
+                break;
+            }
             }
         }
     });

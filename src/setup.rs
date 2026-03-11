@@ -1,5 +1,6 @@
 use std::sync::{mpsc, Mutex};
 
+use bevy::app::AppExit;
 use bevy::prelude::*;
 
 use crate::states::AppState;
@@ -14,6 +15,10 @@ impl Plugin for SetupPlugin {
             .add_systems(
                 Update,
                 poll_progress.run_if(in_state(AppState::Setup)),
+            )
+            .add_systems(
+                Update,
+                handle_quit_button.run_if(in_state(AppState::Setup)),
             )
             .add_systems(OnExit(AppState::Setup), cleanup_setup);
     }
@@ -30,6 +35,9 @@ struct DetailText;
 
 #[derive(Component)]
 struct ProgressBar;
+
+#[derive(Component)]
+struct QuitButton;
 
 #[derive(Resource)]
 struct BootstrapReceiver(Mutex<mpsc::Receiver<BootstrapProgress>>);
@@ -60,7 +68,7 @@ fn spawn_setup_ui(mut commands: Commands, theme: Res<UiTheme>, asset_server: Res
             root.spawn((
                 ImageNode::new(asset_server.load("images/logo.png")),
                 Node {
-                    width: Val::Px(300.0),
+                    width: Val::Vw(25.0),
                     ..default()
                 },
             ));
@@ -125,7 +133,7 @@ fn spawn_setup_ui(mut commands: Commands, theme: Res<UiTheme>, asset_server: Res
                 });
 
                 col.spawn((
-                    Text::new("This downloads ~1-3 GB of ML models and tools.\nIt only happens once."),
+                    Text::new("This may take a few minutes.\nDownloads ~1-3 GB of ML models and tools. It only happens once."),
                     TextFont {
                         font_size: 12.0,
                         ..default()
@@ -136,6 +144,35 @@ fn spawn_setup_ui(mut commands: Commands, theme: Res<UiTheme>, asset_server: Res
                         ..default()
                     },
                 ));
+
+                col.spawn((
+                    QuitButton,
+                    Button,
+                    Node {
+                        padding: UiRect::new(
+                            Val::Px(20.0),
+                            Val::Px(20.0),
+                            Val::Px(8.0),
+                            Val::Px(8.0),
+                        ),
+                        margin: UiRect::top(Val::Px(16.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        border_radius: BorderRadius::all(Val::Px(6.0)),
+                        ..default()
+                    },
+                    BorderColor::all(theme.text_dim),
+                    BackgroundColor(Color::NONE),
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        Text::new("Quit"),
+                        TextFont {
+                            font_size: 13.0,
+                            ..default()
+                        },
+                        TextColor(theme.text_secondary),
+                    ));
+                });
             });
         });
 }
@@ -205,6 +242,17 @@ fn poll_progress(
 
     if progress.done && progress.error.is_none() {
         next_state.set(AppState::Menu);
+    }
+}
+
+fn handle_quit_button(
+    interactions: Query<&Interaction, (Changed<Interaction>, With<QuitButton>)>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    for interaction in &interactions {
+        if *interaction == Interaction::Pressed {
+            exit.write(AppExit::Success);
+        }
     }
 }
 
