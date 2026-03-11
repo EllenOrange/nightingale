@@ -326,13 +326,18 @@ fn step_install_packages(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), Str
         return Err(format!("PyTorch install failed: {stderr}"));
     }
 
+    let audio_sep_pkg = if gpu == "cuda" {
+        "audio-separator[gpu]>=0.25"
+    } else {
+        "audio-separator>=0.25"
+    };
     send(tx, "Packages", "Installing Demucs, WhisperX and audio-separator...");
 
     let output = Command::new(&uv)
         .args([
             "pip", "install",
             "demucs>=4.0.0", "whisperx>=3.3.0", "soundfile",
-            "audio-separator>=0.25",
+            audio_sep_pkg,
             "--python",
         ])
         .arg(&py)

@@ -31,6 +31,7 @@ pub struct MenuFocus {
     pub panel: FocusPanel,
     pub song_index: usize,
     pub sidebar_index: usize,
+    pub nav_lock: u8,
 }
 
 impl Default for MenuFocus {
@@ -39,6 +40,7 @@ impl Default for MenuFocus {
             panel: FocusPanel::SongList,
             song_index: 0,
             sidebar_index: 0,
+            nav_lock: 0,
         }
     }
 }
@@ -404,8 +406,10 @@ fn handle_song_click(
                 activate_song(song_card.song_index, &mut commands, &mut library, &mut next_state, &mut queue);
             }
             Interaction::Hovered => {
-                focus.panel = FocusPanel::SongList;
-                focus.song_index = song_card.song_index;
+                if focus.nav_lock == 0 {
+                    focus.panel = FocusPanel::SongList;
+                    focus.song_index = song_card.song_index;
+                }
             }
             Interaction::None => {}
         }
@@ -812,6 +816,10 @@ fn handle_menu_nav(
     let step_down = ud_step && nav.down_held;
     let step_up = ud_step && nav.up_held;
 
+    if focus.nav_lock > 0 {
+        focus.nav_lock -= 1;
+    }
+
     if step_down || step_up {
         match focus.panel {
             FocusPanel::SongList => {
@@ -838,6 +846,7 @@ fn handle_menu_nav(
                             _ => focus.song_index,
                         };
                     }
+                    focus.nav_lock = 2;
                 }
             }
             FocusPanel::Sidebar => {

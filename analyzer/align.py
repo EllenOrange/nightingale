@@ -30,18 +30,27 @@ def align_lyrics(
     with open(lyrics_path, "r", encoding="utf-8") as f:
         lyrics_data = json.load(f)
 
-    lines = lyrics_data.get("lines", [])
-    print(f"[nightingale:LOG] Lyrics loaded: {len(lines)} lines", flush=True)
+    raw_lines = lyrics_data.get("lines", [])
+    print(f"[nightingale:LOG] Lyrics loaded: {len(raw_lines)} lines", flush=True)
+
+    has_timestamps = raw_lines and isinstance(raw_lines[0], dict) and "start" in raw_lines[0]
+
+    clean_lines: list[str] = []
+    line_starts: list[float] = []
+    for line in raw_lines:
+        if isinstance(line, dict):
+            text = line.get("text", "").strip()
+            if text:
+                clean_lines.append(text)
+                line_starts.append(line.get("start", 0.0))
+        else:
+            text = str(line).strip()
+            if text:
+                clean_lines.append(text)
 
     audio = whisperx.load_audio(vocals_path)
     duration_secs = len(audio) / 16000
     print(f"[nightingale:LOG] Vocals audio loaded: {len(audio)} samples ({duration_secs:.1f}s)", flush=True)
-
-    clean_lines = []
-    for line in lines:
-        text = line.strip() if isinstance(line, str) else str(line).strip()
-        if text:
-            clean_lines.append(text)
 
     progress(56, "Detecting vocal regions...")
     vocal_start, vocal_end = detect_vocal_region(audio)
@@ -61,8 +70,15 @@ def align_lyrics(
     progress(80, f"Final alignment from {vocal_start:.1f}s...")
     print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{a_device}'", flush=True)
     align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
-    full_text = " ".join(clean_lines)
-    raw_segments = [{"text": full_text, "start": vocal_start, "end": vocal_end}]
+
+    if has_timestamps and len(line_starts) == len(clean_lines):
+        raw_segments = _build_timed_segments(clean_lines, line_starts, vocal_end)
+        print(f"[nightingale:LOG] Using {len(raw_segments)} synced segments for alignment", flush=True)
+    else:
+        full_text = " ".join(clean_lines)
+        raw_segments = [{"text": full_text, "start": vocal_start, "end": vocal_end}]
+        print(f"[nightingale:LOG] Using single segment for alignment (no timestamps)", flush=True)
+
     align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
     del align_model
 
@@ -74,6 +90,26 @@ def align_lyrics(
         print(f"[nightingale:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
 
     return {"language": language, "segments": segments, "source": "lyrics"}
+
+def _build_timed_segments(
+    clean_lines: list[str], line_starts: list[float], vocal_end: float,
+) -> list[dict]:
+    """Build per-line segments from synced lyrics timestamps.
+
+    Each line gets a time window from its start to the next line's start
+    (with padding), constraining the aligner to a narrow region.
+    """
+    PADDING = 1.5
+    segments = []
+    for i, (text, start) in enumerate(zip(clean_lines, line_starts)):
+        seg_start = max(0.0, start - PADDING)
+        if i + 1 < len(line_starts):
+            seg_end = line_starts[i + 1] + PADDING
+        else:
+            seg_end = vocal_end
+        segments.append({"text": text, "start": seg_start, "end": seg_end})
+    return segments
+
 
 def _collect_words(align_result: dict) -> list[dict]:
     """Extract all words with timestamps from alignment result."""

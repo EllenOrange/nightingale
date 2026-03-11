@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod analyzer;
 mod config;
 pub mod input;
@@ -11,9 +13,12 @@ pub mod ui;
 pub mod vendor;
 pub mod vendor_scripts;
 
+#[cfg(not(debug_assertions))]
+use std::sync::Mutex;
+
 use bevy::asset::{AssetPlugin, UnapprovedPathMode, load_internal_binary_asset};
 use bevy::prelude::*;
-use bevy::window::WindowMode;
+use bevy::window::{PresentMode, WindowMode};
 use bevy::winit::WinitWindows;
 use bevy_embedded_assets::{EmbeddedAssetPlugin, PluginMode};
 use bevy_kira_audio::AudioPlugin;
@@ -26,8 +31,14 @@ use scanner::metadata::SongLibrary;
 use states::AppState;
 use ui::UiTheme;
 
+#[cfg(not(debug_assertions))]
+static LOG_FILE: Mutex<Option<std::sync::Arc<Mutex<std::fs::File>>>> = Mutex::new(None);
+
 fn main() {
     dotenvy::dotenv().ok();
+
+    #[cfg(not(debug_assertions))]
+    setup_file_logging();
 
     let force_setup = std::env::args().any(|a| a == "--setup");
     if force_setup {
@@ -53,23 +64,43 @@ fn main() {
         },
     });
 
-    app.add_plugins(
-        DefaultPlugins
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Nightingale — Your Karaoke".into(),
-                    resolution: (1280, 720).into(),
-                    mode: window_mode,
-                    ..default()
-                }),
+    #[allow(unused_mut)]
+    let mut plugins = DefaultPlugins
+        .set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Nightingale — Your Karaoke".into(),
+                resolution: (1280, 720).into(),
+                mode: window_mode,
+                present_mode: PresentMode::AutoNoVsync,
                 ..default()
-            })
-            .set(AssetPlugin {
-                unapproved_path_mode: UnapprovedPathMode::Deny,
-                ..default()
-            })
-            .set(ImagePlugin::default_linear()),
-    );
+            }),
+            ..default()
+        })
+        .set(AssetPlugin {
+            unapproved_path_mode: UnapprovedPathMode::Deny,
+            ..default()
+        })
+        .set(ImagePlugin::default_linear());
+
+    #[cfg(not(debug_assertions))]
+    {
+        plugins = plugins.set(bevy::log::LogPlugin {
+            custom_layer: |_| {
+                let guard = LOG_FILE.lock().unwrap();
+                guard.as_ref().map(|file| {
+                    let writer = file.clone();
+                    Box::new(
+                        tracing_subscriber::fmt::layer()
+                            .with_ansi(false)
+                            .with_writer(move || LogFileWriter(writer.clone()))
+                    ) as Box<dyn bevy::log::tracing_subscriber::Layer<bevy::log::tracing_subscriber::Registry> + Send + Sync>
+                })
+            },
+            ..default()
+        });
+    }
+
+    app.add_plugins(plugins);
 
     load_internal_binary_asset!(
         app,
@@ -211,4 +242,69 @@ fn set_window_icon(
     let rgba = img.into_raw();
     let icon = winit::window::Icon::from_rgba(rgba, w, h).expect("Failed to create window icon");
     winit_window.set_window_icon(Some(icon));
+}
+
+#[cfg(not(debug_assertions))]
+struct LogFileWriter(std::sync::Arc<Mutex<std::fs::File>>);
+
+#[cfg(not(debug_assertions))]
+impl std::io::Write for LogFileWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut f = self.0.lock().unwrap();
+        f.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        let mut f = self.0.lock().unwrap();
+        f.flush()
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn setup_file_logging() {
+    use std::io::Write;
+    use std::sync::Arc;
+
+    let log_dir = dirs::home_dir()
+        .expect("could not find home directory")
+        .join(".nightingale");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log_path = log_dir.join("nightingale.log");
+
+    let file = match std::fs::File::create(&log_path) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+
+    let shared = Arc::new(Mutex::new(file));
+    *LOG_FILE.lock().unwrap() = Some(shared.clone());
+
+    redirect_stderr(&log_path);
+
+    let _ = writeln!(shared.lock().unwrap(), "--- Nightingale log started ---");
+}
+
+#[cfg(not(debug_assertions))]
+fn redirect_stderr(log_path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::IntoRawFd;
+        if let Ok(file) = std::fs::OpenOptions::new().append(true).open(log_path) {
+            let fd = file.into_raw_fd();
+            unsafe { libc::dup2(fd, 2); }
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::IntoRawHandle;
+        if let Ok(file) = std::fs::OpenOptions::new().append(true).open(log_path) {
+            let handle = file.into_raw_handle();
+            unsafe {
+                windows_sys::Win32::System::Console::SetStdHandle(
+                    windows_sys::Win32::System::Console::STD_ERROR_HANDLE,
+                    handle as _,
+                );
+            }
+        }
+    }
 }
