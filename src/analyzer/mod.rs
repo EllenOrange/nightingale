@@ -143,29 +143,23 @@ fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
     let record = with_lyrics
         .into_iter()
         .min_by_key(|r| {
-            let has_synced = r.get("syncedLyrics")
-                .and_then(|v| v.as_str())
-                .is_some_and(|s| !s.is_empty());
             let album_match = r.get("albumName")
                 .and_then(|v| v.as_str())
                 .is_some_and(|a| a.to_lowercase() == album_lower);
             let d = r.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let duration_penalty = ((d - song.duration_secs).abs() * 10.0) as i64;
-
-            let synced_bonus: i64 = if has_synced { 0 } else { 10_000 };
             let album_bonus: i64 = if album_match { 0 } else { 5_000 };
 
-            synced_bonus + album_bonus + duration_penalty
+            album_bonus + duration_penalty
         });
 
     if let Some(ref r) = record {
         let d = r.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let name = r.get("trackName").and_then(|v| v.as_str()).unwrap_or("?");
         let album = r.get("albumName").and_then(|v| v.as_str()).unwrap_or("?");
-        let has_synced = r.get("syncedLyrics").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty());
         eprintln!(
-            "[lrclib] Picked \"{}\" from \"{}\" (duration {:.0}s, delta {:.1}s, synced={})",
-            name, album, d, (d - song.duration_secs).abs(), has_synced
+            "[lrclib] Picked \"{}\" from \"{}\" (duration {:.0}s, delta {:.1}s)",
+            name, album, d, (d - song.duration_secs).abs()
         );
     }
 
@@ -174,41 +168,29 @@ fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
         return None;
     };
 
-    let synced_str = record
-        .get("syncedLyrics")
+    let plain_str = record
+        .get("plainLyrics")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty());
 
-    let synced_lines = synced_str.and_then(|s| parse_lrc(s));
-
-    let lyrics_json = if let Some(ref timed) = synced_lines {
-        eprintln!("[lrclib] Extracted {} synced lines with timestamps", timed.len());
-        serde_json::json!({"lines": timed})
-    } else {
-        let plain_str = record
-            .get("plainLyrics")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty());
-
-        let Some(plain) = plain_str else {
-            eprintln!("[lrclib] Record has no plainLyrics, skipping");
-            return None;
-        };
-
-        let lines: Vec<String> = plain
-            .lines()
-            .map(|l| l.trim().to_string())
-            .filter(|l| !l.is_empty())
-            .collect();
-
-        if lines.is_empty() {
-            eprintln!("[lrclib] Extracted 0 lines, skipping");
-            return None;
-        }
-
-        eprintln!("[lrclib] Extracted {} plain lines (no timestamps)", lines.len());
-        serde_json::json!({"lines": lines})
+    let Some(plain) = plain_str else {
+        eprintln!("[lrclib] Record has no plainLyrics, skipping");
+        return None;
     };
+
+    let lines: Vec<String> = plain
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    if lines.is_empty() {
+        eprintln!("[lrclib] Extracted 0 lines, skipping");
+        return None;
+    }
+
+    eprintln!("[lrclib] Extracted {} lines", lines.len());
+    let lyrics_json = serde_json::json!({"lines": lines});
 
     let out = cache.lyrics_path(&song.file_hash);
     match std::fs::write(&out, serde_json::to_string_pretty(&lyrics_json).unwrap()) {
@@ -220,41 +202,6 @@ fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
             eprintln!("[lrclib] Failed to write lyrics: {e}");
             None
         }
-    }
-}
-
-fn parse_lrc(lrc: &str) -> Option<Vec<serde_json::Value>> {
-    let mut result = Vec::new();
-    for line in lrc.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let Some(close) = line.find(']') else {
-            continue;
-        };
-        let tag = &line[1..close];
-        let text = line[close + 1..].trim();
-        if text.is_empty() {
-            continue;
-        }
-        let parts: Vec<&str> = tag.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            continue;
-        }
-        let Ok(mins) = parts[0].parse::<f64>() else {
-            continue;
-        };
-        let Ok(secs) = parts[1].parse::<f64>() else {
-            continue;
-        };
-        let start = mins * 60.0 + secs;
-        result.push(serde_json::json!({"text": text, "start": start}));
-    }
-    if result.len() >= 2 {
-        Some(result)
-    } else {
-        None
     }
 }
 
