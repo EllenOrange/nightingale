@@ -53,60 +53,51 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
             },
         ))
         .with_children(|root| {
-            root.spawn(Node {
-                max_width: Val::Percent(100.0),
-                flex_shrink: 0.0,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                ..default()
-            })
-            .with_children(|wrapper| {
-                wrapper
-                    .spawn((
-                        CountdownNode,
-                        Node {
-                            position_type: PositionType::Absolute,
-                            top: Val::Px(-36.0),
-                            left: Val::Px(-36.0),
-                            width: Val::Px(40.0),
-                            height: Val::Px(40.0),
-                            border_radius: BorderRadius::all(Val::Percent(50.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(Color::NONE),
-                        Visibility::Hidden,
-                        ZIndex(1),
-                    ))
-                    .with_children(|cd| {
-                        cd.spawn((
-                            Text::new(""),
-                            TextFont {
-                                font_size: 22.0,
-                                ..default()
-                            },
-                            TextColor(theme.countdown_color),
-                        ));
-                    });
-
-                wrapper.spawn((
-                    CurrentLine,
+            root.spawn((
+                CurrentLine,
+                Node {
+                    flex_shrink: 0.0,
+                    max_width: Val::Percent(100.0),
+                    padding: UiRect::new(
+                        Val::Px(20.0),
+                        Val::Px(20.0),
+                        Val::Px(10.0),
+                        Val::Px(10.0),
+                    ),
+                    border_radius: BorderRadius::all(Val::Px(8.0)),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                Visibility::Hidden,
+            ))
+            .with_children(|cl| {
+                cl.spawn((
+                    CountdownNode,
                     Node {
-                        flex_shrink: 0.0,
-                        max_width: Val::Percent(100.0),
-                        padding: UiRect::new(
-                            Val::Px(20.0),
-                            Val::Px(20.0),
-                            Val::Px(10.0),
-                            Val::Px(10.0),
-                        ),
-                        border_radius: BorderRadius::all(Val::Px(8.0)),
+                        position_type: PositionType::Absolute,
+                        top: Val::Px(-36.0),
+                        left: Val::Px(-36.0),
+                        width: Val::Px(40.0),
+                        height: Val::Px(40.0),
+                        border_radius: BorderRadius::all(Val::Percent(50.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
                         ..default()
                     },
                     BackgroundColor(Color::NONE),
                     Visibility::Hidden,
-                ));
+                    ZIndex(1),
+                ))
+                .with_children(|cd| {
+                    cd.spawn((
+                        Text::new(""),
+                        TextFont {
+                            font_size: 22.0,
+                            ..default()
+                        },
+                        TextColor(theme.countdown_color),
+                    ));
+                });
             });
 
             root.spawn((
@@ -314,9 +305,38 @@ fn rebuild_lines(
 ) {
     if let Ok((entity, _, _)) = current_line_query.single() {
         commands.entity(entity).despawn_children();
-        if idx < segments.len() && !segments[idx].words.is_empty() {
-            let words = &segments[idx].words;
-            commands.entity(entity).with_children(|parent| {
+        let has_words = idx < segments.len() && !segments[idx].words.is_empty();
+        commands.entity(entity).with_children(|parent| {
+            parent
+                .spawn((
+                    CountdownNode,
+                    Node {
+                        position_type: PositionType::Absolute,
+                        top: Val::Px(-36.0),
+                        left: Val::Px(-36.0),
+                        width: Val::Px(40.0),
+                        height: Val::Px(40.0),
+                        border_radius: BorderRadius::all(Val::Percent(50.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                    Visibility::Hidden,
+                    ZIndex(1),
+                ))
+                .with_children(|cd| {
+                    cd.spawn((
+                        Text::new(""),
+                        TextFont {
+                            font_size: 22.0,
+                            ..default()
+                        },
+                        TextColor(theme.countdown_color),
+                    ));
+                });
+            if has_words {
+                let words = &segments[idx].words;
                 let first = &words[0];
                 let first_color = if first.estimated {
                     theme.unsung_estimated
@@ -365,8 +385,8 @@ fn rebuild_lines(
                             ));
                         }
                     });
-            });
-        }
+            }
+        });
     }
 
     if let Ok((entity, _, _)) = next_line_query.single() {
