@@ -149,7 +149,7 @@ pub const FA_SPINNER: &str = "\u{f1ce}";
 pub const FA_USER: &str = "\u{f007}";
 
 #[derive(Component)]
-struct MenuRoot;
+pub(crate) struct MenuRoot;
 
 fn load_album_art(
     mut commands: Commands,

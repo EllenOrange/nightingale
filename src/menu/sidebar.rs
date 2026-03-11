@@ -261,16 +261,47 @@ pub fn handle_sidebar_click(
     asset_server: Res<AssetServer>,
     nav: Res<crate::input::NavInput>,
     mut focus: ResMut<super::MenuFocus>,
+    menu_root_query: Query<Entity, With<super::MenuRoot>>,
 ) {
     if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
         return;
     }
 
+    let mut triggered_action: Option<SidebarAction> = None;
+
     if nav.confirm
         && focus.panel == super::FocusPanel::Sidebar
         && focus.sidebar_index < super::SIDEBAR_ACTIONS.len()
     {
-        let action = super::SIDEBAR_ACTIONS[focus.sidebar_index];
+        triggered_action = Some(super::SIDEBAR_ACTIONS[focus.sidebar_index]);
+    }
+
+    if triggered_action.is_none() {
+        for (interaction, sidebar_btn) in &interaction_query {
+            match interaction {
+                Interaction::Pressed => {
+                    triggered_action = Some(sidebar_btn.action);
+                }
+                Interaction::Hovered => {
+                    if let Some(idx) = super::SIDEBAR_ACTIONS
+                        .iter()
+                        .position(|&a| a == sidebar_btn.action)
+                    {
+                        focus.panel = super::FocusPanel::Sidebar;
+                        focus.sidebar_index = idx;
+                    }
+                }
+                Interaction::None => {}
+            }
+        }
+    }
+
+    if let Some(action) = triggered_action {
+        if action == SidebarAction::ToggleTheme {
+            for entity in &menu_root_query {
+                commands.entity(entity).despawn();
+            }
+        }
         execute_sidebar_action(
             action,
             &mut commands,
@@ -283,36 +314,6 @@ pub fn handle_sidebar_click(
             &mut next_state,
             &asset_server,
         );
-        return;
-    }
-
-    for (interaction, sidebar_btn) in &interaction_query {
-        match interaction {
-            Interaction::Pressed => {
-                execute_sidebar_action(
-                    sidebar_btn.action,
-                    &mut commands,
-                    &mut config,
-                    pending.as_deref(),
-                    pending_rescan.as_deref(),
-                    &mut theme,
-                    &cache,
-                    &profiles,
-                    &mut next_state,
-                    &asset_server,
-                );
-            }
-            Interaction::Hovered => {
-                if let Some(idx) = super::SIDEBAR_ACTIONS
-                    .iter()
-                    .position(|&a| a == sidebar_btn.action)
-                {
-                    focus.panel = super::FocusPanel::Sidebar;
-                    focus.sidebar_index = idx;
-                }
-            }
-            Interaction::None => {}
-        }
     }
 }
 
