@@ -58,15 +58,15 @@ impl AppConfig {
     }
 
     pub fn whisper_model(&self) -> &str {
-        self.whisper_model.as_deref().unwrap_or("large-v3-turbo")
+        self.whisper_model.as_deref().unwrap_or("large-v3")
     }
 
     pub fn beam_size(&self) -> u32 {
-        self.beam_size.unwrap_or(5)
+        self.beam_size.unwrap_or(8)
     }
 
     pub fn batch_size(&self) -> u32 {
-        self.batch_size.unwrap_or(16)
+        self.batch_size.unwrap_or(8)
     }
 
     pub fn separator(&self) -> &str {

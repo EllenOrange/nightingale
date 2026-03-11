@@ -275,6 +275,39 @@ fn urlencodeq(s: &str) -> String {
         .collect()
 }
 
+/// Download one video per flavor that has no cached videos yet.
+/// Intended to be called during first-launch setup so video backgrounds
+/// are ready when the user first opens a flavor.
+pub fn prefetch_one_per_flavor(mut on_progress: impl FnMut(&str)) {
+    for flavor in VideoFlavor::ALL {
+        let existing = cached_videos(*flavor);
+        if !existing.is_empty() {
+            on_progress(&format!("{}: already cached", flavor.name()));
+            continue;
+        }
+
+        on_progress(&format!("{}: fetching listing...", flavor.name()));
+        let listing = fetch_video_listing(*flavor);
+        let first = listing.into_iter().find(|p| !p.dest.exists());
+        let Some(dl) = first else {
+            on_progress(&format!("{}: no videos available", flavor.name()));
+            continue;
+        };
+
+        on_progress(&format!("{}: downloading...", flavor.name()));
+        match download_file(&dl.url, &dl.dest) {
+            Ok(_) => {
+                on_progress(&format!("{}: ready", flavor.name()));
+                info!("Prefetch: saved {} for {}", dl.dest.display(), flavor.name());
+            }
+            Err(e) => {
+                on_progress(&format!("{}: download failed", flavor.name()));
+                warn!("Prefetch: failed for {}: {e}", flavor.name());
+            }
+        }
+    }
+}
+
 fn background_video_worker(
     flavor: VideoFlavor,
     frame_tx: mpsc::SyncSender<Vec<u8>>,

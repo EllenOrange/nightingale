@@ -12,7 +12,7 @@ def transcribe_vocals(
     vocals_path: str,
     original_audio_path: str,
     device: str,
-    model_name: str = "large-v3-turbo",
+    model_name: str = "large-v3",
     beam_size: int = 5,
     batch_size: int = 16,
 ) -> dict:

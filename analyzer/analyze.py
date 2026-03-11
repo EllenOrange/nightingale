@@ -57,7 +57,7 @@ def main():
     parser.add_argument("audio_path", help="Path to the audio file")
     parser.add_argument("output_dir", help="Directory to write output files")
     parser.add_argument("--hash", dest="file_hash", help="Pre-computed file hash")
-    parser.add_argument("--model", default="large-v3-turbo", help="Whisper model name")
+    parser.add_argument("--model", default="large-v3", help="Whisper model name")
     parser.add_argument("--beam-size", type=int, default=5, help="Beam size for decoding")
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size for transcription")
     parser.add_argument("--separator", default="karaoke", choices=["karaoke", "demucs"],

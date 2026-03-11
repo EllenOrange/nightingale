@@ -8,7 +8,7 @@ const SEPARATORS: &[(&str, &str)] = &[
     ("karaoke", "UVR Karaoke"),
     ("demucs", "Demucs"),
 ];
-const MODELS: &[&str] = &["large-v3-turbo", "large-v3"];
+const MODELS: &[&str] = &["large-v3", "large-v3-turbo"];
 
 #[derive(Resource)]
 pub struct SettingsFocus(pub usize);

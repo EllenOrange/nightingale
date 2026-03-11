@@ -137,6 +137,8 @@ pub fn run_bootstrap(tx: mpsc::Sender<BootstrapProgress>) {
         return;
     }
 
+    step_prefetch_videos(&tx);
+
     if let Err(e) = std::fs::write(ready_marker(), "ok") {
         send_error(&tx, format!("Failed to write ready marker: {e}"));
         return;
@@ -361,4 +363,14 @@ fn step_extract_scripts(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), Stri
         .map_err(|e| format!("Failed to write scripts: {e}"))?;
     send(tx, "Scripts", "Analyzer scripts extracted");
     Ok(())
+}
+
+// ─── Step 7: Pre-fetch one video background per flavor ───────────────
+
+fn step_prefetch_videos(tx: &mpsc::Sender<BootstrapProgress>) {
+    send(tx, "Videos", "Pre-downloading video backgrounds...");
+    crate::player::video_bg::prefetch_one_per_flavor(|detail| {
+        send(tx, "Videos", detail);
+    });
+    send(tx, "Videos", "Video backgrounds ready");
 }

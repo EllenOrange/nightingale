@@ -793,6 +793,10 @@ fn handle_menu_nav(
         nav_repeat.started = false;
     }
 
+    if focus.nav_lock > 0 {
+        focus.nav_lock -= 1;
+    }
+
     let any_nav = ud_step
         || nav.left
         || nav.right
@@ -815,10 +819,6 @@ fn handle_menu_nav(
 
     let step_down = ud_step && nav.down_held;
     let step_up = ud_step && nav.up_held;
-
-    if focus.nav_lock > 0 {
-        focus.nav_lock -= 1;
-    }
 
     if step_down || step_up {
         match focus.panel {

@@ -54,6 +54,7 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
         ))
         .with_children(|root| {
             root.spawn(Node {
+                width: Val::Percent(100.0),
                 flex_shrink: 0.0,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
@@ -93,10 +94,13 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
                     CurrentLine,
                     Node {
                         flex_direction: FlexDirection::Row,
-                        flex_wrap: FlexWrap::NoWrap,
+                        flex_wrap: FlexWrap::Wrap,
                         flex_shrink: 0.0,
+                        max_width: Val::Percent(100.0),
                         justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
                         column_gap: Val::Px(8.0),
+                        row_gap: Val::Px(4.0),
                         padding: UiRect::new(
                             Val::Px(20.0),
                             Val::Px(20.0),
@@ -115,10 +119,13 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
                 NextLine,
                 Node {
                     flex_direction: FlexDirection::Row,
-                    flex_wrap: FlexWrap::NoWrap,
+                    flex_wrap: FlexWrap::Wrap,
                     flex_shrink: 0.0,
+                    max_width: Val::Percent(100.0),
                     justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
                     column_gap: Val::Px(6.0),
+                    row_gap: Val::Px(2.0),
                     padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(6.0), Val::Px(6.0)),
                     border_radius: BorderRadius::all(Val::Px(6.0)),
                     ..default()

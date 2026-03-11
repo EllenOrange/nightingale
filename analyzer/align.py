@@ -12,7 +12,7 @@ def align_lyrics(
     lyrics_path: str,
     vocals_path: str,
     device: str,
-    model_name: str = "large-v3-turbo",
+    model_name: str = "large-v3",
 ) -> dict:
     """Align pre-existing lyrics to vocals audio using WhisperX.
 
