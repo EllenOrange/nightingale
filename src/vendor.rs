@@ -3,7 +3,7 @@ use std::process::Command;
 use std::sync::mpsc;
 
 pub fn silent_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
-    let cmd = Command::new(program);
+    let mut cmd = Command::new(program);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
