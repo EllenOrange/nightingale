@@ -54,7 +54,7 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
         ))
         .with_children(|root| {
             root.spawn(Node {
-                width: Val::Percent(100.0),
+                max_width: Val::Percent(100.0),
                 flex_shrink: 0.0,
                 align_items: AlignItems::Center,
                 justify_content: JustifyContent::Center,
@@ -93,14 +93,8 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
                 wrapper.spawn((
                     CurrentLine,
                     Node {
-                        flex_direction: FlexDirection::Row,
-                        flex_wrap: FlexWrap::Wrap,
                         flex_shrink: 0.0,
                         max_width: Val::Percent(100.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        column_gap: Val::Px(8.0),
-                        row_gap: Val::Px(4.0),
                         padding: UiRect::new(
                             Val::Px(20.0),
                             Val::Px(20.0),
@@ -118,14 +112,8 @@ pub fn setup_lyrics(commands: &mut Commands, transcript: &Transcript, theme: &Ui
             root.spawn((
                 NextLine,
                 Node {
-                    flex_direction: FlexDirection::Row,
-                    flex_wrap: FlexWrap::Wrap,
                     flex_shrink: 0.0,
                     max_width: Val::Percent(100.0),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(6.0),
-                    row_gap: Val::Px(2.0),
                     padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(6.0), Val::Px(6.0)),
                     border_radius: BorderRadius::all(Val::Px(6.0)),
                     ..default()
@@ -326,27 +314,57 @@ fn rebuild_lines(
 ) {
     if let Ok((entity, _, _)) = current_line_query.single() {
         commands.entity(entity).despawn_children();
-        if idx < segments.len() {
+        if idx < segments.len() && !segments[idx].words.is_empty() {
+            let words = &segments[idx].words;
             commands.entity(entity).with_children(|parent| {
-                for (wi, word) in segments[idx].words.iter().enumerate() {
-                    let unsung = if word.estimated {
-                        theme.unsung_estimated
-                    } else {
-                        theme.unsung_color
-                    };
-                    parent.spawn((
+                let first = &words[0];
+                let first_color = if first.estimated {
+                    theme.unsung_estimated
+                } else {
+                    theme.unsung_color
+                };
+                let first_text = spaced_word(&first.word, words.len() > 1);
+                parent
+                    .spawn((
                         LyricWord {
                             segment_idx: idx,
-                            word_idx: wi,
+                            word_idx: 0,
                         },
-                        Text::new(&word.word),
+                        Text::new(first_text),
                         TextFont {
                             font_size: 42.0,
                             ..default()
                         },
-                        TextColor(unsung),
-                    ));
-                }
+                        TextColor(first_color),
+                        TextLayout {
+                            justify: Justify::Center,
+                            linebreak: LineBreak::WordBoundary,
+                        },
+                    ))
+                    .with_children(|tp| {
+                        for (wi, word) in words.iter().enumerate().skip(1) {
+                            let unsung = if word.estimated {
+                                theme.unsung_estimated
+                            } else {
+                                theme.unsung_color
+                            };
+                            tp.spawn((
+                                LyricWord {
+                                    segment_idx: idx,
+                                    word_idx: wi,
+                                },
+                                TextSpan::new(spaced_word(
+                                    &word.word,
+                                    wi < words.len() - 1,
+                                )),
+                                TextFont {
+                                    font_size: 42.0,
+                                    ..default()
+                                },
+                                TextColor(unsung),
+                            ));
+                        }
+                    });
             });
         }
     }
@@ -354,25 +372,60 @@ fn rebuild_lines(
     if let Ok((entity, _, _)) = next_line_query.single() {
         commands.entity(entity).despawn_children();
         let next_idx = idx + 1;
-        if next_idx < segments.len() {
+        if next_idx < segments.len() && !segments[next_idx].words.is_empty() {
+            let words = &segments[next_idx].words;
             commands.entity(entity).with_children(|parent| {
-                for word in &segments[next_idx].words {
-                    let col = if word.estimated {
-                        let est = theme.unsung_estimated.to_srgba();
-                        Color::srgba(est.red, est.green, est.blue, 0.35)
-                    } else {
-                        theme.next_line_color
-                    };
-                    parent.spawn((
-                        Text::new(&word.word),
+                let first = &words[0];
+                let first_col = if first.estimated {
+                    let est = theme.unsung_estimated.to_srgba();
+                    Color::srgba(est.red, est.green, est.blue, 0.35)
+                } else {
+                    theme.next_line_color
+                };
+                let first_text = spaced_word(&first.word, words.len() > 1);
+                parent
+                    .spawn((
+                        Text::new(first_text),
                         TextFont {
                             font_size: 28.0,
                             ..default()
                         },
-                        TextColor(col),
-                    ));
-                }
+                        TextColor(first_col),
+                        TextLayout {
+                            justify: Justify::Center,
+                            linebreak: LineBreak::WordBoundary,
+                        },
+                    ))
+                    .with_children(|tp| {
+                        for (wi, word) in words.iter().enumerate().skip(1) {
+                            let col = if word.estimated {
+                                let est = theme.unsung_estimated.to_srgba();
+                                Color::srgba(est.red, est.green, est.blue, 0.35)
+                            } else {
+                                theme.next_line_color
+                            };
+                            tp.spawn((
+                                TextSpan::new(spaced_word(
+                                    &word.word,
+                                    wi < words.len() - 1,
+                                )),
+                                TextFont {
+                                    font_size: 28.0,
+                                    ..default()
+                                },
+                                TextColor(col),
+                            ));
+                        }
+                    });
             });
         }
+    }
+}
+
+fn spaced_word(w: &str, trailing_space: bool) -> String {
+    if trailing_space {
+        format!("{w} ")
+    } else {
+        w.to_string()
     }
 }
