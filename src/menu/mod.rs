@@ -495,6 +495,9 @@ fn handle_language_button_click(
         (&Interaction, &LanguageButton),
         Changed<Interaction>,
     >,
+    mut badge_inner_query: Query<
+        (&LanguageBadgeInner, &mut BackgroundColor, &mut BorderColor),
+    >,
     theme: Res<UiTheme>,
     icon_font: Res<IconFont>,
     picker_query: Query<(), With<LanguagePickerOverlay>>,
@@ -504,14 +507,46 @@ fn handle_language_button_click(
         return;
     }
     for (interaction, btn) in &interaction_query {
-        if *interaction == Interaction::Pressed {
-            if btn.song_index < library.songs.len() {
-                let status = &library.songs[btn.song_index].analysis_status;
-                if matches!(status, AnalysisStatus::Analyzing | AnalysisStatus::Queued) {
-                    continue;
+        let disabled = btn.song_index < library.songs.len()
+            && matches!(
+                library.songs[btn.song_index].analysis_status,
+                AnalysisStatus::Analyzing | AnalysisStatus::Queued
+            );
+
+        match interaction {
+            Interaction::Pressed => {
+                if !disabled {
+                    spawn_language_picker(&mut commands, btn.song_index, &theme, &icon_font);
                 }
             }
-            spawn_language_picker(&mut commands, btn.song_index, &theme, &icon_font);
+            Interaction::Hovered => {
+                if let Some((_, mut bg, mut border)) = badge_inner_query
+                    .iter_mut()
+                    .find(|(b, _, _)| b.song_index == btn.song_index)
+                {
+                    if disabled {
+                        *bg = BackgroundColor(theme.accent.with_alpha(0.05));
+                        *border = BorderColor::all(theme.accent.with_alpha(0.2));
+                    } else {
+                        *bg = BackgroundColor(theme.accent.with_alpha(0.2));
+                        *border = BorderColor::all(theme.accent.with_alpha(0.6));
+                    }
+                }
+            }
+            Interaction::None => {
+                if let Some((_, mut bg, mut border)) = badge_inner_query
+                    .iter_mut()
+                    .find(|(b, _, _)| b.song_index == btn.song_index)
+                {
+                    if disabled {
+                        *bg = BackgroundColor(theme.accent.with_alpha(0.05));
+                        *border = BorderColor::all(theme.accent.with_alpha(0.2));
+                    } else {
+                        *bg = BackgroundColor(theme.accent.with_alpha(0.1));
+                        *border = BorderColor::all(theme.accent.with_alpha(0.4));
+                    }
+                }
+            }
         }
     }
 }
@@ -725,6 +760,7 @@ fn update_status_badges(
     mut reanalyze_query: Query<(&ReanalyzeButton, &mut Visibility), (Without<SpinnerOverlay>, Without<LanguageButton>)>,
     mut lang_text_query: Query<(&LanguageText, &mut Text), (Without<BadgeText>, Without<StatsText>)>,
     mut lang_btn_query: Query<(&LanguageButton, &mut Visibility), (Without<SpinnerOverlay>, Without<ReanalyzeButton>)>,
+    mut lang_inner_query: Query<(&LanguageBadgeInner, &mut BackgroundColor, &mut BorderColor), (Without<StatusBadge>, Without<SpinnerOverlay>)>,
 ) {
     for (badge, mut bg) in &mut badge_query {
         if badge.song_index >= library.songs.len() {
@@ -831,6 +867,20 @@ fn update_status_badges(
             Visibility::Hidden
         };
         vis.set_if_neq(target);
+    }
+
+    for (bi, mut bg, mut border) in &mut lang_inner_query {
+        if bi.song_index >= library.songs.len() {
+            continue;
+        }
+        let disabled = matches!(
+            library.songs[bi.song_index].analysis_status,
+            AnalysisStatus::Analyzing | AnalysisStatus::Queued
+        );
+        if disabled {
+            *bg = BackgroundColor(theme.accent.with_alpha(0.05));
+            *border = BorderColor::all(theme.accent.with_alpha(0.2));
+        }
     }
 }
 

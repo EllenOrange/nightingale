@@ -111,6 +111,11 @@ pub struct LanguageText {
 }
 
 #[derive(Component)]
+pub struct LanguageBadgeInner {
+    pub song_index: usize,
+}
+
+#[derive(Component)]
 pub struct LanguagePickerOverlay;
 
 #[derive(Component)]
@@ -124,6 +129,7 @@ pub struct LanguagePickerClose;
 
 #[derive(Resource)]
 pub struct LanguagePickerTarget {
+    #[allow(dead_code)]
     pub song_index: usize,
 }
 
@@ -485,6 +491,7 @@ fn spawn_song_info(
                     ));
                     lang_wrapper
                         .spawn((
+                            LanguageBadgeInner { song_index: index },
                             Node {
                                 padding: UiRect::new(
                                     Val::Px(5.0),
