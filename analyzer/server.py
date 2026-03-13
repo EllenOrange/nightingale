@@ -132,6 +132,7 @@ def process_song(cmd, device):
             model_name=model_name,
             language_override=language_override,
             whisper_model=whisper,
+            pre_align_cleanup=_clear_models,
         )
     else:
         transcript = transcribe_vocals(
@@ -141,6 +142,7 @@ def process_song(cmd, device):
             batch_size=batch_size,
             language_override=language_override,
             whisper_model=whisper,
+            pre_align_cleanup=_clear_models,
         )
 
     progress(95, "Writing transcript...")

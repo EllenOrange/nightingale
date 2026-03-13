@@ -5,7 +5,7 @@ import re
 
 from audio import detect_vocal_region
 from language import detect_language_multiwindow
-from whisper_compat import progress, align_device_for, compute_type_for
+from whisper_compat import progress, align_device_for, compute_type_for, is_oom, free_gpu
 
 
 def align_lyrics(
@@ -15,6 +15,7 @@ def align_lyrics(
     model_name: str = "large-v3",
     language_override: str | None = None,
     whisper_model=None,
+    pre_align_cleanup=None,
 ) -> dict:
     """Align pre-existing lyrics to vocals audio using WhisperX.
 
@@ -69,13 +70,23 @@ def align_lyrics(
         progress(59, f"Detected language: {language}")
 
     progress(80, f"Final alignment from {vocal_start:.1f}s...")
-    print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{a_device}'", flush=True)
-    align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
-
     full_text = " ".join(clean_lines)
     raw_segments = [{"text": full_text, "start": vocal_start, "end": vocal_end}]
-    align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
-    del align_model
+
+    try:
+        print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{a_device}'", flush=True)
+        align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
+        align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
+        del align_model
+    except Exception as e:
+        if is_oom(e) and pre_align_cleanup:
+            print(f"[nightingale:LOG] Alignment OOM, freeing whisper model and retrying", flush=True)
+            pre_align_cleanup()
+            align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
+            align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
+            del align_model
+        else:
+            raise
 
     segments = _map_words_to_lines(align_result, clean_lines)
 

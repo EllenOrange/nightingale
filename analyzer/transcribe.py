@@ -5,7 +5,7 @@ import re
 from audio import detect_vocal_region, highpass_filter, normalize_rms
 from hallucination import is_hallucination, remove_hallucinated_words
 from language import detect_language_multiwindow
-from whisper_compat import progress
+from whisper_compat import progress, is_oom
 
 
 def transcribe_vocals(
@@ -17,6 +17,7 @@ def transcribe_vocals(
     batch_size: int = 16,
     language_override: str | None = None,
     whisper_model=None,
+    pre_align_cleanup=None,
 ) -> dict:
     """Transcribe vocals with WhisperX to get word-level timestamps.
 
@@ -136,7 +137,7 @@ def transcribe_vocals(
     raw_segments = _filter_hallucinations(raw_segments, duration_secs)
 
     progress(75, f"Language: {language}")
-    result = _align_and_build(raw_segments, full_audio, language, device)
+    result = _align_and_build(raw_segments, full_audio, language, device, pre_align_cleanup)
     result["source"] = "generated"
     return result
 
@@ -163,7 +164,7 @@ def _filter_hallucinations(raw_segments: list[dict], duration_secs: float) -> li
     return good_segments
 
 
-def _align_and_build(raw_segments: list[dict], audio, language: str, device: str) -> dict:
+def _align_and_build(raw_segments: list[dict], audio, language: str, device: str, pre_align_cleanup=None) -> dict:
     """Run WhisperX forced alignment, interpolate unaligned words, and build final segments."""
     import whisperx
 
@@ -173,9 +174,18 @@ def _align_and_build(raw_segments: list[dict], audio, language: str, device: str
     print(f"[nightingale:LOG] Pre-alignment: {len(raw_segments)} segments, {total_input_words} words total", flush=True)
 
     progress(80, f"Aligning word timestamps (lang={language})...")
-    print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{align_device}'", flush=True)
-    align_model, metadata = whisperx.load_align_model(language_code=language, device=align_device)
-    result = whisperx.align(raw_segments, align_model, metadata, audio, align_device)
+    try:
+        print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{align_device}'", flush=True)
+        align_model, metadata = whisperx.load_align_model(language_code=language, device=align_device)
+        result = whisperx.align(raw_segments, align_model, metadata, audio, align_device)
+    except Exception as e:
+        if is_oom(e) and pre_align_cleanup:
+            print(f"[nightingale:LOG] Alignment OOM, freeing whisper model and retrying", flush=True)
+            pre_align_cleanup()
+            align_model, metadata = whisperx.load_align_model(language_code=language, device=align_device)
+            result = whisperx.align(raw_segments, align_model, metadata, audio, align_device)
+        else:
+            raise
 
     output_segments = result.get("segments", [])
     total_output_words = sum(len(s.get("words", [])) for s in output_segments)
