@@ -79,14 +79,29 @@ def align_lyrics(
         align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
         del align_model
     except Exception as e:
-        if is_oom(e) and pre_align_cleanup:
-            print(f"[nightingale:LOG] Alignment OOM, freeing whisper model and retrying", flush=True)
-            pre_align_cleanup()
-            align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
-            align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
-            del align_model
-        else:
+        if not is_oom(e):
             raise
+        if pre_align_cleanup:
+            print(f"[nightingale:LOG] Alignment OOM, freeing whisper model and retrying on {a_device}", flush=True)
+            pre_align_cleanup()
+            try:
+                align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
+                align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
+                del align_model
+            except Exception as e2:
+                if not is_oom(e2):
+                    raise
+                print(f"[nightingale:LOG] Alignment OOM again, falling back to CPU", flush=True)
+                free_gpu()
+                align_model, metadata = whisperx.load_align_model(language_code=language, device="cpu")
+                align_result = whisperx.align(raw_segments, align_model, metadata, audio, "cpu")
+                del align_model
+        else:
+            print(f"[nightingale:LOG] Alignment OOM, falling back to CPU", flush=True)
+            free_gpu()
+            align_model, metadata = whisperx.load_align_model(language_code=language, device="cpu")
+            align_result = whisperx.align(raw_segments, align_model, metadata, audio, "cpu")
+            del align_model
 
     segments = _map_words_to_lines(align_result, clean_lines)
 
