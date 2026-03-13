@@ -105,6 +105,7 @@ fn spawn_server() -> Result<ServerProcess, String> {
         .env("PYTHONIOENCODING", "utf-8")
         .env("PYTHONWARNINGS", "ignore")
         .env("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+        .env("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
         .arg(&script)
         .stdin(Stdio::piped())
@@ -428,11 +429,24 @@ fn spawn_analyzer(
                     break;
                 }
                 Err(e) => {
-                    eprintln!("[analyzer] Server communication error: {e}, will respawn on next analysis");
+                    eprintln!("[analyzer] Server crashed: {e}");
                     *guard = None;
+
+                    if current_batch_size > 1 {
+                        let new_batch = current_batch_size / 2;
+                        eprintln!(
+                            "[analyzer] Server crash (possible OOM), respawning with batch_size={new_batch} (was {current_batch_size})"
+                        );
+                        current_batch_size = new_batch;
+                        let mut p = progress_clone.lock().unwrap();
+                        p.percent = 0;
+                        p.message = format!("Server crashed — retrying with batch size {new_batch}...");
+                        continue;
+                    }
+
                     let mut p = progress_clone.lock().unwrap();
                     p.finished = Some(false);
-                    p.message = e;
+                    p.message = format!("Server crashed: {e}");
                     break;
                 }
             }

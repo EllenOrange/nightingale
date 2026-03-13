@@ -30,6 +30,20 @@ _whisper_model = None
 _whisper_key = None  # (model_name, device, compute_type)
 
 
+def _is_oom(err_str):
+    lower = err_str.lower()
+    return "out of memory" in lower or "outofmemoryerror" in lower
+
+
+def _clear_models():
+    global _whisper_model, _whisper_key
+    if _whisper_model is not None:
+        del _whisper_model
+    _whisper_model = None
+    _whisper_key = None
+    _free_gpu()
+
+
 def _get_whisper(model_name, device, compute_type):
     global _whisper_model, _whisper_key
     key = (model_name, device, compute_type)
@@ -130,6 +144,7 @@ def process_song(cmd, device):
             model_name=model_name,
             language_override=language_override,
             whisper_model=whisper,
+            pre_align_cleanup=_clear_models,
         )
     else:
         transcript = transcribe_vocals(
@@ -139,6 +154,7 @@ def process_song(cmd, device):
             batch_size=batch_size,
             language_override=language_override,
             whisper_model=whisper,
+            pre_align_cleanup=_clear_models,
         )
 
     progress(95, "Writing transcript...")
@@ -172,11 +188,8 @@ def main():
                 import traceback
                 traceback.print_exc(file=sys.stderr)
                 err_str = str(e)
-                if "CUDA out of memory" in err_str or "OutOfMemoryError" in err_str:
-                    _free_gpu()
-                    global _whisper_model, _whisper_key
-                    _whisper_model = None
-                    _whisper_key = None
+                if _is_oom(err_str):
+                    _clear_models()
                     print(f"[nightingale:OOM] {err_str}", flush=True)
                 else:
                     print(f"[nightingale:ERROR] {err_str}", flush=True)
