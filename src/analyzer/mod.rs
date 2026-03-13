@@ -2,12 +2,13 @@ pub mod cache;
 pub mod transcript;
 
 use std::collections::VecDeque;
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
-use std::process::Stdio;
+use std::process::{Child, ChildStdin, ChildStdout, Stdio};
 
 use crate::vendor::silent_command;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use bevy::app::AppExit;
 use bevy::prelude::*;
@@ -27,6 +28,7 @@ impl Plugin for AnalyzerPlugin {
 
 #[derive(Resource)]
 pub struct PlayTarget {
+    #[allow(dead_code)]
     pub song_index: usize,
 }
 
@@ -40,6 +42,7 @@ pub struct ProgressInfo {
 pub struct ActiveJob {
     pub song_index: usize,
     pub progress: Arc<Mutex<ProgressInfo>>,
+    #[allow(dead_code)]
     pub child_pid: Arc<AtomicU32>,
     pub thread_handle: Option<std::thread::JoinHandle<()>>,
 }
@@ -71,12 +74,73 @@ impl AnalysisQueue {
     }
 }
 
-fn find_analyzer_script() -> PathBuf {
-    crate::vendor::analyzer_dir().join("analyze.py")
+struct ServerProcess {
+    child: Child,
+    stdin: BufWriter<ChildStdin>,
+    stdout: BufReader<ChildStdout>,
 }
 
-fn find_python() -> String {
-    crate::vendor::python_path().to_string_lossy().to_string()
+static ANALYZER_SERVER: LazyLock<Mutex<Option<ServerProcess>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+fn spawn_server() -> Result<ServerProcess, String> {
+    let python = crate::vendor::python_path();
+    let script = crate::vendor::analyzer_dir().join("server.py");
+    let models = crate::vendor::models_dir();
+    let ffmpeg = crate::vendor::ffmpeg_path();
+    let ffmpeg_dir = ffmpeg.parent().unwrap_or(std::path::Path::new("."));
+    let path_env = if let Some(existing) = std::env::var_os("PATH") {
+        let mut paths = std::env::split_paths(&existing).collect::<Vec<_>>();
+        paths.insert(0, ffmpeg_dir.to_path_buf());
+        std::env::join_paths(paths).unwrap_or(existing)
+    } else {
+        ffmpeg_dir.as_os_str().to_os_string()
+    };
+
+    let mut cmd = silent_command(&python);
+    cmd.env("PATH", &path_env)
+        .env("TORCH_HOME", models.join("torch"))
+        .env("HF_HOME", models.join("huggingface"))
+        .env("FFMPEG_PATH", &ffmpeg)
+        .env("PYTHONIOENCODING", "utf-8")
+        .env("PYTHONWARNINGS", "ignore")
+        .env("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+        .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+        .arg(&script)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to start analyzer server: {e}"))?;
+    let pid = child.id();
+    eprintln!("[analyzer] Server process spawned (pid={pid})");
+
+    let stdin = BufWriter::new(
+        child.stdin.take().ok_or("Failed to capture server stdin")?,
+    );
+    let stdout = BufReader::new(
+        child.stdout.take().ok_or("Failed to capture server stdout")?,
+    );
+
+    if let Some(stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().flatten() {
+                eprintln!("[analyzer stderr] {line}");
+            }
+        });
+    }
+
+    Ok(ServerProcess { child, stdin, stdout })
+}
+
+fn ensure_server(guard: &mut std::sync::MutexGuard<Option<ServerProcess>>) -> Result<(), String> {
+    if guard.is_some() {
+        return Ok(());
+    }
+    let server = spawn_server()?;
+    **guard = Some(server);
+    Ok(())
 }
 
 fn parse_progress_line(line: &str) -> Option<(u32, String)> {
@@ -93,7 +157,6 @@ fn parse_progress_line(line: &str) -> Option<(u32, String)> {
 fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
     let title = song.display_title();
     let artist = song.display_artist();
-    let duration = song.duration_secs.round() as u64;
 
     if title.is_empty() || artist == "Unknown Artist" {
         return None;
@@ -101,7 +164,7 @@ fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
 
     let agent = ureq::Agent::new_with_defaults();
 
-    eprintln!("[lrclib] Searching: \"{title}\" by \"{artist}\" ({}s, album=\"{}\")", duration, song.album);
+    eprintln!("[lrclib] Searching: \"{title}\" by \"{artist}\" ({:.0}s, album=\"{}\")", song.duration_secs, song.album);
 
     let url = format!(
         "https://lrclib.net/api/search?track_name={}&artist_name={}",
@@ -207,6 +270,69 @@ fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
     }
 }
 
+enum SongResult {
+    Done,
+    Oom,
+    Error(String),
+}
+
+fn send_and_monitor(
+    server: &mut ServerProcess,
+    json_cmd: &str,
+    progress: &Arc<Mutex<ProgressInfo>>,
+) -> Result<SongResult, String> {
+    server
+        .stdin
+        .write_all(json_cmd.as_bytes())
+        .map_err(|e| format!("stdin write failed: {e}"))?;
+    server
+        .stdin
+        .write_all(b"\n")
+        .map_err(|e| format!("stdin newline failed: {e}"))?;
+    server
+        .stdin
+        .flush()
+        .map_err(|e| format!("stdin flush failed: {e}"))?;
+
+    let mut line_buf = String::new();
+    loop {
+        line_buf.clear();
+        let bytes = server
+            .stdout
+            .read_line(&mut line_buf)
+            .map_err(|e| format!("stdout read failed: {e}"))?;
+
+        if bytes == 0 {
+            return Err("Server process closed stdout unexpectedly".into());
+        }
+
+        let line = line_buf.trim_end();
+        eprintln!("[analyzer] {line}");
+
+        if line.contains("[nightingale:DONE]") {
+            return Ok(SongResult::Done);
+        }
+        if line.contains("[nightingale:OOM]") {
+            return Ok(SongResult::Oom);
+        }
+        if line.contains("[nightingale:ERROR]") {
+            let msg = line
+                .split("[nightingale:ERROR]")
+                .nth(1)
+                .unwrap_or("Unknown error")
+                .trim()
+                .to_string();
+            return Ok(SongResult::Error(msg));
+        }
+
+        if let Some((pct, msg)) = parse_progress_line(line) {
+            let mut p = progress.lock().unwrap();
+            p.percent = pct;
+            p.message = msg;
+        }
+    }
+}
+
 fn spawn_analyzer(
     song_path: PathBuf,
     cache_path: PathBuf,
@@ -227,8 +353,6 @@ fn spawn_analyzer(
 
     let progress_clone = Arc::clone(&progress);
     let pid_clone = Arc::clone(&child_pid);
-    let script = find_analyzer_script();
-    let python = find_python();
 
     let thread_handle = std::thread::spawn(move || {
         let cache = CacheDir { path: cache_path.clone() };
@@ -239,142 +363,78 @@ fn spawn_analyzer(
             p.message = "Starting analyzer...".into();
         }
 
-        let models = crate::vendor::models_dir();
-        let ffmpeg = crate::vendor::ffmpeg_path();
-        let ffmpeg_dir = ffmpeg.parent().unwrap_or(std::path::Path::new("."));
-        let path_env = if let Some(existing) = std::env::var_os("PATH") {
-            let mut paths = std::env::split_paths(&existing).collect::<Vec<_>>();
-            paths.insert(0, ffmpeg_dir.to_path_buf());
-            std::env::join_paths(paths).unwrap_or(existing)
-        } else {
-            ffmpeg_dir.as_os_str().to_os_string()
-        };
         let mut current_batch_size = batch_size;
 
         loop {
-            let mut cmd = silent_command(&python);
-            cmd.env("PATH", &path_env)
-                .env("TORCH_HOME", models.join("torch"))
-                .env("HF_HOME", models.join("huggingface"))
-                .env("FFMPEG_PATH", &ffmpeg)
-                .env("PYTHONWARNINGS", "ignore")
-                .env("PYTORCH_ENABLE_MPS_FALLBACK", "1")
-                .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-                .env("HF_HUB_DISABLE_SYMLINKS", "1")
-                .arg(&script)
-                .arg(&song_path)
-                .arg(&cache_path)
-                .arg("--hash")
-                .arg(&file_hash)
-                .arg("--model")
-                .arg(&whisper_model)
-                .arg("--beam-size")
-                .arg(beam_size.to_string())
-                .arg("--batch-size")
-                .arg(current_batch_size.to_string())
-                .arg("--separator")
-                .arg(&separator);
+            let mut cmd_json = serde_json::json!({
+                "command": "analyze",
+                "audio_path": song_path.to_string_lossy(),
+                "cache_path": cache_path.to_string_lossy(),
+                "hash": file_hash,
+                "model": whisper_model,
+                "beam_size": beam_size,
+                "batch_size": current_batch_size,
+                "separator": separator,
+            });
 
             if let Some(ref lp) = lyrics_path {
-                cmd.arg("--lyrics").arg(lp);
+                cmd_json["lyrics"] = serde_json::json!(lp.to_string_lossy());
             }
-
             if let Some(ref lang) = language_override {
-                cmd.arg("--language").arg(lang);
+                cmd_json["language"] = serde_json::json!(lang);
             }
 
-            let child = cmd
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn();
+            let json_str = serde_json::to_string(&cmd_json).unwrap();
 
-            match child {
-                Ok(mut child) => {
-                    pid_clone.store(child.id(), Ordering::Relaxed);
-                    use std::io::{BufRead, BufReader};
+            let mut guard = ANALYZER_SERVER.lock().unwrap();
 
-                    let stderr_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-                    let stderr_clone = Arc::clone(&stderr_lines);
-                    let stderr_thread = child.stderr.take().map(|stderr| {
-                        std::thread::spawn(move || {
-                            let reader = BufReader::new(stderr);
-                            for line in reader.lines() {
-                                if let Ok(line) = line {
-                                    eprintln!("[analyzer stderr] {}", line);
-                                    stderr_clone.lock().unwrap().push(line);
-                                }
-                            }
-                        })
-                    });
-
-                    if let Some(stdout) = child.stdout.take() {
-                        let reader = BufReader::new(stdout);
-                        for line in reader.lines() {
-                            if let Ok(line) = line {
-                                if let Some((pct, msg)) = parse_progress_line(&line) {
-                                    let mut p = progress_clone.lock().unwrap();
-                                    p.percent = pct;
-                                    p.message = msg;
-                                }
-                                eprintln!("[analyzer] {}", line);
-                            }
-                        }
-                    }
-
-                    if let Some(handle) = stderr_thread {
-                        let _ = handle.join();
-                    }
-
-                    match child.wait() {
-                        Ok(status) => {
-                            if status.success() {
-                                let mut p = progress_clone.lock().unwrap();
-                                p.finished = Some(true);
-                                break;
-                            }
-
-                            let err_lines = stderr_lines.lock().unwrap();
-                            let all_stderr = err_lines.join("\n");
-                            let is_oom = all_stderr.contains("CUDA out of memory")
-                                || all_stderr.contains("OutOfMemoryError");
-
-                            if is_oom && current_batch_size > 1 {
-                                let new_batch = current_batch_size / 2;
-                                eprintln!(
-                                    "[analyzer] CUDA OOM detected, retrying with batch_size={new_batch} (was {current_batch_size})"
-                                );
-                                current_batch_size = new_batch;
-                                let mut p = progress_clone.lock().unwrap();
-                                p.percent = 0;
-                                p.message = format!("CUDA OOM — retrying with batch size {new_batch}...");
-                                continue;
-                            }
-
-                            let last_err = err_lines
-                                .iter()
-                                .rev()
-                                .find(|l| !l.trim().is_empty())
-                                .cloned()
-                                .unwrap_or_else(|| format!("exit code: {status}"));
-                            let mut p = progress_clone.lock().unwrap();
-                            p.finished = Some(false);
-                            p.message = last_err;
-                            break;
-                        }
-                        Err(e) => {
-                            let mut p = progress_clone.lock().unwrap();
-                            p.finished = Some(false);
-                            p.message = format!("Error: {e}");
-                            break;
-                        }
-                    }
-                }
-            Err(e) => {
+            if let Err(e) = ensure_server(&mut guard) {
                 let mut p = progress_clone.lock().unwrap();
                 p.finished = Some(false);
-                p.message = format!("Failed to start: {e}");
-                break;
+                p.message = e;
+                return;
             }
+
+            let server = guard.as_mut().unwrap();
+            pid_clone.store(server.child.id(), Ordering::Relaxed);
+
+            match send_and_monitor(server, &json_str, &progress_clone) {
+                Ok(SongResult::Done) => {
+                    let mut p = progress_clone.lock().unwrap();
+                    p.finished = Some(true);
+                    break;
+                }
+                Ok(SongResult::Oom) => {
+                    if current_batch_size > 1 {
+                        let new_batch = current_batch_size / 2;
+                        eprintln!(
+                            "[analyzer] CUDA OOM, retrying with batch_size={new_batch} (was {current_batch_size})"
+                        );
+                        current_batch_size = new_batch;
+                        let mut p = progress_clone.lock().unwrap();
+                        p.percent = 0;
+                        p.message = format!("CUDA OOM — retrying with batch size {new_batch}...");
+                        continue;
+                    }
+                    let mut p = progress_clone.lock().unwrap();
+                    p.finished = Some(false);
+                    p.message = "CUDA out of memory (batch_size already 1)".into();
+                    break;
+                }
+                Ok(SongResult::Error(msg)) => {
+                    let mut p = progress_clone.lock().unwrap();
+                    p.finished = Some(false);
+                    p.message = msg;
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("[analyzer] Server communication error: {e}, will respawn on next analysis");
+                    *guard = None;
+                    let mut p = progress_clone.lock().unwrap();
+                    p.finished = Some(false);
+                    p.message = e;
+                    break;
+                }
             }
         }
     });
@@ -482,27 +542,19 @@ fn poll_active_job(
 
 fn kill_analyzer_on_exit(
     mut exit_events: MessageReader<AppExit>,
-    queue: Res<AnalysisQueue>,
+    _queue: Res<AnalysisQueue>,
 ) {
     if exit_events.read().next().is_none() {
         return;
     }
-    if let Some(ref active) = queue.active {
-        let pid = active.child_pid.load(Ordering::Relaxed);
-        if pid != 0 {
-            info!("Killing analyzer subprocess (pid={pid})");
-            #[cfg(unix)]
-            {
-                let _ = silent_command("kill")
-                    .args(["-TERM", &pid.to_string()])
-                    .spawn();
-            }
-            #[cfg(windows)]
-            {
-                let _ = silent_command("taskkill")
-                    .args(["/PID", &pid.to_string(), "/F"])
-                    .spawn();
-            }
-        }
+    let mut guard = ANALYZER_SERVER.lock().unwrap();
+    if let Some(ref mut server) = *guard {
+        let pid = server.child.id();
+        info!("Shutting down analyzer server (pid={pid})");
+        let _ = writeln!(server.stdin, r#"{{"command":"quit"}}"#);
+        let _ = server.stdin.flush();
+        let _ = server.child.kill();
+        let _ = server.child.wait();
     }
+    *guard = None;
 }

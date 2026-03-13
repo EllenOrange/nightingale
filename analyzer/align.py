@@ -14,6 +14,7 @@ def align_lyrics(
     device: str,
     model_name: str = "large-v3",
     language_override: str | None = None,
+    whisper_model=None,
 ) -> dict:
     """Align pre-existing lyrics to vocals audio using WhisperX.
 
@@ -56,11 +57,14 @@ def align_lyrics(
         progress(59, f"Language override: {language}")
     else:
         progress(58, "Detecting language...")
-        lang_model = whisperx.load_model(
-            model_name, a_device, compute_type=c_type, task="transcribe",
-        )
-        language = detect_language_multiwindow(lang_model, audio)
-        del lang_model
+        owns_model = whisper_model is None
+        if whisper_model is None:
+            whisper_model = whisperx.load_model(
+                model_name, a_device, compute_type=c_type, task="transcribe",
+            )
+        language = detect_language_multiwindow(whisper_model, audio)
+        if owns_model:
+            del whisper_model
         print(f"[nightingale:LOG] Detected language: '{language}'", flush=True)
         progress(59, f"Detected language: {language}")
 

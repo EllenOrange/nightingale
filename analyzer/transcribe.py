@@ -16,6 +16,7 @@ def transcribe_vocals(
     beam_size: int = 5,
     batch_size: int = 16,
     language_override: str | None = None,
+    whisper_model=None,
 ) -> dict:
     """Transcribe vocals with WhisperX to get word-level timestamps.
 
@@ -68,21 +69,6 @@ def transcribe_vocals(
         "min_duration_off": 0.6,
     }
 
-    if language_override:
-        language = language_override
-        print(f"[nightingale:LOG] Using language override: '{language}'", flush=True)
-        progress(59, f"Language override: {language}")
-    else:
-        progress(58, "Detecting language from vocals (multi-window)...")
-        lang_model = whisperx.load_model(
-            model_name, device, compute_type=compute_type, task="transcribe",
-            asr_options=asr_options, vad_options=vad_options,
-        )
-        language = detect_language_multiwindow(lang_model, full_audio)
-        del lang_model
-        print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
-        progress(59, f"Detected language: {language}")
-
     no_vad_asr = {
         "beam_size": beam_size,
         "initial_prompt": asr_options["initial_prompt"],
@@ -96,12 +82,31 @@ def transcribe_vocals(
         "suppress_blank": False,
     }
 
-    model = whisperx.load_model(
-        model_name, device, compute_type=compute_type,
-        task="transcribe", language=language,
-        asr_options=no_vad_asr,
-    )
-    print(f"[nightingale:LOG] Model loaded with lang={language} (VAD disabled, deterministic, no context carry, filters relaxed)", flush=True)
+    owns_model = whisper_model is None
+
+    if language_override:
+        language = language_override
+        print(f"[nightingale:LOG] Using language override: '{language}'", flush=True)
+        progress(59, f"Language override: {language}")
+        if whisper_model is None:
+            whisper_model = whisperx.load_model(
+                model_name, device, compute_type=compute_type,
+                task="transcribe", language=language,
+                asr_options=no_vad_asr,
+            )
+    else:
+        progress(58, "Detecting language from vocals (multi-window)...")
+        if whisper_model is None:
+            whisper_model = whisperx.load_model(
+                model_name, device, compute_type=compute_type,
+                task="transcribe", asr_options=no_vad_asr,
+            )
+        language = detect_language_multiwindow(whisper_model, full_audio)
+        print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
+        progress(59, f"Detected language: {language}")
+
+    model = whisper_model
+    print(f"[nightingale:LOG] Model ready for lang={language}", flush=True)
 
     progress(60, "Transcribing vocals...")
     result = model.transcribe(
@@ -111,7 +116,8 @@ def transcribe_vocals(
         language=language,
         chunk_size=30,
     )
-    del model
+    if owns_model:
+        del model
 
     raw_segments = result.get("segments", [])
     for seg in raw_segments:

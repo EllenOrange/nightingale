@@ -3,6 +3,7 @@ use std::process::Command;
 use std::sync::mpsc;
 
 pub fn silent_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    #[allow(unused_mut)]
     let mut cmd = Command::new(program);
     #[cfg(windows)]
     {
@@ -407,11 +408,21 @@ fn step_install_packages(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), Str
     };
     send(tx, "Packages", "Installing Demucs, WhisperX and audio-separator...");
 
+    let cython_out = silent_command(&uv)
+        .args(["pip", "install", "cython", "setuptools", "--python"])
+        .arg(&py)
+        .output()
+        .map_err(|e| format!("Failed to install build deps: {e}"))?;
+    if !cython_out.status.success() {
+        let stderr = String::from_utf8_lossy(&cython_out.stderr);
+        return Err(format!("Build deps install failed: {stderr}"));
+    }
+
     let output = silent_command(&uv)
         .args([
             "pip", "install",
             "demucs>=4.0.0", "whisperx>=3.3.0", "soundfile",
-            "huggingface_hub>=0.23.0",
+            "huggingface_hub>=0.27.0",
             audio_sep_pkg,
             "--python",
         ])

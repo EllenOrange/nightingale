@@ -110,7 +110,7 @@ def main():
                 vocals_path, instrumental_path = separate_stems_uvr(audio_path, work_dir, uvr_models_dir)
             else:
                 vocals_path, instrumental_path = separate_stems(audio_path, work_dir, device)
-            progress(92, "Saving stems to cache...")
+            progress(51, "Saving stems to cache...")
             _convert_to_ogg(vocals_path, final_vocals_ogg)
             _convert_to_ogg(instrumental_path, final_instrumental_ogg)
         vocals_path = final_vocals_ogg

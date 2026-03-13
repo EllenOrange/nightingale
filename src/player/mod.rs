@@ -41,6 +41,7 @@ impl Plugin for PlayerPlugin {
                     player_update,
                     handle_escape,
                     handle_guide_volume,
+                    update_time_display,
                 )
                     .run_if(in_state(AppState::Playing)),
             )
@@ -124,6 +125,9 @@ struct ThemeText;
 
 #[derive(Component)]
 struct PixabayCreditText;
+
+#[derive(Component)]
+struct TimeDisplayText;
 
 #[derive(Component)]
 struct PitchBackdrop;
@@ -288,6 +292,16 @@ fn enter_playing(
                     Text::new(artist),
                     TextFont {
                         font_size: 16.0,
+                        ..default()
+                    },
+                    TextColor(ui_theme.hud_secondary),
+                ));
+                let duration_text = crate::menu::song_card::format_duration(song.duration_secs);
+                info.spawn((
+                    TimeDisplayText,
+                    Text::new(format!("0:00 / {duration_text}")),
+                    TextFont {
+                        font_size: 14.0,
                         ..default()
                     },
                     TextColor(ui_theme.hud_secondary),
@@ -553,6 +567,23 @@ fn check_song_finished(
             &asset_server,
             &audio,
         );
+    }
+}
+
+fn update_time_display(
+    karaoke: Option<Res<KaraokeAudio>>,
+    audio_instances: Res<Assets<AudioInstance>>,
+    target: Res<PlayTarget>,
+    library: Res<SongLibrary>,
+    mut query: Query<&mut Text, With<TimeDisplayText>>,
+) {
+    let Some(karaoke) = karaoke else { return };
+    let current_time = audio::playback_time(&karaoke, &audio_instances);
+    if let Ok(mut text) = query.single_mut() {
+        let duration = library.songs[target.song_index].duration_secs;
+        let cur = crate::menu::song_card::format_duration(current_time);
+        let tot = crate::menu::song_card::format_duration(duration);
+        **text = format!("{cur} / {tot}");
     }
 }
 
