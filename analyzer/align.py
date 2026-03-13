@@ -15,7 +15,6 @@ def align_lyrics(
     model_name: str = "large-v3",
     language_override: str | None = None,
     whisper_model=None,
-    pre_align_cleanup=None,
 ) -> dict:
     """Align pre-existing lyrics to vocals audio using WhisperX.
 
@@ -68,9 +67,6 @@ def align_lyrics(
             del whisper_model
         print(f"[nightingale:LOG] Detected language: '{language}'", flush=True)
         progress(59, f"Detected language: {language}")
-
-    if pre_align_cleanup:
-        pre_align_cleanup()
 
     progress(80, f"Final alignment from {vocal_start:.1f}s...")
     print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{a_device}'", flush=True)

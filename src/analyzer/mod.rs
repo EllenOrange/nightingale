@@ -364,29 +364,28 @@ fn spawn_analyzer(
             p.message = "Starting analyzer...".into();
         }
 
-        let mut current_batch_size = batch_size;
+        let mut cmd_json = serde_json::json!({
+            "command": "analyze",
+            "audio_path": song_path.to_string_lossy(),
+            "cache_path": cache_path.to_string_lossy(),
+            "hash": file_hash,
+            "model": whisper_model,
+            "beam_size": beam_size,
+            "batch_size": batch_size,
+            "separator": separator,
+        });
+
+        if let Some(ref lp) = lyrics_path {
+            cmd_json["lyrics"] = serde_json::json!(lp.to_string_lossy());
+        }
+        if let Some(ref lang) = language_override {
+            cmd_json["language"] = serde_json::json!(lang);
+        }
+
+        let json_str = serde_json::to_string(&cmd_json).unwrap();
+        let mut retried = false;
 
         loop {
-            let mut cmd_json = serde_json::json!({
-                "command": "analyze",
-                "audio_path": song_path.to_string_lossy(),
-                "cache_path": cache_path.to_string_lossy(),
-                "hash": file_hash,
-                "model": whisper_model,
-                "beam_size": beam_size,
-                "batch_size": current_batch_size,
-                "separator": separator,
-            });
-
-            if let Some(ref lp) = lyrics_path {
-                cmd_json["lyrics"] = serde_json::json!(lp.to_string_lossy());
-            }
-            if let Some(ref lang) = language_override {
-                cmd_json["language"] = serde_json::json!(lang);
-            }
-
-            let json_str = serde_json::to_string(&cmd_json).unwrap();
-
             let mut guard = ANALYZER_SERVER.lock().unwrap();
 
             if let Err(e) = ensure_server(&mut guard) {
@@ -406,20 +405,20 @@ fn spawn_analyzer(
                     break;
                 }
                 Ok(SongResult::Oom) => {
-                    if current_batch_size > 1 {
-                        let new_batch = current_batch_size / 2;
-                        eprintln!(
-                            "[analyzer] CUDA OOM, retrying with batch_size={new_batch} (was {current_batch_size})"
-                        );
-                        current_batch_size = new_batch;
+                    eprintln!("[analyzer] CUDA OOM, killing server to free GPU memory");
+                    *guard = None;
+
+                    if !retried {
+                        retried = true;
+                        eprintln!("[analyzer] Respawning server and retrying with clean GPU");
                         let mut p = progress_clone.lock().unwrap();
                         p.percent = 0;
-                        p.message = format!("CUDA OOM — retrying with batch size {new_batch}...");
+                        p.message = "CUDA OOM — retrying with fresh GPU...".into();
                         continue;
                     }
                     let mut p = progress_clone.lock().unwrap();
                     p.finished = Some(false);
-                    p.message = "CUDA out of memory (batch_size already 1)".into();
+                    p.message = "CUDA out of memory".into();
                     break;
                 }
                 Ok(SongResult::Error(msg)) => {
@@ -432,18 +431,14 @@ fn spawn_analyzer(
                     eprintln!("[analyzer] Server crashed: {e}");
                     *guard = None;
 
-                    if current_batch_size > 1 {
-                        let new_batch = current_batch_size / 2;
-                        eprintln!(
-                            "[analyzer] Server crash (possible OOM), respawning with batch_size={new_batch} (was {current_batch_size})"
-                        );
-                        current_batch_size = new_batch;
+                    if !retried {
+                        retried = true;
+                        eprintln!("[analyzer] Respawning server and retrying");
                         let mut p = progress_clone.lock().unwrap();
                         p.percent = 0;
-                        p.message = format!("Server crashed — retrying with batch size {new_batch}...");
+                        p.message = "Server crashed — retrying...".into();
                         continue;
                     }
-
                     let mut p = progress_clone.lock().unwrap();
                     p.finished = Some(false);
                     p.message = format!("Server crashed: {e}");

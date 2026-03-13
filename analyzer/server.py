@@ -12,7 +12,6 @@ Protocol:
                           [nightingale:OOM] msg
 """
 
-import gc
 import json
 import os
 import subprocess
@@ -21,18 +20,13 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from whisper_compat import progress, detect_device, compute_type_for
+from whisper_compat import progress, detect_device, compute_type_for, is_oom, free_gpu
 from stems import separate_stems, separate_stems_uvr, KARAOKE_MODEL
 from transcribe import transcribe_vocals
 from align import align_lyrics
 
 _whisper_model = None
 _whisper_key = None  # (model_name, device, compute_type)
-
-
-def _is_oom(err_str):
-    lower = err_str.lower()
-    return "out of memory" in lower or "outofmemoryerror" in lower
 
 
 def _clear_models():
@@ -62,13 +56,7 @@ def _get_whisper(model_name, device, compute_type):
 
 
 def _free_gpu():
-    gc.collect()
-    try:
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except Exception:
-        pass
+    free_gpu()
 
 
 def _ffmpeg_bin():
@@ -144,7 +132,6 @@ def process_song(cmd, device):
             model_name=model_name,
             language_override=language_override,
             whisper_model=whisper,
-            pre_align_cleanup=_clear_models,
         )
     else:
         transcript = transcribe_vocals(
@@ -154,7 +141,6 @@ def process_song(cmd, device):
             batch_size=batch_size,
             language_override=language_override,
             whisper_model=whisper,
-            pre_align_cleanup=_clear_models,
         )
 
     progress(95, "Writing transcript...")
@@ -188,7 +174,7 @@ def main():
                 import traceback
                 traceback.print_exc(file=sys.stderr)
                 err_str = str(e)
-                if _is_oom(err_str):
+                if is_oom(err_str):
                     _clear_models()
                     print(f"[nightingale:OOM] {err_str}", flush=True)
                 else:

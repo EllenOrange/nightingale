@@ -17,7 +17,6 @@ def transcribe_vocals(
     batch_size: int = 16,
     language_override: str | None = None,
     whisper_model=None,
-    pre_align_cleanup=None,
 ) -> dict:
     """Transcribe vocals with WhisperX to get word-level timestamps.
 
@@ -117,9 +116,8 @@ def transcribe_vocals(
         language=language,
         chunk_size=30,
     )
-    del model
-    if pre_align_cleanup:
-        pre_align_cleanup()
+    if owns_model:
+        del model
 
     raw_segments = result.get("segments", [])
     for seg in raw_segments:

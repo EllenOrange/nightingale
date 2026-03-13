@@ -31,3 +31,18 @@ def align_device_for(device: str) -> str:
 
 def compute_type_for(device: str) -> str:
     return "float16" if device == "cuda" else "float32"
+
+
+def is_oom(err):
+    lower = str(err).lower()
+    return "out of memory" in lower or "outofmemoryerror" in lower
+
+
+def free_gpu():
+    import gc
+    gc.collect()
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
