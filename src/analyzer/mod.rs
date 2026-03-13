@@ -80,6 +80,15 @@ struct ServerProcess {
     stdout: BufReader<ChildStdout>,
 }
 
+impl Drop for ServerProcess {
+    fn drop(&mut self) {
+        let pid = self.child.id();
+        eprintln!("[analyzer] Killing server process (pid={pid})");
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 static ANALYZER_SERVER: LazyLock<Mutex<Option<ServerProcess>>> =
     LazyLock::new(|| Mutex::new(None));
 
@@ -558,12 +567,9 @@ fn kill_analyzer_on_exit(
     }
     let mut guard = ANALYZER_SERVER.lock().unwrap();
     if let Some(ref mut server) = *guard {
-        let pid = server.child.id();
-        info!("Shutting down analyzer server (pid={pid})");
+        info!("Shutting down analyzer server");
         let _ = writeln!(server.stdin, r#"{{"command":"quit"}}"#);
         let _ = server.stdin.flush();
-        let _ = server.child.kill();
-        let _ = server.child.wait();
     }
     *guard = None;
 }
