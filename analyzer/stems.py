@@ -5,7 +5,7 @@ import subprocess
 
 import torch
 
-from whisper_compat import progress
+from whisper_compat import free_gpu, progress
 
 KARAOKE_MODEL = "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"
 
@@ -55,6 +55,7 @@ def separate_stems(audio_path: str, work_dir: str, device: str) -> tuple[str, st
 
     vocals = sources[vocals_idx] * ref.abs().max() + ref.mean()
     instrumental = wav.to(actual_device) - vocals
+    del model, wav, sources, wav_centered, wav_scaled, ref
 
     progress(45, "Saving separated stems...")
 
@@ -63,6 +64,8 @@ def separate_stems(audio_path: str, work_dir: str, device: str) -> tuple[str, st
 
     save_audio(vocals.cpu(), vocals_path, sr)
     save_audio(instrumental.cpu(), instrumental_path, sr)
+    del vocals, instrumental
+    free_gpu()
 
     progress(50, "Stem separation complete")
     return vocals_path, instrumental_path
@@ -96,6 +99,8 @@ def separate_stems_uvr(audio_path: str, work_dir: str, models_dir: str) -> tuple
 
     progress(15, "Separating vocals from instrumentals...")
     output_files = separator.separate(audio_path)
+    del separator
+    free_gpu()
     print(f"[nightingale:LOG] Separator outputs: {output_files}", flush=True)
 
     vocals = _resolve_separator_output(output_files, work_dir, "(Vocals)")

@@ -174,31 +174,45 @@ def _align_and_build(raw_segments: list[dict], audio, language: str, device: str
     print(f"[nightingale:LOG] Pre-alignment: {len(raw_segments)} segments, {total_input_words} words total", flush=True)
 
     progress(80, f"Aligning word timestamps (lang={language})...")
+    align_model = None
     try:
         print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{align_device}'", flush=True)
         align_model, metadata = whisperx.load_align_model(language_code=language, device=align_device)
         result = whisperx.align(raw_segments, align_model, metadata, audio, align_device)
+        del align_model
+        align_model = None
     except Exception as e:
         if not is_oom(e):
             raise
+        if align_model is not None:
+            del align_model
+            align_model = None
+            free_gpu()
         if pre_align_cleanup:
             print(f"[nightingale:LOG] Alignment OOM, freeing whisper model and retrying on {align_device}", flush=True)
             pre_align_cleanup()
             try:
                 align_model, metadata = whisperx.load_align_model(language_code=language, device=align_device)
                 result = whisperx.align(raw_segments, align_model, metadata, audio, align_device)
+                del align_model
+                align_model = None
             except Exception as e2:
                 if not is_oom(e2):
                     raise
+                if align_model is not None:
+                    del align_model
+                    align_model = None
                 print(f"[nightingale:LOG] Alignment OOM again, falling back to CPU", flush=True)
                 free_gpu()
                 align_model, metadata = whisperx.load_align_model(language_code=language, device="cpu")
                 result = whisperx.align(raw_segments, align_model, metadata, audio, "cpu")
+                del align_model
         else:
             print(f"[nightingale:LOG] Alignment OOM, falling back to CPU", flush=True)
             free_gpu()
             align_model, metadata = whisperx.load_align_model(language_code=language, device="cpu")
             result = whisperx.align(raw_segments, align_model, metadata, audio, "cpu")
+            del align_model
 
     output_segments = result.get("segments", [])
     total_output_words = sum(len(s.get("words", [])) for s in output_segments)
