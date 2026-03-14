@@ -1,5 +1,4 @@
 /target
-/vendor-bin
 analyzer/.venv
 __pycache__
 *.pyc

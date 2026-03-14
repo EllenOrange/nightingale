@@ -20,9 +20,6 @@ esac
 
 echo "==> Platform: $TARGET"
 
-echo "==> Fetching vendor binaries..."
-./scripts/fetch-vendor-bin.sh
-
 echo "==> Building release binary..."
 if [ -f .env ]; then
   set -a; source .env; set +a

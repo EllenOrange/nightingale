@@ -604,6 +604,29 @@ pub fn build_sidebar(
             });
 
         build_disk_usage_widget(sidebar, theme, cache_stats);
+
+        sidebar.spawn((
+            AboutIconMarker,
+            Button,
+            Node {
+                justify_content: JustifyContent::Center,
+                align_self: AlignSelf::Center,
+                padding: UiRect::new(Val::Px(6.0), Val::Px(6.0), Val::Px(0.0), Val::Px(0.0)),
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                AboutLinkText,
+                Text::new("About"),
+                TextFont {
+                    font_size: 10.0,
+                    ..default()
+                },
+                TextColor(theme.text_dim.with_alpha(0.4)),
+            ));
+        });
     });
 }
 
@@ -612,6 +635,12 @@ struct ProfileIconMarker;
 
 #[derive(Component)]
 struct SettingsIconMarker;
+
+#[derive(Component)]
+pub struct AboutIconMarker;
+
+#[derive(Component)]
+pub struct AboutLinkText;
 
 #[derive(Component)]
 struct ExitIconMarker;
@@ -901,6 +930,7 @@ pub fn handle_exit_input(
     settings_query: Query<(), With<SettingsOverlay>>,
     profile_query: Query<(), With<ProfileOverlay>>,
     lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
+    about_query: Query<(), With<AboutOverlay>>,
 ) {
     let overlay_entity = overlay_query.single();
 
@@ -910,6 +940,7 @@ pub fn handle_exit_input(
             && settings_query.is_empty()
             && profile_query.is_empty()
             && lang_picker_query.is_empty()
+            && about_query.is_empty()
         {
             spawn_exit_popup(&mut commands, &theme);
         }
@@ -1000,5 +1031,28 @@ pub fn handle_exit_input(
         } else {
             BorderColor::all(Color::NONE)
         });
+    }
+}
+
+pub fn update_about_link_hover(
+    mut commands: Commands,
+    theme: Res<UiTheme>,
+    overlay_open: Res<super::AnyOverlayOpen>,
+    btn_query: Query<(&Interaction, &Children), (With<AboutIconMarker>, Changed<Interaction>)>,
+    mut text_query: Query<&mut TextColor, With<AboutLinkText>>,
+) {
+    for (interaction, children) in &btn_query {
+        let color = match interaction {
+            Interaction::Hovered | Interaction::Pressed => theme.text_dim,
+            Interaction::None => theme.text_dim.with_alpha(0.4),
+        };
+        for child in children.iter() {
+            if let Ok(mut tc) = text_query.get_mut(child) {
+                tc.0 = color;
+            }
+        }
+        if *interaction == Interaction::Pressed && !overlay_open.0 {
+            super::about::spawn_about_popup(&mut commands, &theme);
+        }
     }
 }

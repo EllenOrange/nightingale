@@ -14,16 +14,6 @@ pub fn silent_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
     cmd
 }
 
-#[cfg(windows)]
-const EMBEDDED_FFMPEG: &[u8] = include_bytes!("../vendor-bin/ffmpeg.exe");
-#[cfg(not(windows))]
-const EMBEDDED_FFMPEG: &[u8] = include_bytes!("../vendor-bin/ffmpeg");
-
-#[cfg(windows)]
-const EMBEDDED_UV: &[u8] = include_bytes!("../vendor-bin/uv.exe");
-#[cfg(not(windows))]
-const EMBEDDED_UV: &[u8] = include_bytes!("../vendor-bin/uv");
-
 #[derive(Debug, Clone)]
 pub struct BootstrapProgress {
     pub step: &'static str,
@@ -180,13 +170,13 @@ pub fn run_bootstrap(tx: mpsc::Sender<BootstrapProgress>) {
     let _ = std::fs::create_dir_all(models_dir().join("torch"));
     let _ = std::fs::create_dir_all(models_dir().join("huggingface"));
 
-    if let Err(e) = step_extract_ffmpeg(&tx) {
-        send_error(&tx, format!("Failed to extract ffmpeg: {e}"));
+    if let Err(e) = step_download_ffmpeg(&tx) {
+        send_error(&tx, format!("Failed to download ffmpeg: {e}"));
         return;
     }
 
-    if let Err(e) = step_extract_uv(&tx) {
-        send_error(&tx, format!("Failed to extract uv: {e}"));
+    if let Err(e) = step_download_uv(&tx) {
+        send_error(&tx, format!("Failed to download uv: {e}"));
         return;
     }
 
@@ -220,46 +210,174 @@ pub fn run_bootstrap(tx: mpsc::Sender<BootstrapProgress>) {
     send_done(&tx);
 }
 
-// ─── Step 1: Extract bundled ffmpeg ──────────────────────────────────
+// ─── Step 1: Download ffmpeg ─────────────────────────────────────────
 
-fn step_extract_ffmpeg(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), String> {
+fn ffmpeg_download_url() -> Result<&'static str, String> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => Ok("https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"),
+        ("linux", "aarch64") => Ok("https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz"),
+        ("macos", "aarch64") => Ok("https://www.osxexperts.net/ffmpeg7arm.zip"),
+        ("macos", "x86_64") => Ok("https://www.osxexperts.net/ffmpeg7intel.zip"),
+        ("windows", "x86_64") => Ok("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"),
+        (os, arch) => Err(format!("Unsupported platform for ffmpeg: {os}-{arch}")),
+    }
+}
+
+fn step_download_ffmpeg(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), String> {
     let dest = ffmpeg_path();
     if dest.is_file() {
         send(tx, "ffmpeg", "Already installed");
         return Ok(());
     }
 
-    send(tx, "ffmpeg", "Extracting bundled ffmpeg...");
-    write_binary(EMBEDDED_FFMPEG, &dest)?;
+    let url = ffmpeg_download_url()?;
+    send(tx, "ffmpeg", "Downloading ffmpeg...");
+
+    let tmp_dir = vendor_dir().join("_tmp_ffmpeg");
+    let _ = std::fs::create_dir_all(&tmp_dir);
+
+    let ext = if url.ends_with(".tar.xz") { "tar.xz" } else { "zip" };
+    let archive = tmp_dir.join(format!("ffmpeg.{ext}"));
+
+    let result: Result<(), String> = (|| {
+        download_to_file(url, &archive)?;
+        send(tx, "ffmpeg", "Extracting ffmpeg...");
+        extract_archive(&archive, &tmp_dir)?;
+
+        let binary_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+        let found = find_file_in(&tmp_dir, binary_name)
+            .ok_or_else(|| format!("Could not find {binary_name} in downloaded archive"))?;
+
+        std::fs::copy(&found, &dest)
+            .map_err(|e| format!("Failed to copy ffmpeg: {e}"))?;
+        mark_executable(&dest)?;
+        Ok(())
+    })();
+
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    result?;
+
     send(tx, "ffmpeg", "ffmpeg ready");
     Ok(())
 }
 
-// ─── Step 2: Extract bundled uv ─────────────────────────────────────
+// ─── Step 2: Download uv ────────────────────────────────────────────
 
-fn step_extract_uv(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), String> {
+fn uv_download_url() -> Result<&'static str, String> {
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", "x86_64") => Ok("https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz"),
+        ("linux", "aarch64") => Ok("https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz"),
+        ("macos", "aarch64") => Ok("https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-apple-darwin.tar.gz"),
+        ("macos", "x86_64") => Ok("https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-apple-darwin.tar.gz"),
+        ("windows", "x86_64") => Ok("https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"),
+        (os, arch) => Err(format!("Unsupported platform for uv: {os}-{arch}")),
+    }
+}
+
+fn step_download_uv(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), String> {
     let dest = uv_path();
     if dest.is_file() {
         send(tx, "uv", "Already installed");
         return Ok(());
     }
 
-    send(tx, "uv", "Extracting bundled uv...");
-    write_binary(EMBEDDED_UV, &dest)?;
+    let url = uv_download_url()?;
+    send(tx, "uv", "Downloading uv...");
+
+    let tmp_dir = vendor_dir().join("_tmp_uv");
+    let _ = std::fs::create_dir_all(&tmp_dir);
+
+    let ext = if url.ends_with(".zip") { "zip" } else { "tar.gz" };
+    let archive = tmp_dir.join(format!("uv.{ext}"));
+
+    let result: Result<(), String> = (|| {
+        download_to_file(url, &archive)?;
+        send(tx, "uv", "Extracting uv...");
+        extract_archive(&archive, &tmp_dir)?;
+
+        let binary_name = if cfg!(windows) { "uv.exe" } else { "uv" };
+        let found = find_file_in(&tmp_dir, binary_name)
+            .ok_or_else(|| format!("Could not find {binary_name} in downloaded archive"))?;
+
+        std::fs::copy(&found, &dest)
+            .map_err(|e| format!("Failed to copy uv: {e}"))?;
+        mark_executable(&dest)?;
+        Ok(())
+    })();
+
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    result?;
+
     send(tx, "uv", "uv ready");
     Ok(())
 }
 
-fn write_binary(data: &[u8], dest: &PathBuf) -> Result<(), String> {
-    std::fs::write(dest, data).map_err(|e| format!("Failed to write {}: {e}", dest.display()))?;
+// ─── Download helpers ───────────────────────────────────────────────
 
+fn download_to_file(url: &str, dest: &std::path::Path) -> Result<(), String> {
+    let resp = ureq::get(url).call().map_err(|e| e.to_string())?;
+    let mut body = resp.into_body();
+    let mut reader = body.as_reader();
+    let mut file = std::fs::File::create(dest).map_err(|e| e.to_string())?;
+    std::io::copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn extract_archive(archive: &std::path::Path, dest_dir: &std::path::Path) -> Result<(), String> {
+    let name = archive.to_string_lossy();
+
+    let output = if name.ends_with(".tar.xz") {
+        silent_command("tar")
+            .arg("-xJf").arg(archive)
+            .arg("-C").arg(dest_dir)
+            .output()
+    } else if name.ends_with(".tar.gz") {
+        silent_command("tar")
+            .arg("-xzf").arg(archive)
+            .arg("-C").arg(dest_dir)
+            .output()
+    } else if name.ends_with(".zip") {
+        #[cfg(windows)]
+        {
+            silent_command("tar")
+                .arg("-xf").arg(archive)
+                .arg("-C").arg(dest_dir)
+                .output()
+        }
+        #[cfg(not(windows))]
+        {
+            silent_command("unzip")
+                .arg("-o").arg(archive)
+                .arg("-d").arg(dest_dir)
+                .output()
+        }
+    } else {
+        return Err(format!("Unknown archive format: {name}"));
+    };
+
+    let output = output.map_err(|e| format!("Failed to run extraction command: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Extraction failed: {stderr}"));
+    }
+    Ok(())
+}
+
+fn find_file_in(dir: &std::path::Path, name: &str) -> Option<PathBuf> {
+    walkdir::WalkDir::new(dir)
+        .into_iter()
+        .flatten()
+        .find(|e| e.file_type().is_file() && e.file_name().to_string_lossy() == name)
+        .map(|e| e.into_path())
+}
+
+fn mark_executable(_path: &std::path::Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o755))
+        std::fs::set_permissions(_path, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| format!("Failed to set permissions: {e}"))?;
     }
-
     Ok(())
 }
 

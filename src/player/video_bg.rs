@@ -317,6 +317,7 @@ fn background_video_worker(
     flavor: VideoFlavor,
     frame_tx: mpsc::SyncSender<Vec<u8>>,
     free_rx: mpsc::Receiver<Vec<u8>>,
+    recycle_tx: mpsc::SyncSender<Vec<u8>>,
     cmd_rx: mpsc::Receiver<DecoderCommand>,
     stop_downloads: Arc<AtomicBool>,
 ) {
@@ -339,7 +340,7 @@ fn background_video_worker(
                 .ok();
         }
 
-        pipeline_decode_loop(playlist, frame_tx, free_rx, cmd_rx);
+        pipeline_decode_loop(playlist, frame_tx, free_rx, recycle_tx, cmd_rx);
         return;
     }
 
@@ -393,7 +394,7 @@ fn background_video_worker(
                         .ok();
                 }
 
-                pipeline_decode_loop(playlist, frame_tx, free_rx, cmd_rx);
+                pipeline_decode_loop(playlist, frame_tx, free_rx, recycle_tx, cmd_rx);
                 return;
             }
             Err(e) => {
@@ -479,6 +480,7 @@ fn decode_video(
     path: &PathBuf,
     frame_tx: &mpsc::SyncSender<Vec<u8>>,
     free_rx: &mpsc::Receiver<Vec<u8>>,
+    recycle_tx: &mpsc::SyncSender<Vec<u8>>,
     cmd_rx: &mpsc::Receiver<DecoderCommand>,
 ) -> bool {
     decode_video_at(path, frame_tx, free_rx, recycle_tx, cmd_rx, 0.0)
@@ -555,7 +557,10 @@ fn decode_video_at(
                     return false;
                 }
             }
-            Err(_) => break,
+            Err(_) => {
+                let _ = recycle_tx.send(buf);
+                break;
+            }
         }
     }
 
@@ -568,6 +573,7 @@ fn pipeline_decode_loop(
     playlist: std::sync::Arc<std::sync::Mutex<Vec<PathBuf>>>,
     frame_tx: mpsc::SyncSender<Vec<u8>>,
     free_rx: mpsc::Receiver<Vec<u8>>,
+    recycle_tx: mpsc::SyncSender<Vec<u8>>,
     cmd_rx: mpsc::Receiver<DecoderCommand>,
 ) {
     let mut rng = rand::rng();
@@ -586,7 +592,7 @@ fn pipeline_decode_loop(
             if should_stop(&cmd_rx) {
                 return;
             }
-            if !decode_video(path, &frame_tx, &free_rx, &cmd_rx) {
+            if !decode_video(path, &frame_tx, &free_rx, &recycle_tx, &cmd_rx) {
                 return;
             }
         }
@@ -637,11 +643,12 @@ pub fn spawn_video_background(
         let _ = free_tx.send(vec![0u8; FRAME_BYTES]);
     }
 
+    let recycle_tx = free_tx.clone();
     let stop_clone = stop_downloads.clone();
     thread::Builder::new()
         .name("video-bg-worker".into())
         .spawn(move || {
-            background_video_worker(flavor, frame_tx, free_rx, cmd_rx, stop_clone);
+            background_video_worker(flavor, frame_tx, free_rx, recycle_tx, cmd_rx, stop_clone);
         })
         .expect("failed to spawn video worker thread");
 
@@ -679,11 +686,12 @@ pub fn switch_flavor(video_bg: &mut VideoBackground, new_flavor: VideoFlavor) {
     }
 
     let flavor = new_flavor;
+    let recycle_tx = free_tx.clone();
     let stop_clone = stop_downloads.clone();
     thread::Builder::new()
         .name("video-bg-worker".into())
         .spawn(move || {
-            background_video_worker(flavor, frame_tx, free_rx, cmd_rx, stop_clone);
+            background_video_worker(flavor, frame_tx, free_rx, recycle_tx, cmd_rx, stop_clone);
         })
         .expect("failed to spawn video worker thread");
 

@@ -291,6 +291,8 @@ fn enter_playing(
             hud.spawn(Node {
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(2.0),
+                max_width: Val::Percent(40.0),
+                overflow: Overflow::clip(),
                 ..default()
             })
             .with_children(|info| {
@@ -301,6 +303,7 @@ fn enter_playing(
                         ..default()
                     },
                     TextColor(ui_theme.hud_primary),
+                    TextLayout { linebreak: LineBreak::WordBoundary, ..default() },
                 ));
                 info.spawn((
                     Text::new(artist),
@@ -309,6 +312,7 @@ fn enter_playing(
                         ..default()
                     },
                     TextColor(ui_theme.hud_secondary),
+                    TextLayout { linebreak: LineBreak::WordBoundary, ..default() },
                 ));
                 let duration_text = crate::menu::song_card::format_duration(song.duration_secs);
                 info.spawn((

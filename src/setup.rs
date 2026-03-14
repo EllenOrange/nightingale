@@ -179,11 +179,11 @@ fn spawn_setup_ui(mut commands: Commands, theme: Res<UiTheme>, asset_server: Res
 }
 
 const STEP_WEIGHTS: &[(&str, f32)] = &[
-    ("ffmpeg", 10.0),
-    ("uv", 10.0),
+    ("ffmpeg", 15.0),
+    ("uv", 15.0),
     ("Python", 10.0),
     ("Venv", 5.0),
-    ("Packages", 60.0),
+    ("Packages", 50.0),
     ("Scripts", 5.0),
 ];
 

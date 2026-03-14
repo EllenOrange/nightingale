@@ -33,9 +33,6 @@ pub struct SpinnerOverlay {
 }
 
 #[derive(Component)]
-pub struct SpinnerIcon;
-
-#[derive(Component)]
 pub struct ReanalyzeButton {
     pub song_index: usize,
 }
@@ -325,18 +322,7 @@ fn spawn_album_art(
                 },
                 BackgroundColor(theme.spinner_overlay),
                 Visibility::Hidden,
-            ))
-            .with_children(|overlay| {
-                overlay.spawn((
-                    SpinnerIcon,
-                    Text::new("⠋"),
-                    TextFont {
-                        font_size: 24.0,
-                        ..default()
-                    },
-                    TextColor(theme.accent),
-                ));
-            });
+            ));
     });
 }
 

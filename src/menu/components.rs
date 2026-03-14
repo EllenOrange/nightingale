@@ -111,6 +111,12 @@ pub struct LanguagePickerItem {
 #[derive(Component)]
 pub struct LanguagePickerClose;
 
+#[derive(Component)]
+pub struct AboutOverlay;
+
+#[derive(Component)]
+pub struct AboutCloseButton;
+
 #[derive(Resource)]
 pub struct LanguagePickerTarget {
     #[allow(dead_code)]

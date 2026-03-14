@@ -1,3 +1,4 @@
+pub mod about;
 pub mod components;
 pub mod folder;
 mod nav;
@@ -70,11 +71,13 @@ fn update_overlay_state(
     profile: Query<(), With<ProfileOverlay>>,
     exit: Query<(), With<sidebar::ExitOverlay>>,
     lang_picker: Query<(), With<LanguagePickerOverlay>>,
+    about: Query<(), With<AboutOverlay>>,
 ) {
     overlay_open.0 = !settings.is_empty()
         || !profile.is_empty()
         || !exit.is_empty()
-        || !lang_picker.is_empty();
+        || !lang_picker.is_empty()
+        || !about.is_empty();
 }
 
 pub struct MenuPlugin;
@@ -115,9 +118,15 @@ impl Plugin for MenuPlugin {
                     sidebar::handle_clear_cache_click,
                     settings::handle_settings_click,
                     profile::handle_profile_click,
+                    about::handle_about_click,
                     folder::poll_folder_result,
                     folder::poll_rescan,
                 )
+                    .run_if(in_state(AppState::Menu)),
+            )
+            .add_systems(
+                Update,
+                sidebar::update_about_link_hover
                     .run_if(in_state(AppState::Menu)),
             )
             .add_systems(
@@ -969,14 +978,11 @@ fn update_status_badges(
     }
 }
 
-const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
 fn animate_spinners(
     time: Res<Time>,
     theme: Res<UiTheme>,
     library: Res<SongLibrary>,
     mut spinner_query: Query<(&SpinnerOverlay, &mut BackgroundColor)>,
-    mut icon_query: Query<&mut Text, With<SpinnerIcon>>,
 ) {
     let spinner_alpha = (time.elapsed_secs() * 3.0).sin() * 0.25 + 0.75;
     for (spinner, mut bg) in &mut spinner_query {
@@ -987,11 +993,6 @@ fn animate_spinners(
             *bg = BackgroundColor(theme.spinner_overlay.with_alpha(spinner_alpha));
         }
     }
-
-    let frame_idx = ((time.elapsed_secs() * 10.0) as usize) % SPINNER_FRAMES.len();
-    for mut text in &mut icon_query {
-        **text = SPINNER_FRAMES[frame_idx].into();
-    }
 }
 
 fn cleanup_menu(
@@ -1001,6 +1002,7 @@ fn cleanup_menu(
     profile_query: Query<Entity, With<ProfileOverlay>>,
     exit_query: Query<Entity, With<sidebar::ExitOverlay>>,
     lang_picker_query: Query<Entity, With<LanguagePickerOverlay>>,
+    about_query: Query<Entity, With<AboutOverlay>>,
 ) {
     for entity in &query {
         commands.entity(entity).despawn();
@@ -1015,6 +1017,9 @@ fn cleanup_menu(
         commands.entity(entity).despawn();
     }
     for entity in &lang_picker_query {
+        commands.entity(entity).despawn();
+    }
+    for entity in &about_query {
         commands.entity(entity).despawn();
     }
     commands.remove_resource::<AlbumArtCache>();

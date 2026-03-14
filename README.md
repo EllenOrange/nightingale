@@ -10,7 +10,7 @@
 
 Nightingale scans your music folder, separates lead vocals from instrumentals using the [UVR Karaoke model](https://github.com/Anjok07/ultimatevocalremovergui) (or [Demucs](https://github.com/facebookresearch/demucs)), transcribes lyrics with word-level timestamps via [WhisperX](https://github.com/m-bain/whisperX), and plays it all back with synchronized highlighting, pitch scoring, profiles, and dynamic backgrounds.
 
-Ships as a single binary. No manual installation of Python, ffmpeg, or ML models required — everything is bootstrapped automatically on first launch.
+Ships as a single binary. No manual installation of Python, ffmpeg, or ML models required — everything is downloaded and bootstrapped automatically on first launch.
 
 ## Features
 
@@ -28,7 +28,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 📺 **Adaptive UI Scaling** — scales to any resolution including 4K TVs
 
-📦 **Self-Contained** — ffmpeg and uv are bundled in the binary; Python, PyTorch, and ML packages are installed to `~/.nightingale/vendor/` on first run. Video backgrounds are pre-downloaded during setup so the first session is ready to go
+📦 **Self-Contained** — ffmpeg, uv, Python, PyTorch, and ML packages are all downloaded to `~/.nightingale/vendor/` on first run. Video backgrounds are pre-downloaded during setup so the first session is ready to go
 
 ## Quick start
 
@@ -120,11 +120,11 @@ Everything lives under `~/.nightingale/`:
 ├── videos/             # Cached Pixabay video backgrounds
 ├── sounds/             # Sound effects (celebration)
 ├── vendor/
-│   ├── ffmpeg          # Bundled ffmpeg binary
-│   ├── uv              # Bundled uv binary
+│   ├── ffmpeg          # Downloaded ffmpeg binary
+│   ├── uv              # Downloaded uv binary
 │   ├── python/         # Python 3.10 installed via uv
 │   ├── venv/           # Virtual environment with ML packages
-│   ├── analyzer/       # Embedded analyzer Python scripts
+│   ├── analyzer/       # Extracted analyzer Python scripts
 │   └── .ready          # Marker indicating setup is complete
 └── models/
     ├── torch/          # Demucs model cache
@@ -156,11 +156,8 @@ In CI, the key is provided via the `PIXABAY_API_KEY` secret. The local release s
 ```bash
 git clone <repo-url> nightingale
 cd nightingale
-scripts/fetch-vendor-bin.sh   # Downloads ffmpeg + uv for your platform into vendor-bin/
 cargo build --release
 ```
-
-The `build.rs` script creates placeholder files in `vendor-bin/` if the real binaries are missing, so `cargo build` always succeeds — but the resulting binary won't be able to bootstrap without real binaries embedded.
 
 ### Local release
 
@@ -170,7 +167,7 @@ The `build.rs` script creates placeholder files in `vendor-bin/` if the real bin
 scripts/make-release.sh
 ```
 
-Fetches vendor binaries (if needed), builds the release binary, and packages it into `nightingale-<target>.tar.gz`.
+Builds the release binary and packages it into `nightingale-<target>.tar.gz`.
 
 **Windows (PowerShell):**
 
@@ -178,7 +175,7 @@ Fetches vendor binaries (if needed), builds the release binary, and packages it 
 powershell -ExecutionPolicy Bypass -File scripts/make-release.ps1
 ```
 
-Downloads `ffmpeg.exe` and `uv.exe` into `vendor-bin/`, builds the release binary, and packages it into `nightingale-x86_64-pc-windows-msvc.zip`.
+Builds the release binary and packages it into `nightingale-x86_64-pc-windows-msvc.zip`.
 
 ### CLI flags
 
@@ -197,8 +194,8 @@ Pushing a tag matching `v*` triggers the [release workflow](.github/workflows/re
 | macOS Intel | `x86_64-apple-darwin` |
 | Windows x86_64 | `x86_64-pc-windows-msvc` |
 
-Each build fetches the correct platform-specific ffmpeg and uv binaries, embeds them via `include_bytes!`, and uploads the packaged archive to a GitHub Release.
+Each build compiles the binary and uploads the packaged archive to a GitHub Release. ffmpeg and uv are downloaded at runtime on first launch.
 
 ## License
 
-MIT
+GPL-3.0-or-later — see [LICENSE](LICENSE).
