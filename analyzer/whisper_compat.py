@@ -46,3 +46,45 @@ def free_gpu():
             torch.cuda.empty_cache()
     except Exception:
         pass
+
+
+def align_with_fallback(raw_segments, audio, language, device, pre_align_cleanup=None):
+    """Run whisperx.align with OOM fallback: retry after cleanup, then CPU."""
+    import whisperx
+
+    align_model = None
+    try:
+        print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{device}'", flush=True)
+        align_model, metadata = whisperx.load_align_model(language_code=language, device=device)
+        result = whisperx.align(raw_segments, align_model, metadata, audio, device)
+        del align_model
+        return result
+    except Exception as e:
+        if not is_oom(e):
+            raise
+        if align_model is not None:
+            del align_model
+            align_model = None
+            free_gpu()
+
+        if pre_align_cleanup:
+            print(f"[nightingale:LOG] Alignment OOM, freeing whisper model and retrying on {device}", flush=True)
+            pre_align_cleanup()
+            try:
+                align_model, metadata = whisperx.load_align_model(language_code=language, device=device)
+                result = whisperx.align(raw_segments, align_model, metadata, audio, device)
+                del align_model
+                return result
+            except Exception as e2:
+                if not is_oom(e2):
+                    raise
+                if align_model is not None:
+                    del align_model
+                    align_model = None
+
+        print(f"[nightingale:LOG] Alignment OOM, falling back to CPU", flush=True)
+        free_gpu()
+        align_model, metadata = whisperx.load_align_model(language_code=language, device="cpu")
+        result = whisperx.align(raw_segments, align_model, metadata, audio, "cpu")
+        del align_model
+        return result

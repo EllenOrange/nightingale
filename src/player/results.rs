@@ -9,7 +9,6 @@ const FA_STAR: &str = "\u{f005}";
 const FA_STAR_HALF: &str = "\u{f5c0}";
 const FA_EXCLAMATION_TRIANGLE: &str = "\u{f071}";
 
-const OVERLAY_DIM: Color = Color::srgba(0.0, 0.0, 0.0, 0.6);
 const CARD_RADIUS: f32 = 8.0;
 const CARD_PADDING: f32 = 28.0;
 const BTN_RADIUS: f32 = 5.0;
@@ -87,7 +86,7 @@ fn ensure_celebration_sound() -> std::path::PathBuf {
     path
 }
 
-fn spawn_overlay_root(commands: &mut Commands, marker: impl Component) -> Entity {
+fn spawn_overlay_root(commands: &mut Commands, marker: impl Component, bg: Color) -> Entity {
     commands
         .spawn((
             marker,
@@ -99,7 +98,7 @@ fn spawn_overlay_root(commands: &mut Commands, marker: impl Component) -> Entity
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(OVERLAY_DIM),
+            BackgroundColor(bg),
             GlobalZIndex(10),
         ))
         .id()
@@ -204,10 +203,9 @@ pub fn spawn_results_overlay(
     let active_profile = profiles.active.clone().unwrap_or_default();
     let icon_font: Handle<Font> = asset_server.load("fonts/fa-solid-900.ttf");
 
-    let star_gold = Color::srgb(1.0, 0.84, 0.0);
     let star_empty = theme.accent.with_alpha(0.15);
 
-    let root = spawn_overlay_root(commands, ResultsOverlay);
+    let root = spawn_overlay_root(commands, ResultsOverlay, theme.overlay_dim);
     commands.entity(root).with_children(|overlay| {
         overlay
             .spawn((
@@ -276,7 +274,7 @@ pub fn spawn_results_overlay(
                                 font_size: 24.0,
                                 ..default()
                             },
-                            TextColor(star_gold),
+                            TextColor(theme.star_gold),
                         ));
                     }
                     if has_half {
@@ -287,7 +285,7 @@ pub fn spawn_results_overlay(
                                 font_size: 24.0,
                                 ..default()
                             },
-                            TextColor(star_gold),
+                            TextColor(theme.star_gold),
                         ));
                     }
                     for _ in 0..empty {
@@ -441,7 +439,7 @@ pub fn spawn_pause_overlay(
     commands.insert_resource(PauseFocus(0));
     let icon_font: Handle<Font> = asset_server.load("fonts/fa-solid-900.ttf");
 
-    let root = spawn_overlay_root(commands, PauseOverlay);
+    let root = spawn_overlay_root(commands, PauseOverlay, theme.overlay_dim);
     commands.entity(root).with_children(|overlay| {
         overlay
             .spawn((

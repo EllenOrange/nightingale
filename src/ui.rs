@@ -1,5 +1,15 @@
 use bevy::prelude::*;
 
+pub mod layout {
+    pub const SIDEBAR_WIDTH: f32 = 220.0;
+    pub const MAIN_CONTENT_WIDTH: f32 = 700.0;
+    pub const OVERLAY_WIDTH_SM: f32 = 320.0;
+    pub const OVERLAY_WIDTH_MD: f32 = 340.0;
+    pub const OVERLAY_WIDTH_LG: f32 = 460.0;
+    pub const CARD_MIN_HEIGHT: f32 = 64.0;
+    pub const ART_SIZE: f32 = 48.0;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemeMode {
     Dark,
@@ -43,6 +53,15 @@ pub struct UiTheme {
     pub hud_dim: Color,
     pub pitch_ref_line: Srgba,
     pub pitch_user_base: Srgba,
+    pub overlay_dim: Color,
+    pub spinner_overlay: Color,
+    pub skip_btn_bg: Color,
+    pub skip_btn_hover: Color,
+    pub skip_btn_border: Color,
+    pub skip_btn_text: Color,
+    pub star_gold: Color,
+    pub cache_videos: Color,
+    pub cache_models: Color,
 }
 
 impl UiTheme {
@@ -83,6 +102,15 @@ impl UiTheme {
             hud_dim: Color::srgba(1.0, 1.0, 1.0, 0.5),
             pitch_ref_line: Srgba::new(0.5, 0.7, 1.0, 0.45),
             pitch_user_base: Srgba::new(0.85, 0.85, 1.0, 1.0),
+            overlay_dim: Color::srgba(0.0, 0.0, 0.0, 0.6),
+            spinner_overlay: Color::srgba(0.0, 0.0, 0.0, 0.55),
+            skip_btn_bg: Color::srgba(0.0, 0.0, 0.0, 0.5),
+            skip_btn_hover: Color::srgba(0.2, 0.2, 0.3, 0.7),
+            skip_btn_border: Color::srgba(1.0, 1.0, 1.0, 0.4),
+            skip_btn_text: Color::srgba(1.0, 1.0, 1.0, 0.8),
+            star_gold: Color::srgb(1.0, 0.84, 0.0),
+            cache_videos: Color::srgb(0.28, 0.72, 0.42),
+            cache_models: Color::srgb(0.88, 0.62, 0.18),
         }
     }
 
@@ -123,6 +151,15 @@ impl UiTheme {
             hud_dim: Color::srgba(1.0, 1.0, 1.0, 0.5),
             pitch_ref_line: Srgba::new(0.2, 0.35, 0.75, 0.5),
             pitch_user_base: Srgba::new(0.1, 0.1, 0.25, 1.0),
+            overlay_dim: Color::srgba(0.0, 0.0, 0.0, 0.6),
+            spinner_overlay: Color::srgba(0.0, 0.0, 0.0, 0.55),
+            skip_btn_bg: Color::srgba(0.0, 0.0, 0.0, 0.5),
+            skip_btn_hover: Color::srgba(0.2, 0.2, 0.3, 0.7),
+            skip_btn_border: Color::srgba(1.0, 1.0, 1.0, 0.4),
+            skip_btn_text: Color::srgba(1.0, 1.0, 1.0, 0.8),
+            star_gold: Color::srgb(1.0, 0.84, 0.0),
+            cache_videos: Color::srgb(0.28, 0.72, 0.42),
+            cache_models: Color::srgb(0.88, 0.62, 0.18),
         }
     }
 
@@ -163,4 +200,91 @@ pub fn spawn_label(
         },
         TextColor(color),
     ));
+}
+
+pub enum ButtonVariant {
+    Primary,
+    Secondary,
+    Danger,
+    Sidebar,
+}
+
+impl ButtonVariant {
+    fn bg(&self, theme: &UiTheme) -> Color {
+        match self {
+            Self::Primary => theme.accent,
+            Self::Secondary => theme.popup_btn,
+            Self::Danger => theme.badge_failed,
+            Self::Sidebar => theme.sidebar_btn,
+        }
+    }
+
+    fn text_color(&self, theme: &UiTheme) -> Color {
+        match self {
+            Self::Primary | Self::Danger => Color::WHITE,
+            Self::Secondary => theme.text_primary,
+            Self::Sidebar => theme.text_primary,
+        }
+    }
+
+    fn font_size(&self) -> f32 {
+        match self {
+            Self::Sidebar => 13.0,
+            _ => 14.0,
+        }
+    }
+
+    fn border_radius(&self) -> f32 {
+        5.0
+    }
+}
+
+pub fn spawn_button(
+    parent: &mut ChildSpawnerCommands,
+    variant: ButtonVariant,
+    label: impl Into<String>,
+    theme: &UiTheme,
+    marker: impl Bundle,
+) -> Entity {
+    let text_color = variant.text_color(theme);
+    spawn_button_with_color(parent, variant, label, theme, text_color, marker)
+}
+
+pub fn spawn_button_with_color(
+    parent: &mut ChildSpawnerCommands,
+    variant: ButtonVariant,
+    label: impl Into<String>,
+    theme: &UiTheme,
+    text_color: Color,
+    marker: impl Bundle,
+) -> Entity {
+    let bg = variant.bg(theme);
+    let font_size = variant.font_size();
+    let radius = variant.border_radius();
+
+    parent
+        .spawn((
+            marker,
+            Button,
+            Node {
+                width: Val::Percent(100.0),
+                padding: UiRect::new(
+                    Val::Px(14.0),
+                    Val::Px(14.0),
+                    Val::Px(10.0),
+                    Val::Px(10.0),
+                ),
+                border: UiRect::all(Val::Px(2.0)),
+                border_radius: BorderRadius::all(Val::Px(radius)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BorderColor::all(Color::NONE),
+            BackgroundColor(bg),
+        ))
+        .with_children(|btn| {
+            spawn_label(btn, label, font_size, text_color);
+        })
+        .id()
 }

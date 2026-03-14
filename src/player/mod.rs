@@ -138,10 +138,7 @@ struct SkipIntroButton;
 #[derive(Component)]
 struct SkipOutroButton;
 
-const SKIP_BTN_BG: Color = Color::srgba(0.0, 0.0, 0.0, 0.5);
-const SKIP_BTN_HOVER: Color = Color::srgba(0.2, 0.2, 0.3, 0.7);
-
-fn spawn_skip_button(parent: &mut ChildSpawnerCommands, label: &str, component: impl Component) {
+fn spawn_skip_button(parent: &mut ChildSpawnerCommands, label: &str, component: impl Component, theme: &UiTheme) {
     parent
         .spawn((
             component,
@@ -158,8 +155,8 @@ fn spawn_skip_button(parent: &mut ChildSpawnerCommands, label: &str, component: 
                 border_radius: BorderRadius::all(Val::Px(8.0)),
                 ..default()
             },
-            BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.4)),
-            BackgroundColor(SKIP_BTN_BG),
+            BorderColor::all(theme.skip_btn_border),
+            BackgroundColor(theme.skip_btn_bg),
         ))
         .with_children(|btn| {
             btn.spawn((
@@ -168,7 +165,7 @@ fn spawn_skip_button(parent: &mut ChildSpawnerCommands, label: &str, component: 
                     font_size: 13.0,
                     ..default()
                 },
-                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.8)),
+                TextColor(theme.skip_btn_text),
             ));
         });
 }
@@ -215,7 +212,7 @@ fn enter_playing(
 
     transcript.split_long_segments(8);
 
-    let saved_guide = config.guide_volume.unwrap_or(0.0);
+    let saved_guide = config.guide_volume();
     setup_audio(
         &mut commands,
         &asset_server,
@@ -255,7 +252,7 @@ fn enter_playing(
     let title = song.display_title().to_string();
     let artist = song.display_artist().to_string();
 
-    let guide_vol = config.guide_volume.unwrap_or(0.0);
+    let guide_vol = config.guide_volume();
     let guide_text = format_guide_text(guide_vol);
     let theme_text = format_theme_text(&bg_theme, &video_flavor);
     let mic_text = format_mic_text(mic_active, &mic_device_name);
@@ -314,8 +311,8 @@ fn enter_playing(
                     ..default()
                 })
                 .with_children(|row| {
-                    spawn_skip_button(row, "Skip Intro", SkipIntroButton);
-                    spawn_skip_button(row, "Skip Outro", SkipOutroButton);
+                    spawn_skip_button(row, "Skip Intro", SkipIntroButton, &ui_theme);
+                    spawn_skip_button(row, "Skip Outro", SkipOutroButton, &ui_theme);
                 });
             });
 
@@ -700,10 +697,10 @@ fn handle_skip_buttons(
                 }
             }
             Interaction::Hovered => {
-                *bg = BackgroundColor(SKIP_BTN_HOVER);
+                *bg = BackgroundColor(theme.skip_btn_hover);
             }
             Interaction::None => {
-                *bg = BackgroundColor(SKIP_BTN_BG);
+                *bg = BackgroundColor(theme.skip_btn_bg);
             }
         }
     }
@@ -724,10 +721,10 @@ fn handle_skip_buttons(
                 );
             }
             Interaction::Hovered => {
-                *bg = BackgroundColor(SKIP_BTN_HOVER);
+                *bg = BackgroundColor(theme.skip_btn_hover);
             }
             Interaction::None => {
-                *bg = BackgroundColor(SKIP_BTN_BG);
+                *bg = BackgroundColor(theme.skip_btn_bg);
             }
         }
     }

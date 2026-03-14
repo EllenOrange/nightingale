@@ -1,12 +1,11 @@
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 
-use super::song_card::*;
+use super::components::*;
 use crate::profile::ProfileStore;
 use crate::states::AppState;
-use crate::ui::{self, UiTheme};
+use crate::ui::{self, ButtonVariant, UiTheme};
 
-const OVERLAY_DIM: Color = Color::srgba(0.0, 0.0, 0.0, 0.6);
 const CARD_WIDTH: f32 = 360.0;
 const CARD_RADIUS: f32 = 8.0;
 const CARD_PADDING: f32 = 24.0;
@@ -48,7 +47,7 @@ pub fn spawn_profile_popup(
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(OVERLAY_DIM),
+            BackgroundColor(theme.overlay_dim),
             GlobalZIndex(10),
         ))
         .with_children(|overlay| {
@@ -280,37 +279,7 @@ fn spawn_primary_btn(
     action: ProfileAction,
     theme: &UiTheme,
 ) {
-    parent
-        .spawn((
-            ProfileButton { action },
-            Button,
-            Node {
-                width: Val::Percent(100.0),
-                padding: UiRect::new(
-                    Val::Px(14.0),
-                    Val::Px(14.0),
-                    Val::Px(10.0),
-                    Val::Px(10.0),
-                ),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(BTN_RADIUS)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(Color::NONE),
-            BackgroundColor(theme.accent),
-        ))
-        .with_children(|btn| {
-            btn.spawn((
-                Text::new(label),
-                TextFont {
-                    font_size: 14.0,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-            ));
-        });
+    ui::spawn_button(parent, ButtonVariant::Primary, label, theme, ProfileButton { action });
 }
 
 fn spawn_secondary_btn(
@@ -319,30 +288,7 @@ fn spawn_secondary_btn(
     action: ProfileAction,
     theme: &UiTheme,
 ) {
-    parent
-        .spawn((
-            ProfileButton { action },
-            Button,
-            Node {
-                width: Val::Percent(100.0),
-                padding: UiRect::new(
-                    Val::Px(14.0),
-                    Val::Px(14.0),
-                    Val::Px(10.0),
-                    Val::Px(10.0),
-                ),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(BTN_RADIUS)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(Color::NONE),
-            BackgroundColor(theme.popup_btn),
-        ))
-        .with_children(|btn| {
-            ui::spawn_label(btn, label, 14.0, theme.text_primary);
-        });
+    ui::spawn_button(parent, ButtonVariant::Secondary, label, theme, ProfileButton { action });
 }
 
 fn spawn_danger_btn(
@@ -351,37 +297,7 @@ fn spawn_danger_btn(
     action: ProfileAction,
     theme: &UiTheme,
 ) {
-    parent
-        .spawn((
-            ProfileButton { action },
-            Button,
-            Node {
-                width: Val::Percent(100.0),
-                padding: UiRect::new(
-                    Val::Px(14.0),
-                    Val::Px(14.0),
-                    Val::Px(10.0),
-                    Val::Px(10.0),
-                ),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(BTN_RADIUS)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(Color::NONE),
-            BackgroundColor(theme.badge_failed),
-        ))
-        .with_children(|btn| {
-            btn.spawn((
-                Text::new(label),
-                TextFont {
-                    font_size: 14.0,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-            ));
-        });
+    ui::spawn_button(parent, ButtonVariant::Danger, label, theme, ProfileButton { action });
 }
 
 fn spawn_new_profile_input(commands: &mut Commands, theme: &UiTheme) {
@@ -399,7 +315,7 @@ fn spawn_new_profile_input(commands: &mut Commands, theme: &UiTheme) {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(OVERLAY_DIM),
+            BackgroundColor(theme.overlay_dim),
             GlobalZIndex(10),
         ))
         .with_children(|overlay| {
@@ -434,7 +350,7 @@ fn spawn_delete_confirm(commands: &mut Commands, theme: &UiTheme, name: &str) {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(OVERLAY_DIM),
+            BackgroundColor(theme.overlay_dim),
             GlobalZIndex(10),
         ))
         .with_children(|overlay| {

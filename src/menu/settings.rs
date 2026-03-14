@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use bevy::window::WindowMode;
 
-use super::song_card::*;
-use crate::ui::{self, UiTheme};
+use super::components::*;
+use crate::ui::{self, ButtonVariant, UiTheme};
 
 const SEPARATORS: &[(&str, &str)] = &[
     ("karaoke", "UVR Karaoke"),
@@ -74,14 +74,14 @@ pub fn spawn_settings_popup(
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+            BackgroundColor(theme.overlay_dim),
             GlobalZIndex(10),
         ))
         .with_children(|overlay| {
             overlay
                 .spawn((
                     Node {
-                        width: Val::Px(460.0),
+                        width: Val::Px(crate::ui::layout::OVERLAY_WIDTH_LG),
                         flex_direction: FlexDirection::Column,
                         padding: UiRect::all(Val::Px(32.0)),
                         row_gap: Val::Px(8.0),
@@ -271,26 +271,13 @@ fn spawn_settings_wide_btn(
     theme: &UiTheme,
     row_idx: usize,
 ) {
-    parent
-        .spawn((
-            SettingsRow(row_idx),
-            SettingsButton { action },
-            Button,
-            Node {
-                width: Val::Percent(100.0),
-                padding: UiRect::new(Val::Px(16.0), Val::Px(16.0), Val::Px(10.0), Val::Px(10.0)),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(4.0)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(Color::NONE),
-            BackgroundColor(theme.popup_btn),
-        ))
-        .with_children(|btn| {
-            ui::spawn_label(btn, label, 14.0, theme.text_primary);
-        });
+    ui::spawn_button(
+        parent,
+        ButtonVariant::Secondary,
+        label,
+        theme,
+        (SettingsRow(row_idx), SettingsButton { action }),
+    );
 }
 
 fn dispatch_settings_action(

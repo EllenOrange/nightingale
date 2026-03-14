@@ -130,12 +130,15 @@ impl ActiveVideoFlavor {
 #[derive(Component)]
 pub struct VideoSprite;
 
+const POOL_SIZE: usize = 4;
+
 #[derive(Resource)]
 pub struct VideoBackground {
     pub image_handle: Handle<Image>,
     #[allow(dead_code)]
     pub flavor: VideoFlavor,
     frame_rx: Mutex<mpsc::Receiver<Vec<u8>>>,
+    free_tx: Mutex<mpsc::SyncSender<Vec<u8>>>,
     cmd_tx: Mutex<mpsc::Sender<DecoderCommand>>,
     elapsed: f64,
     frame_interval: f64,
@@ -311,6 +314,7 @@ pub fn prefetch_one_per_flavor(mut on_progress: impl FnMut(&str)) {
 fn background_video_worker(
     flavor: VideoFlavor,
     frame_tx: mpsc::SyncSender<Vec<u8>>,
+    free_rx: mpsc::Receiver<Vec<u8>>,
     cmd_rx: mpsc::Receiver<DecoderCommand>,
 ) {
     let mut existing = cached_videos(flavor);
@@ -331,7 +335,7 @@ fn background_video_worker(
                 .ok();
         }
 
-        pipeline_decode_loop(playlist, frame_tx, cmd_rx);
+        pipeline_decode_loop(playlist, frame_tx, free_rx, cmd_rx);
         return;
     }
 
@@ -381,7 +385,7 @@ fn background_video_worker(
                         .ok();
                 }
 
-                pipeline_decode_loop(playlist, frame_tx, cmd_rx);
+                pipeline_decode_loop(playlist, frame_tx, free_rx, cmd_rx);
                 return;
             }
             Err(e) => {
@@ -462,6 +466,7 @@ fn download_and_refresh(
 fn decode_video(
     path: &PathBuf,
     frame_tx: &mpsc::SyncSender<Vec<u8>>,
+    free_rx: &mpsc::Receiver<Vec<u8>>,
     cmd_rx: &mpsc::Receiver<DecoderCommand>,
 ) -> bool {
     info!("Video decoder: playing {}", path.display());
@@ -502,7 +507,6 @@ fn decode_video(
         }
     };
 
-    let mut buf = vec![0u8; FRAME_BYTES];
     loop {
         if should_stop(cmd_rx) {
             let _ = child.kill();
@@ -510,9 +514,18 @@ fn decode_video(
             return false;
         }
 
+        let mut buf = match free_rx.recv() {
+            Ok(b) => b,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        };
+
         match stdout.read_exact(&mut buf) {
             Ok(_) => {
-                if frame_tx.send(buf.clone()).is_err() {
+                if frame_tx.send(buf).is_err() {
                     let _ = child.kill();
                     let _ = child.wait();
                     return false;
@@ -530,6 +543,7 @@ fn decode_video(
 fn pipeline_decode_loop(
     playlist: std::sync::Arc<std::sync::Mutex<Vec<PathBuf>>>,
     frame_tx: mpsc::SyncSender<Vec<u8>>,
+    free_rx: mpsc::Receiver<Vec<u8>>,
     cmd_rx: mpsc::Receiver<DecoderCommand>,
 ) {
     let mut rng = rand::rng();
@@ -548,7 +562,7 @@ fn pipeline_decode_loop(
             if should_stop(&cmd_rx) {
                 return;
             }
-            if !decode_video(path, &frame_tx, &cmd_rx) {
+            if !decode_video(path, &frame_tx, &free_rx, &cmd_rx) {
                 return;
             }
         }
@@ -590,13 +604,18 @@ pub fn spawn_video_background(
     };
     let image_handle = images.add(image);
 
-    let (frame_tx, frame_rx) = mpsc::sync_channel(2);
+    let (frame_tx, frame_rx) = mpsc::sync_channel(POOL_SIZE);
+    let (free_tx, free_rx) = mpsc::sync_channel(POOL_SIZE);
     let (cmd_tx, cmd_rx) = mpsc::channel();
+
+    for _ in 0..POOL_SIZE {
+        let _ = free_tx.send(vec![0u8; FRAME_BYTES]);
+    }
 
     thread::Builder::new()
         .name("video-bg-worker".into())
         .spawn(move || {
-            background_video_worker(flavor, frame_tx, cmd_rx);
+            background_video_worker(flavor, frame_tx, free_rx, cmd_rx);
         })
         .expect("failed to spawn video worker thread");
 
@@ -604,6 +623,7 @@ pub fn spawn_video_background(
         image_handle: image_handle.clone(),
         flavor,
         frame_rx: Mutex::new(frame_rx),
+        free_tx: Mutex::new(free_tx),
         cmd_tx: Mutex::new(cmd_tx),
         elapsed: 0.0,
         frame_interval: 1.0 / TARGET_FPS,
@@ -621,19 +641,27 @@ pub fn switch_flavor(video_bg: &mut VideoBackground, new_flavor: VideoFlavor) {
         let _ = tx.send(DecoderCommand::Stop);
     }
 
-    let (frame_tx, frame_rx) = mpsc::sync_channel(2);
+    let (frame_tx, frame_rx) = mpsc::sync_channel(POOL_SIZE);
+    let (free_tx, free_rx) = mpsc::sync_channel(POOL_SIZE);
     let (cmd_tx, cmd_rx) = mpsc::channel();
+
+    for _ in 0..POOL_SIZE {
+        let _ = free_tx.send(vec![0u8; FRAME_BYTES]);
+    }
 
     let flavor = new_flavor;
     thread::Builder::new()
         .name("video-bg-worker".into())
         .spawn(move || {
-            background_video_worker(flavor, frame_tx, cmd_rx);
+            background_video_worker(flavor, frame_tx, free_rx, cmd_rx);
         })
         .expect("failed to spawn video worker thread");
 
     if let Ok(mut rx) = video_bg.frame_rx.lock() {
         *rx = frame_rx;
+    }
+    if let Ok(mut tx) = video_bg.free_tx.lock() {
+        *tx = free_tx;
     }
     if let Ok(mut tx) = video_bg.cmd_tx.lock() {
         *tx = cmd_tx;
@@ -656,14 +684,24 @@ pub fn update_video_frame(
     let mut latest_frame = None;
     if let Ok(rx) = video_bg.frame_rx.lock() {
         while let Ok(frame) = rx.try_recv() {
-            latest_frame = Some(frame);
+            if let Some(prev) = latest_frame.replace(frame) {
+                if let Ok(ftx) = video_bg.free_tx.lock() {
+                    let _ = ftx.send(prev);
+                }
+            }
         }
     }
 
     if let Some(frame_data) = latest_frame {
         let handle = video_bg.image_handle.clone();
         if let Some(image) = images.get_mut(&handle) {
-            image.data = Some(frame_data);
+            if let Some(old_data) = image.data.replace(frame_data) {
+                if old_data.len() == FRAME_BYTES {
+                    if let Ok(ftx) = video_bg.free_tx.lock() {
+                        let _ = ftx.send(old_data);
+                    }
+                }
+            }
         }
     }
 }

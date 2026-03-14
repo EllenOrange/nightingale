@@ -1,7 +1,9 @@
 use bevy::prelude::*;
 
+use super::components::*;
 use super::{IconFont, FA_REFRESH, FA_SPINNER};
 use crate::scanner::metadata::Song;
+use crate::ui::layout::{ART_SIZE, CARD_MIN_HEIGHT, OVERLAY_WIDTH_SM};
 use crate::ui::UiTheme;
 
 #[derive(Component)]
@@ -11,9 +13,6 @@ pub struct SongCard {
 
 #[derive(Component)]
 pub struct SongListRoot;
-
-#[derive(Component)]
-pub struct SearchText;
 
 #[derive(Component)]
 pub struct StatusBadge {
@@ -26,76 +25,11 @@ pub struct BadgeText {
 }
 
 #[derive(Component)]
-pub struct StatsText;
-
-#[derive(Component)]
-pub struct AnalysisHint;
-
-#[derive(Component)]
-pub struct AnalyzeAllButton;
-
-#[derive(Component)]
 pub struct AlbumArtSlot;
 
 #[derive(Component)]
 pub struct SpinnerOverlay {
     pub song_index: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SidebarAction {
-    RescanFolder,
-    ChangeFolder,
-    Settings,
-    ToggleTheme,
-    Profile,
-    Exit,
-}
-
-#[derive(Component)]
-pub struct ThemeToggleIcon;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsAction {
-    ToggleFullscreen,
-    SeparatorPrev,
-    SeparatorNext,
-    ModelPrev,
-    ModelNext,
-    BeamUp,
-    BeamDown,
-    BatchUp,
-    BatchDown,
-    RestoreDefaults,
-    Close,
-}
-
-#[derive(Component)]
-pub struct SettingsOverlay;
-
-#[derive(Component)]
-pub struct SettingsButton {
-    pub action: SettingsAction,
-}
-
-#[derive(Component)]
-pub struct SettingsRow(pub usize);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsField {
-    Separator,
-    Model,
-    Beam,
-    Batch,
-    Fullscreen,
-}
-
-#[derive(Component)]
-pub struct SettingsValueText(pub SettingsField);
-
-#[derive(Component)]
-pub struct SidebarButton {
-    pub action: SidebarAction,
 }
 
 #[derive(Component)]
@@ -122,55 +56,6 @@ pub struct LanguageText {
 pub struct LanguageBadgeInner {
     pub song_index: usize,
 }
-
-#[derive(Component)]
-pub struct LanguagePickerOverlay;
-
-#[derive(Component)]
-pub struct LanguagePickerItem {
-    pub lang_code: String,
-    pub song_index: usize,
-}
-
-#[derive(Component)]
-pub struct LanguagePickerClose;
-
-#[derive(Resource)]
-pub struct LanguagePickerTarget {
-    #[allow(dead_code)]
-    pub song_index: usize,
-}
-
-#[derive(Component)]
-pub struct EmptyStateRoot;
-
-#[derive(Component)]
-pub struct ProfileOverlay;
-
-#[derive(Component)]
-pub struct ProfileNameInput;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProfileAction {
-    Create,
-    Switch(usize),
-    Delete(usize),
-    ConfirmDelete,
-    CancelDelete,
-    NewProfile,
-    Close,
-}
-
-#[derive(Component)]
-pub struct ProfileButton {
-    pub action: ProfileAction,
-}
-
-#[derive(Component)]
-pub struct ProfileLabelText;
-
-#[derive(Component)]
-pub struct ProfileNameLabel;
 
 use crate::scanner::metadata::{AnalysisStatus, TranscriptSource};
 
@@ -222,7 +107,7 @@ pub fn build_song_card(
             Node {
                 display,
                 width: Val::Percent(100.0),
-                min_height: Val::Px(64.0),
+                min_height: Val::Px(CARD_MIN_HEIGHT),
                 padding: UiRect::new(Val::Px(12.0), Val::Px(12.0), Val::Px(10.0), Val::Px(10.0)),
                 align_items: AlignItems::Center,
                 column_gap: Val::Px(12.0),
@@ -319,8 +204,8 @@ fn spawn_album_art(
     card.spawn((
         AlbumArtSlot,
         Node {
-            width: Val::Px(48.0),
-            height: Val::Px(48.0),
+            width: Val::Px(ART_SIZE),
+            height: Val::Px(ART_SIZE),
             flex_shrink: 0.0,
             ..default()
         },
@@ -330,8 +215,8 @@ fn spawn_album_art(
             wrapper.spawn((
                 ImageNode::new(handle),
                 Node {
-                    width: Val::Px(48.0),
-                    height: Val::Px(48.0),
+                    width: Val::Px(ART_SIZE),
+                    height: Val::Px(ART_SIZE),
                     border_radius: BorderRadius::all(Val::Px(4.0)),
                     ..default()
                 },
@@ -340,8 +225,8 @@ fn spawn_album_art(
             wrapper
                 .spawn((
                     Node {
-                        width: Val::Px(48.0),
-                        height: Val::Px(48.0),
+                        width: Val::Px(ART_SIZE),
+                        height: Val::Px(ART_SIZE),
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::Center,
                         border_radius: BorderRadius::all(Val::Px(4.0)),
@@ -366,14 +251,14 @@ fn spawn_album_art(
                 SpinnerOverlay { song_index: index },
                 Node {
                     position_type: PositionType::Absolute,
-                    width: Val::Px(48.0),
-                    height: Val::Px(48.0),
+                    width: Val::Px(ART_SIZE),
+                    height: Val::Px(ART_SIZE),
                     justify_content: JustifyContent::Center,
                     align_items: AlignItems::Center,
                     border_radius: BorderRadius::all(Val::Px(4.0)),
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+                BackgroundColor(theme.spinner_overlay),
                 Visibility::Hidden,
             ))
             .with_children(|overlay| {
@@ -681,13 +566,13 @@ pub fn spawn_language_picker(
                 ..default()
             },
             GlobalZIndex(10),
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+            BackgroundColor(theme.overlay_dim),
         ))
         .with_children(|overlay| {
             overlay
                 .spawn((
                     Node {
-                        width: Val::Px(320.0),
+                        width: Val::Px(OVERLAY_WIDTH_SM),
                         max_height: Val::Percent(70.0),
                         flex_direction: FlexDirection::Column,
                         padding: UiRect::all(Val::Px(20.0)),

@@ -1,14 +1,15 @@
+pub mod components;
 pub mod folder;
+mod nav;
 pub mod profile;
+mod scroll;
+mod search;
 pub mod settings;
 pub mod sidebar;
 pub mod song_card;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{ImageSampler, ImageType};
-use bevy::input::keyboard::KeyboardInput;
-use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
-use bevy::picking::hover::HoverMap;
 use bevy::prelude::*;
 
 use crate::analyzer::cache::CacheDir;
@@ -18,6 +19,7 @@ use crate::scanner::metadata::{AnalysisStatus, SongLibrary, TranscriptSource};
 use crate::profile::ProfileStore;
 use crate::states::AppState;
 use crate::ui::UiTheme;
+use components::*;
 use song_card::*;
 
 #[derive(Default, PartialEq, Clone, Copy)]
@@ -50,24 +52,6 @@ impl Default for MenuFocus {
     }
 }
 
-const NAV_INITIAL_DELAY: f32 = 0.4;
-const NAV_REPEAT_RATE: f32 = 0.06;
-
-#[derive(Resource)]
-struct NavRepeat {
-    timer: Timer,
-    started: bool,
-}
-
-impl Default for NavRepeat {
-    fn default() -> Self {
-        Self {
-            timer: Timer::from_seconds(NAV_INITIAL_DELAY, TimerMode::Once),
-            started: false,
-        }
-    }
-}
-
 pub const SIDEBAR_ACTIONS: &[SidebarAction] = &[
     SidebarAction::ChangeFolder,
     SidebarAction::RescanFolder,
@@ -77,18 +61,39 @@ pub const SIDEBAR_ACTIONS: &[SidebarAction] = &[
     SidebarAction::Exit,
 ];
 
+#[derive(Resource, Default)]
+pub struct AnyOverlayOpen(pub bool);
+
+fn update_overlay_state(
+    mut overlay_open: ResMut<AnyOverlayOpen>,
+    settings: Query<(), With<SettingsOverlay>>,
+    profile: Query<(), With<ProfileOverlay>>,
+    exit: Query<(), With<sidebar::ExitOverlay>>,
+    lang_picker: Query<(), With<LanguagePickerOverlay>>,
+) {
+    overlay_open.0 = !settings.is_empty()
+        || !profile.is_empty()
+        || !exit.is_empty()
+        || !lang_picker.is_empty();
+}
+
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuState>()
             .init_resource::<MenuFocus>()
-            .init_resource::<NavRepeat>()
+            .init_resource::<nav::NavRepeat>()
+            .init_resource::<AnyOverlayOpen>()
             .init_resource::<sidebar::CacheStats>()
             .init_resource::<sidebar::CacheStatsTimer>()
             .add_systems(
                 OnEnter(AppState::Menu),
                 (load_album_art, build_menu, kick_off_cache_stats).chain(),
+            )
+            .add_systems(
+                Update,
+                update_overlay_state.run_if(in_state(AppState::Menu)),
             )
             .add_systems(
                 Update,
@@ -99,8 +104,9 @@ impl Plugin for MenuPlugin {
                     handle_analyze_all_click,
                     handle_language_button_click,
                     handle_language_picker_interaction,
-                    handle_search_input,
+                    search::handle_search_input,
                     update_status_badges,
+                    animate_spinners,
                     update_analysis_hint,
                     sidebar::handle_sidebar_click,
                     sidebar::handle_exit_input,
@@ -117,17 +123,17 @@ impl Plugin for MenuPlugin {
             .add_systems(
                 Update,
                 (
-                    clear_focus_on_empty_hover
-                        .before(handle_menu_nav),
-                    handle_menu_nav
+                    nav::clear_focus_on_empty_hover
+                        .before(nav::handle_menu_nav),
+                    nav::handle_menu_nav
                         .after(handle_song_click)
                         .after(sidebar::handle_sidebar_click),
-                    apply_menu_focus_styling
-                        .after(handle_menu_nav)
+                    nav::apply_menu_focus_styling
+                        .after(nav::handle_menu_nav)
                         .after(handle_song_click)
                         .after(sidebar::handle_sidebar_click)
-                        .after(clear_focus_on_empty_hover),
-                    scroll_to_focused.after(handle_menu_nav),
+                        .after(nav::clear_focus_on_empty_hover),
+                    nav::scroll_to_focused.after(nav::handle_menu_nav),
                 )
                     .run_if(in_state(AppState::Menu)),
             )
@@ -137,8 +143,8 @@ impl Plugin for MenuPlugin {
                     .run_if(in_state(AppState::Menu))
                     .run_if(resource_exists::<profile::ProfileInputState>),
             )
-            .add_systems(Update, send_scroll_events)
-            .add_observer(on_scroll_handler)
+            .add_systems(Update, scroll::send_scroll_events)
+            .add_observer(scroll::on_scroll_handler)
             .add_systems(OnExit(AppState::Menu), cleanup_menu);
     }
 }
@@ -266,7 +272,7 @@ fn build_main_area(
         }
 
         main.spawn(Node {
-            width: Val::Px(700.0),
+            width: Val::Px(crate::ui::layout::MAIN_CONTENT_WIDTH),
             flex_shrink: 0.0,
             flex_direction: FlexDirection::Row,
             column_gap: Val::Px(8.0),
@@ -382,7 +388,7 @@ fn build_main_area(
         main.spawn((
             SongListRoot,
             Node {
-                width: Val::Px(700.0),
+                width: Val::Px(crate::ui::layout::MAIN_CONTENT_WIDTH),
                 flex_grow: 1.0,
                 flex_basis: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
@@ -458,14 +464,11 @@ fn handle_song_click(
     mut library: ResMut<SongLibrary>,
     mut next_state: ResMut<NextState<AppState>>,
     mut queue: ResMut<AnalysisQueue>,
-    overlay_query: Query<(), With<SettingsOverlay>>,
-    profile_overlay_query: Query<(), With<ProfileOverlay>>,
-    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
-    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
+    overlay_open: Res<AnyOverlayOpen>,
     mut focus: ResMut<MenuFocus>,
     nav: Res<crate::input::NavInput>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
+    if overlay_open.0 {
         return;
     }
     for (interaction, song_card) in &interaction_query {
@@ -532,12 +535,9 @@ fn handle_reanalyze_click(
     mut queue: ResMut<AnalysisQueue>,
     cache: Res<CacheDir>,
     theme: Res<UiTheme>,
-    overlay_query: Query<(), With<SettingsOverlay>>,
-    profile_overlay_query: Query<(), With<ProfileOverlay>>,
-    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
-    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
+    overlay_open: Res<AnyOverlayOpen>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
+    if overlay_open.0 {
         return;
     }
     for (interaction, btn, mut bg) in &mut interaction_query {
@@ -574,16 +574,9 @@ fn handle_delete_cache_click(
     mut library: ResMut<SongLibrary>,
     cache: Res<CacheDir>,
     theme: Res<UiTheme>,
-    overlay_query: Query<(), With<SettingsOverlay>>,
-    profile_overlay_query: Query<(), With<ProfileOverlay>>,
-    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
-    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
+    overlay_open: Res<AnyOverlayOpen>,
 ) {
-    if !overlay_query.is_empty()
-        || !profile_overlay_query.is_empty()
-        || !exit_overlay_query.is_empty()
-        || !lang_picker_query.is_empty()
-    {
+    if overlay_open.0 {
         return;
     }
     for (interaction, btn, mut bg) in &mut interaction_query {
@@ -623,12 +616,9 @@ fn handle_analyze_all_click(
     mut library: ResMut<SongLibrary>,
     mut queue: ResMut<AnalysisQueue>,
     theme: Res<UiTheme>,
-    overlay_query: Query<(), With<SettingsOverlay>>,
-    profile_overlay_query: Query<(), With<ProfileOverlay>>,
-    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
-    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
+    overlay_open: Res<AnyOverlayOpen>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
+    if overlay_open.0 {
         return;
     }
     let has_unanalyzed = library.songs.iter().any(|s| {
@@ -805,101 +795,6 @@ fn handle_language_picker_interaction(
     }
 }
 
-fn handle_search_input(
-    mut key_events: MessageReader<KeyboardInput>,
-    mut menu_state: ResMut<MenuState>,
-    mut search_text_query: Query<(&mut Text, &mut TextColor), With<SearchText>>,
-    theme: Res<UiTheme>,
-    library: Res<SongLibrary>,
-    mut card_query: Query<(&SongCard, &mut Node)>,
-    overlay_query: Query<(), With<SettingsOverlay>>,
-    profile_overlay_query: Query<(), With<ProfileOverlay>>,
-    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
-    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
-    mut focus: ResMut<MenuFocus>,
-) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
-        return;
-    }
-    let mut changed = false;
-
-    for ev in key_events.read() {
-        if !ev.state.is_pressed() {
-            continue;
-        }
-
-        if ev.key_code == KeyCode::Backspace {
-            if !menu_state.search_query.is_empty() {
-                menu_state.search_query.pop();
-                changed = true;
-            }
-            continue;
-        }
-
-        if ev.key_code == KeyCode::Escape {
-            if !menu_state.search_query.is_empty() {
-                menu_state.search_query.clear();
-                changed = true;
-            }
-            continue;
-        }
-
-        if let Some(ref text) = ev.text {
-            for c in text.chars() {
-                if !c.is_control() {
-                    menu_state.search_query.push(c);
-                    changed = true;
-                }
-            }
-        }
-    }
-
-    if !changed {
-        return;
-    }
-
-    if let Ok((mut text, mut color)) = search_text_query.single_mut() {
-        if menu_state.search_query.is_empty() {
-            **text = "Type to search songs...".into();
-            *color = TextColor(theme.text_dim);
-        } else {
-            **text = menu_state.search_query.clone();
-            *color = TextColor(theme.text_primary);
-        }
-    }
-
-    let query = menu_state.search_query.to_lowercase();
-    let mut first_visible: Option<usize> = None;
-    let mut current_still_visible = false;
-
-    for (card, mut node) in &mut card_query {
-        let visible = if query.is_empty() {
-            true
-        } else if card.song_index < library.songs.len() {
-            let song = &library.songs[card.song_index];
-            song.display_title().to_lowercase().contains(&query)
-                || song.display_artist().to_lowercase().contains(&query)
-        } else {
-            false
-        };
-        node.display = if visible { Display::Flex } else { Display::None };
-        if visible {
-            if first_visible.map_or(true, |f| card.song_index < f) {
-                first_visible = Some(card.song_index);
-            }
-            if card.song_index == focus.song_index {
-                current_still_visible = true;
-            }
-        }
-    }
-
-    if focus.panel == FocusPanel::SongList && !current_still_visible {
-        if let Some(idx) = first_visible {
-            focus.song_index = idx;
-        }
-    }
-}
-
 fn update_analysis_hint(
     library: Res<SongLibrary>,
     mut hint: Query<&mut Visibility, With<AnalysisHint>>,
@@ -921,13 +816,12 @@ fn update_analysis_hint(
 fn update_status_badges(
     library: Res<SongLibrary>,
     queue: Res<AnalysisQueue>,
-    time: Res<Time>,
     theme: Res<UiTheme>,
     mut badge_query: Query<(&StatusBadge, &mut BackgroundColor), Without<SpinnerOverlay>>,
     mut badge_text_query: Query<(&BadgeText, &mut Text), (Without<StatsText>, Without<LanguageText>)>,
     mut stats_query: Query<&mut Text, (With<StatsText>, Without<BadgeText>, Without<LanguageText>)>,
-    mut spinner_query: Query<
-        (&SpinnerOverlay, &mut Visibility, &mut BackgroundColor),
+    mut spinner_vis_query: Query<
+        (&SpinnerOverlay, &mut Visibility),
         (Without<ReanalyzeButton>, Without<StatusBadge>, Without<LanguageButton>),
     >,
     mut reanalyze_query: Query<(&ReanalyzeButton, &mut Visibility), (Without<SpinnerOverlay>, Without<LanguageButton>, Without<DeleteCacheButton>)>,
@@ -936,6 +830,10 @@ fn update_status_badges(
     mut lang_btn_query: Query<(&LanguageButton, &mut Visibility), (Without<SpinnerOverlay>, Without<ReanalyzeButton>)>,
     mut lang_inner_query: Query<(&LanguageBadgeInner, &mut BackgroundColor, &mut BorderColor), (Without<StatusBadge>, Without<SpinnerOverlay>)>,
 ) {
+    if !library.is_changed() && !queue.is_changed() && queue.active.is_none() {
+        return;
+    }
+
     for (badge, mut bg) in &mut badge_query {
         if badge.song_index >= library.songs.len() {
             continue;
@@ -985,22 +883,17 @@ fn update_status_badges(
         );
     }
 
-    let spinner_alpha = (time.elapsed_secs() * 3.0).sin() * 0.25 + 0.75;
-
-    for (spinner, mut vis, mut bg) in &mut spinner_query {
+    for (spinner, mut vis) in &mut spinner_vis_query {
         if spinner.song_index >= library.songs.len() {
             continue;
         }
         let analyzing =
             library.songs[spinner.song_index].analysis_status == AnalysisStatus::Analyzing;
-        *vis = if analyzing {
+        vis.set_if_neq(if analyzing {
             Visibility::Inherited
         } else {
             Visibility::Hidden
-        };
-        if analyzing {
-            *bg = BackgroundColor(Color::srgba(0.0, 0.0, 0.0, spinner_alpha));
-        }
+        });
     }
 
     for (btn, mut vis) in &mut reanalyze_query {
@@ -1072,318 +965,20 @@ fn update_status_badges(
     }
 }
 
-const SCROLL_LINE_HEIGHT: f32 = 21.0;
-
-#[derive(EntityEvent, Debug)]
-#[entity_event(propagate, auto_propagate)]
-struct ScrollEvent {
-    entity: Entity,
-    delta: Vec2,
-}
-
-fn send_scroll_events(
-    mut mouse_wheel_reader: MessageReader<MouseWheel>,
-    hover_map: Res<HoverMap>,
-    mut commands: Commands,
-) {
-    for mouse_wheel in mouse_wheel_reader.read() {
-        let mut delta = -Vec2::new(mouse_wheel.x, mouse_wheel.y);
-
-        if mouse_wheel.unit == MouseScrollUnit::Line {
-            delta *= SCROLL_LINE_HEIGHT;
-        }
-
-        for pointer_map in hover_map.values() {
-            for entity in pointer_map.keys().copied() {
-                commands.trigger(ScrollEvent { entity, delta });
-            }
-        }
-    }
-}
-
-fn on_scroll_handler(
-    mut scroll: On<ScrollEvent>,
-    mut query: Query<(&mut ScrollPosition, &Node, &ComputedNode)>,
-) {
-    let Ok((mut scroll_position, node, computed)) = query.get_mut(scroll.entity) else {
-        return;
-    };
-
-    let max_offset = (computed.content_size() - computed.size()) * computed.inverse_scale_factor();
-    let delta = &mut scroll.delta;
-
-    if node.overflow.y == OverflowAxis::Scroll && delta.y != 0. {
-        let at_limit = if delta.y > 0. {
-            scroll_position.y >= max_offset.y
-        } else {
-            scroll_position.y <= 0.
-        };
-
-        if !at_limit {
-            scroll_position.y = (scroll_position.y + delta.y).clamp(0., max_offset.y.max(0.));
-            delta.y = 0.;
-        }
-    }
-
-    if node.overflow.x == OverflowAxis::Scroll && delta.x != 0. {
-        let at_limit = if delta.x > 0. {
-            scroll_position.x >= max_offset.x
-        } else {
-            scroll_position.x <= 0.
-        };
-
-        if !at_limit {
-            scroll_position.x = (scroll_position.x + delta.x).clamp(0., max_offset.x.max(0.));
-            delta.x = 0.;
-        }
-    }
-
-    if *delta == Vec2::ZERO {
-        scroll.propagate(false);
-    }
-}
-
-fn clear_focus_on_empty_hover(
-    mut cursor_events: MessageReader<bevy::window::CursorMoved>,
-    mut focus: ResMut<MenuFocus>,
-    card_query: Query<&Interaction, With<SongCard>>,
-    sidebar_query: Query<&Interaction, With<SidebarButton>>,
-    analyze_all_query: Query<&Interaction, With<AnalyzeAllButton>>,
-) {
-    if cursor_events.read().next().is_none() {
-        return;
-    }
-
-    let any_hovered = card_query
-        .iter()
-        .chain(sidebar_query.iter())
-        .chain(analyze_all_query.iter())
-        .any(|i| matches!(i, Interaction::Hovered | Interaction::Pressed));
-
-    if !any_hovered {
-        focus.active = false;
-    }
-}
-
-fn handle_menu_nav(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    nav: Res<crate::input::NavInput>,
-    mut focus: ResMut<MenuFocus>,
-    card_query: Query<(&SongCard, &Node), Without<SidebarButton>>,
-    overlay_query: Query<(), With<SettingsOverlay>>,
-    profile_overlay_query: Query<(), With<ProfileOverlay>>,
-    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
-    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
+fn animate_spinners(
     time: Res<Time>,
-    mut nav_repeat: ResMut<NavRepeat>,
-) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() || !lang_picker_query.is_empty() {
-        return;
-    }
-
-    let ud_just = nav.up || nav.down;
-    let ud_held = nav.up_held || nav.down_held;
-
-    let mut ud_step = false;
-    if ud_just {
-        nav_repeat.timer = Timer::from_seconds(NAV_INITIAL_DELAY, TimerMode::Once);
-        nav_repeat.started = true;
-        ud_step = true;
-    } else if ud_held && nav_repeat.started {
-        nav_repeat.timer.tick(time.delta());
-        if nav_repeat.timer.just_finished() {
-            nav_repeat.timer = Timer::from_seconds(NAV_REPEAT_RATE, TimerMode::Repeating);
-            ud_step = true;
-        }
-    } else {
-        nav_repeat.started = false;
-    }
-
-    if focus.nav_lock > 0 {
-        focus.nav_lock -= 1;
-    }
-
-    let any_nav = ud_step
-        || nav.left
-        || nav.right
-        || keyboard.just_pressed(KeyCode::Tab);
-    if !any_nav {
-        return;
-    }
-
-    focus.active = true;
-
-    if nav.left {
-        focus.panel = FocusPanel::Sidebar;
-        focus.analyze_all_focused = false;
-    } else if nav.right {
-        focus.panel = FocusPanel::SongList;
-    } else if keyboard.just_pressed(KeyCode::Tab) {
-        focus.panel = if focus.panel == FocusPanel::SongList {
-            focus.analyze_all_focused = false;
-            FocusPanel::Sidebar
-        } else {
-            FocusPanel::SongList
-        };
-    }
-
-    let step_down = ud_step && nav.down_held;
-    let step_up = ud_step && nav.up_held;
-
-    if step_down || step_up {
-        match focus.panel {
-            FocusPanel::SongList => {
-                if focus.analyze_all_focused {
-                    if step_down {
-                        focus.analyze_all_focused = false;
-                    }
-                } else {
-                    let mut visible: Vec<usize> = card_query
-                        .iter()
-                        .filter(|(_, node)| node.display != Display::None)
-                        .map(|(card, _)| card.song_index)
-                        .collect();
-                    visible.sort();
-
-                    if !visible.is_empty() {
-                        let pos = visible.iter().position(|&i| i == focus.song_index);
-                        if step_down {
-                            focus.song_index = match pos {
-                                Some(p) if p + 1 < visible.len() => visible[p + 1],
-                                None => visible[0],
-                                _ => focus.song_index,
-                            };
-                        }
-                        if step_up {
-                            match pos {
-                                Some(0) | None => {
-                                    focus.analyze_all_focused = true;
-                                }
-                                Some(p) => {
-                                    focus.song_index = visible[p - 1];
-                                }
-                            }
-                        }
-                        focus.nav_lock = 2;
-                    }
-                }
-            }
-            FocusPanel::Sidebar => {
-                if step_down {
-                    focus.sidebar_index =
-                        (focus.sidebar_index + 1).min(SIDEBAR_ACTIONS.len() - 1);
-                }
-                if step_up {
-                    focus.sidebar_index = focus.sidebar_index.saturating_sub(1);
-                }
-            }
-        }
-    }
-
-}
-
-fn apply_menu_focus_styling(
-    focus: Res<MenuFocus>,
-    mut card_query: Query<
-        (&SongCard, &mut BackgroundColor, &mut BorderColor),
-        (Without<SidebarButton>, Without<AnalyzeAllButton>),
-    >,
-    mut sidebar_query: Query<
-        (&SidebarButton, &mut BackgroundColor, &mut BorderColor),
-        (Without<SongCard>, Without<AnalyzeAllButton>),
-    >,
-    mut analyze_all_query: Query<
-        &mut BorderColor,
-        (With<AnalyzeAllButton>, Without<SongCard>, Without<SidebarButton>),
-    >,
     theme: Res<UiTheme>,
-    overlay_query: Query<(), With<SettingsOverlay>>,
-    profile_overlay_query: Query<(), With<ProfileOverlay>>,
-    exit_overlay_query: Query<(), With<sidebar::ExitOverlay>>,
+    library: Res<SongLibrary>,
+    mut spinner_query: Query<(&SpinnerOverlay, &mut BackgroundColor)>,
 ) {
-    if !focus.is_changed() && !theme.is_changed() {
-        return;
-    }
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
-        return;
-    }
-    for (card, mut bg, mut border) in &mut card_query {
-        let is_focused = focus.active
-            && focus.panel == FocusPanel::SongList
-            && !focus.analyze_all_focused
-            && card.song_index == focus.song_index;
-        if is_focused {
-            bg.set_if_neq(BackgroundColor(theme.card_hover));
-            border.set_if_neq(BorderColor::all(theme.accent));
-        } else {
-            bg.set_if_neq(BackgroundColor(theme.card_bg));
-            border.set_if_neq(BorderColor::all(Color::NONE));
+    let spinner_alpha = (time.elapsed_secs() * 3.0).sin() * 0.25 + 0.75;
+    for (spinner, mut bg) in &mut spinner_query {
+        if spinner.song_index >= library.songs.len() {
+            continue;
         }
-    }
-    for (btn, mut bg, mut border) in &mut sidebar_query {
-        let idx = SIDEBAR_ACTIONS.iter().position(|&a| a == btn.action);
-        let is_focused =
-            focus.active && focus.panel == FocusPanel::Sidebar && idx == Some(focus.sidebar_index);
-        if is_focused {
-            bg.set_if_neq(BackgroundColor(theme.sidebar_btn_hover));
-            border.set_if_neq(BorderColor::all(theme.accent));
-        } else {
-            bg.set_if_neq(BackgroundColor(theme.sidebar_btn));
-            border.set_if_neq(BorderColor::all(Color::NONE));
+        if library.songs[spinner.song_index].analysis_status == AnalysisStatus::Analyzing {
+            *bg = BackgroundColor(theme.spinner_overlay.with_alpha(spinner_alpha));
         }
-    }
-    let aa_focused = focus.active && focus.panel == FocusPanel::SongList && focus.analyze_all_focused;
-    for mut border in &mut analyze_all_query {
-        if aa_focused {
-            border.set_if_neq(BorderColor::all(theme.accent));
-        } else {
-            border.set_if_neq(BorderColor::all(Color::NONE));
-        }
-    }
-}
-
-fn scroll_to_focused(
-    focus: Res<MenuFocus>,
-    mut scroll_query: Query<(&mut ScrollPosition, &ComputedNode), With<SongListRoot>>,
-    card_query: Query<(&SongCard, &Node, &ComputedNode)>,
-) {
-    if !focus.is_changed() || focus.panel != FocusPanel::SongList {
-        return;
-    }
-
-    let Ok((mut scroll_pos, list_computed)) = scroll_query.single_mut() else {
-        return;
-    };
-
-    let list_height = list_computed.size().y * list_computed.inverse_scale_factor();
-    if list_height < 1.0 {
-        return;
-    }
-
-    let gap = 8.0;
-    let mut cards: Vec<(usize, f32)> = card_query
-        .iter()
-        .filter(|(_, node, _)| node.display != Display::None)
-        .map(|(card, _, computed)| {
-            (
-                card.song_index,
-                computed.size().y * computed.inverse_scale_factor(),
-            )
-        })
-        .collect();
-    cards.sort_by_key(|(idx, _)| *idx);
-
-    let mut y = 0.0;
-    for (idx, height) in &cards {
-        if *idx == focus.song_index {
-            if y < scroll_pos.y {
-                scroll_pos.y = y;
-            } else if y + height > scroll_pos.y + list_height {
-                scroll_pos.y = y + height - list_height;
-            }
-            return;
-        }
-        y += height + gap;
     }
 }
 

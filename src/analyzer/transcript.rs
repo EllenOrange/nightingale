@@ -32,7 +32,7 @@ pub struct Word {
 }
 
 impl Transcript {
-    pub fn load(path: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load(path: &std::path::Path) -> Result<Self, crate::error::NightingaleError> {
         let data = std::fs::read_to_string(path)?;
         let transcript: Transcript = serde_json::from_str(&data)?;
         Ok(transcript)

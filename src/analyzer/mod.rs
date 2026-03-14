@@ -6,6 +6,7 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Stdio};
 
+use crate::error::NightingaleError;
 use crate::vendor::silent_command;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
@@ -92,7 +93,7 @@ impl Drop for ServerProcess {
 static ANALYZER_SERVER: LazyLock<Mutex<Option<ServerProcess>>> =
     LazyLock::new(|| Mutex::new(None));
 
-fn spawn_server() -> Result<ServerProcess, String> {
+fn spawn_server() -> Result<ServerProcess, NightingaleError> {
     let python = crate::vendor::python_path();
     let script = crate::vendor::analyzer_dir().join("server.py");
     let models = crate::vendor::models_dir();
@@ -121,15 +122,15 @@ fn spawn_server() -> Result<ServerProcess, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to start analyzer server: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| NightingaleError::Other(format!("Failed to start analyzer server: {e}")))?;
     let pid = child.id();
     eprintln!("[analyzer] Server process spawned (pid={pid})");
 
     let stdin = BufWriter::new(
-        child.stdin.take().ok_or("Failed to capture server stdin")?,
+        child.stdin.take().ok_or(NightingaleError::Other("Failed to capture server stdin".into()))?,
     );
     let stdout = BufReader::new(
-        child.stdout.take().ok_or("Failed to capture server stdout")?,
+        child.stdout.take().ok_or(NightingaleError::Other("Failed to capture server stdout".into()))?,
     );
 
     if let Some(stderr) = child.stderr.take() {
@@ -144,7 +145,7 @@ fn spawn_server() -> Result<ServerProcess, String> {
     Ok(ServerProcess { child, stdin, stdout })
 }
 
-fn ensure_server(guard: &mut std::sync::MutexGuard<Option<ServerProcess>>) -> Result<(), String> {
+fn ensure_server(guard: &mut std::sync::MutexGuard<Option<ServerProcess>>) -> Result<(), NightingaleError> {
     if guard.is_some() {
         return Ok(());
     }
@@ -290,27 +291,15 @@ fn send_and_monitor(
     server: &mut ServerProcess,
     json_cmd: &str,
     progress: &Arc<Mutex<ProgressInfo>>,
-) -> Result<SongResult, String> {
-    server
-        .stdin
-        .write_all(json_cmd.as_bytes())
-        .map_err(|e| format!("stdin write failed: {e}"))?;
-    server
-        .stdin
-        .write_all(b"\n")
-        .map_err(|e| format!("stdin newline failed: {e}"))?;
-    server
-        .stdin
-        .flush()
-        .map_err(|e| format!("stdin flush failed: {e}"))?;
+) -> Result<SongResult, NightingaleError> {
+    server.stdin.write_all(json_cmd.as_bytes())?;
+    server.stdin.write_all(b"\n")?;
+    server.stdin.flush()?;
 
     let mut line_buf = String::new();
     loop {
         line_buf.clear();
-        let bytes = server
-            .stdout
-            .read_line(&mut line_buf)
-            .map_err(|e| format!("stdout read failed: {e}"))?;
+        let bytes = server.stdout.read_line(&mut line_buf)?;
 
         if bytes == 0 {
             return Err("Server process closed stdout unexpectedly".into());
@@ -400,7 +389,7 @@ fn spawn_analyzer(
             if let Err(e) = ensure_server(&mut guard) {
                 let mut p = progress_clone.lock().unwrap();
                 p.finished = Some(false);
-                p.message = e;
+                p.message = e.to_string();
                 return;
             }
 
@@ -560,16 +549,34 @@ fn poll_active_job(
 
 fn kill_analyzer_on_exit(
     mut exit_events: MessageReader<AppExit>,
-    _queue: Res<AnalysisQueue>,
+    queue: Res<AnalysisQueue>,
 ) {
     if exit_events.read().next().is_none() {
         return;
     }
-    let mut guard = ANALYZER_SERVER.lock().unwrap();
-    if let Some(ref mut server) = *guard {
-        info!("Shutting down analyzer server");
-        let _ = writeln!(server.stdin, r#"{{"command":"quit"}}"#);
-        let _ = server.stdin.flush();
+
+    if let Some(ref active) = queue.active {
+        let pid = active.child_pid.load(Ordering::Relaxed);
+        if pid != 0 {
+            eprintln!("[analyzer] Killing server process during exit (pid={pid})");
+            #[cfg(unix)]
+            unsafe {
+                libc::kill(pid as i32, libc::SIGTERM);
+            }
+        }
     }
-    *guard = None;
+
+    match ANALYZER_SERVER.try_lock() {
+        Ok(mut guard) => {
+            if let Some(ref mut server) = *guard {
+                info!("Shutting down analyzer server");
+                let _ = writeln!(server.stdin, r#"{{"command":"quit"}}"#);
+                let _ = server.stdin.flush();
+            }
+            *guard = None;
+        }
+        Err(_) => {
+            eprintln!("[analyzer] Server lock held by analysis thread, process already killed by signal");
+        }
+    }
 }

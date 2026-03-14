@@ -71,6 +71,10 @@ impl AppConfig {
         self.batch_size.unwrap_or(8)
     }
 
+    pub fn guide_volume(&self) -> f64 {
+        self.guide_volume.unwrap_or(0.3)
+    }
+
     pub fn separator(&self) -> &str {
         self.separator.as_deref().unwrap_or("karaoke")
     }

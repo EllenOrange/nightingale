@@ -6,13 +6,13 @@ use bevy::prelude::*;
 
 use super::folder::{PendingFolderPick, PendingRescan};
 use super::settings::spawn_settings_popup;
-use super::song_card::*;
+use super::components::*;
 use super::{IconFont, FA_MOON, FA_SUN, FA_USER};
 use crate::analyzer::cache::{dir_size, CacheDir};
 use crate::profile::ProfileStore;
 use crate::scanner::metadata::Song;
 use crate::states::AppState;
-use crate::ui::{self, UiTheme};
+use crate::ui::{self, ButtonVariant, UiTheme};
 
 const FA_GEAR: &str = "\u{f013}";
 const FA_RIGHT_FROM_BRACKET: &str = "\u{f2f5}";
@@ -152,8 +152,8 @@ impl CacheCategory {
     fn color(&self, theme: &UiTheme) -> Color {
         match self {
             Self::Songs => theme.accent,
-            Self::Videos => Color::srgb(0.28, 0.72, 0.42),
-            Self::Models => Color::srgb(0.88, 0.62, 0.18),
+            Self::Videos => theme.cache_videos,
+            Self::Models => theme.cache_models,
             Self::Other => theme.text_dim,
         }
     }
@@ -486,7 +486,7 @@ pub fn build_sidebar(
 ) {
     root.spawn((
         Node {
-            width: Val::Px(220.0),
+            width: Val::Px(crate::ui::layout::SIDEBAR_WIDTH),
             height: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
@@ -664,31 +664,8 @@ fn spawn_sidebar_button(
     theme: &UiTheme,
     enabled: bool,
 ) {
-    let text_color = if enabled {
-        theme.text_primary
-    } else {
-        theme.text_dim
-    };
-
-    parent
-        .spawn((
-            SidebarButton { action },
-            Button,
-            Node {
-                width: Val::Percent(100.0),
-                padding: UiRect::new(Val::Px(14.0), Val::Px(14.0), Val::Px(10.0), Val::Px(10.0)),
-                border: UiRect::all(Val::Px(2.0)),
-                border_radius: BorderRadius::all(Val::Px(5.0)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BorderColor::all(Color::NONE),
-            BackgroundColor(theme.sidebar_btn),
-        ))
-        .with_children(|btn| {
-            ui::spawn_label(btn, label, 13.0, text_color);
-        });
+    let text_color = if enabled { theme.text_primary } else { theme.text_dim };
+    ui::spawn_button_with_color(parent, ButtonVariant::Sidebar, label, theme, text_color, SidebarButton { action });
 }
 
 pub fn handle_sidebar_click(
@@ -702,9 +679,7 @@ pub fn handle_sidebar_click(
     pending_rescan: Option<Res<PendingRescan>>,
     mut theme: ResMut<UiTheme>,
     cache: Res<CacheDir>,
-    overlay_query: Query<(), With<SettingsOverlay>>,
-    profile_overlay_query: Query<(), With<ProfileOverlay>>,
-    exit_overlay_query: Query<(), With<ExitOverlay>>,
+    overlay_open: Res<super::AnyOverlayOpen>,
     profiles: Res<ProfileStore>,
     mut next_state: ResMut<NextState<AppState>>,
     asset_server: Res<AssetServer>,
@@ -712,7 +687,7 @@ pub fn handle_sidebar_click(
     mut focus: ResMut<super::MenuFocus>,
     menu_root_query: Query<Entity, With<super::MenuRoot>>,
 ) {
-    if !overlay_query.is_empty() || !profile_overlay_query.is_empty() || !exit_overlay_query.is_empty() {
+    if overlay_open.0 {
         return;
     }
 
@@ -855,13 +830,13 @@ fn spawn_exit_popup(commands: &mut Commands, theme: &UiTheme) {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
+            BackgroundColor(theme.overlay_dim),
         ))
         .with_children(|overlay| {
             overlay
                 .spawn((
                     Node {
-                        width: Val::Px(340.0),
+                        width: Val::Px(crate::ui::layout::OVERLAY_WIDTH_MD),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Center,
                         padding: UiRect::all(Val::Px(28.0)),
@@ -898,67 +873,8 @@ fn spawn_exit_popup(commands: &mut Commands, theme: &UiTheme) {
                         },
                     ));
 
-                    card.spawn((
-                        ExitCancelButton,
-                        Button,
-                        Node {
-                            width: Val::Percent(100.0),
-                            padding: UiRect::new(
-                                Val::Px(14.0),
-                                Val::Px(14.0),
-                                Val::Px(10.0),
-                                Val::Px(10.0),
-                            ),
-                            border: UiRect::all(Val::Px(2.0)),
-                            border_radius: BorderRadius::all(Val::Px(5.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(theme.accent),
-                        BorderColor::all(Color::NONE),
-                    ))
-                    .with_children(|btn| {
-                        btn.spawn((
-                            Text::new("Cancel"),
-                            TextFont {
-                                font_size: 14.0,
-                                ..default()
-                            },
-                            TextColor(Color::WHITE),
-                        ));
-                    });
-
-                    card.spawn((
-                        ExitConfirmButton,
-                        Button,
-                        Node {
-                            width: Val::Percent(100.0),
-                            padding: UiRect::new(
-                                Val::Px(14.0),
-                                Val::Px(14.0),
-                                Val::Px(10.0),
-                                Val::Px(10.0),
-                            ),
-                            border: UiRect::all(Val::Px(2.0)),
-                            border_radius: BorderRadius::all(Val::Px(5.0)),
-                            justify_content: JustifyContent::Center,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(theme.popup_btn),
-                        BorderColor::all(Color::NONE),
-                    ))
-                    .with_children(|btn| {
-                        btn.spawn((
-                            Text::new("Exit"),
-                            TextFont {
-                                font_size: 14.0,
-                                ..default()
-                            },
-                            TextColor(theme.text_primary),
-                        ));
-                    });
+                    ui::spawn_button(card, ButtonVariant::Primary, "Cancel", theme, ExitCancelButton);
+                    ui::spawn_button(card, ButtonVariant::Secondary, "Exit", theme, ExitConfirmButton);
                 });
         });
 }
@@ -984,7 +900,7 @@ pub fn handle_exit_input(
     menu_state: Res<super::MenuState>,
     settings_query: Query<(), With<SettingsOverlay>>,
     profile_query: Query<(), With<ProfileOverlay>>,
-    lang_picker_query: Query<(), With<super::song_card::LanguagePickerOverlay>>,
+    lang_picker_query: Query<(), With<LanguagePickerOverlay>>,
 ) {
     let overlay_entity = overlay_query.single();
 

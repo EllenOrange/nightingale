@@ -17,18 +17,12 @@ Progress protocol (parsed by Rust app):
 
 import argparse
 import hashlib
-import json
 import os
-import shutil
-import subprocess
 import sys
-import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from whisper_compat import progress, detect_device
-from stems import separate_stems, separate_stems_uvr
-from align import align_lyrics
-from transcribe import transcribe_vocals
+from pipeline import run_pipeline
 
 
 def compute_hash(path: str) -> str:
@@ -37,19 +31,6 @@ def compute_hash(path: str) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
-
-
-def _ffmpeg_bin():
-    return os.environ.get("FFMPEG_PATH", "ffmpeg")
-
-
-def _convert_to_ogg(src_wav, dest_ogg):
-    subprocess.run(
-        [_ffmpeg_bin(), "-y", "-i", src_wav, "-c:a", "libvorbis", "-q:a", "6", "-v", "error", dest_ogg],
-        check=True,
-    )
-    if os.path.isfile(dest_ogg):
-        os.remove(src_wav)
 
 
 def main():
@@ -73,69 +54,20 @@ def main():
         print(f"[nightingale] ERROR: File not found: {audio_path}", file=sys.stderr)
         sys.exit(1)
 
-    os.makedirs(output_dir, exist_ok=True)
-
     file_hash = args.file_hash or compute_hash(audio_path)
     progress(0, "Starting analysis...")
 
-    transcript_path = os.path.join(output_dir, f"{file_hash}_transcript.json")
-    if os.path.isfile(transcript_path):
-        progress(100, "Already analyzed, skipping")
-        sys.exit(0)
-
     device = detect_device()
-    progress(2, f"Using device: {device}")
 
-    # --- Stem separation ---
-    final_vocals_ogg = os.path.join(output_dir, f"{file_hash}_vocals.ogg")
-    final_instrumental_ogg = os.path.join(output_dir, f"{file_hash}_instrumental.ogg")
-    final_vocals_wav = os.path.join(output_dir, f"{file_hash}_vocals.wav")
-    final_instrumental_wav = os.path.join(output_dir, f"{file_hash}_instrumental.wav")
-
-    if os.path.isfile(final_vocals_ogg) and os.path.isfile(final_instrumental_ogg):
-        progress(50, "Stems already cached, skipping separation")
-        vocals_path = final_vocals_ogg
-    elif os.path.isfile(final_vocals_wav) and os.path.isfile(final_instrumental_wav):
-        progress(50, "Converting legacy WAV stems to OGG...")
-        _convert_to_ogg(final_vocals_wav, final_vocals_ogg)
-        _convert_to_ogg(final_instrumental_wav, final_instrumental_ogg)
-        vocals_path = final_vocals_ogg
-    else:
-        with tempfile.TemporaryDirectory(prefix="nightingale_") as work_dir:
-            if args.separator == "karaoke":
-                torch_home = os.environ.get("TORCH_HOME", "")
-                models_base = os.path.dirname(torch_home) if torch_home else output_dir
-                uvr_models_dir = os.path.join(models_base, "audio_separator")
-                os.makedirs(uvr_models_dir, exist_ok=True)
-                vocals_path, instrumental_path = separate_stems_uvr(audio_path, work_dir, uvr_models_dir)
-            else:
-                vocals_path, instrumental_path = separate_stems(audio_path, work_dir, device)
-            progress(51, "Saving stems to cache...")
-            _convert_to_ogg(vocals_path, final_vocals_ogg)
-            _convert_to_ogg(instrumental_path, final_instrumental_ogg)
-        vocals_path = final_vocals_ogg
-
-    # --- Lyrics alignment or transcription ---
-    if args.lyrics and os.path.isfile(args.lyrics):
-        print(f"[nightingale:LOG] Using pre-fetched lyrics: {args.lyrics}", flush=True)
-        transcript = align_lyrics(
-            args.lyrics, vocals_path, device,
-            model_name=args.model,
-            language_override=args.language,
-        )
-    else:
-        transcript = transcribe_vocals(
-            vocals_path, audio_path, device,
-            model_name=args.model,
-            beam_size=args.beam_size,
-            batch_size=args.batch_size,
-            language_override=args.language,
-        )
-
-    # --- Write output ---
-    progress(95, "Writing transcript...")
-    with open(transcript_path, "w", encoding="utf-8") as f:
-        json.dump(transcript, f, ensure_ascii=False, indent=2)
+    run_pipeline(
+        audio_path, output_dir, file_hash, device,
+        model_name=args.model,
+        beam_size=args.beam_size,
+        batch_size=args.batch_size,
+        separator=args.separator,
+        lyrics_path=args.lyrics,
+        language_override=args.language,
+    )
 
     progress(100, "DONE")
 

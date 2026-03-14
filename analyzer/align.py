@@ -5,7 +5,7 @@ import re
 
 from audio import detect_vocal_region
 from language import detect_language_multiwindow
-from whisper_compat import progress, align_device_for, compute_type_for, is_oom, free_gpu
+from whisper_compat import progress, align_device_for, compute_type_for, align_with_fallback
 
 
 def align_lyrics(
@@ -73,35 +73,7 @@ def align_lyrics(
     full_text = " ".join(clean_lines)
     raw_segments = [{"text": full_text, "start": vocal_start, "end": vocal_end}]
 
-    try:
-        print(f"[nightingale:LOG] Loading align model for language='{language}' on device='{a_device}'", flush=True)
-        align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
-        align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
-        del align_model
-    except Exception as e:
-        if not is_oom(e):
-            raise
-        if pre_align_cleanup:
-            print(f"[nightingale:LOG] Alignment OOM, freeing whisper model and retrying on {a_device}", flush=True)
-            pre_align_cleanup()
-            try:
-                align_model, metadata = whisperx.load_align_model(language_code=language, device=a_device)
-                align_result = whisperx.align(raw_segments, align_model, metadata, audio, a_device)
-                del align_model
-            except Exception as e2:
-                if not is_oom(e2):
-                    raise
-                print(f"[nightingale:LOG] Alignment OOM again, falling back to CPU", flush=True)
-                free_gpu()
-                align_model, metadata = whisperx.load_align_model(language_code=language, device="cpu")
-                align_result = whisperx.align(raw_segments, align_model, metadata, audio, "cpu")
-                del align_model
-        else:
-            print(f"[nightingale:LOG] Alignment OOM, falling back to CPU", flush=True)
-            free_gpu()
-            align_model, metadata = whisperx.load_align_model(language_code=language, device="cpu")
-            align_result = whisperx.align(raw_segments, align_model, metadata, audio, "cpu")
-            del align_model
+    align_result = align_with_fallback(raw_segments, audio, language, a_device, pre_align_cleanup)
 
     segments = _map_words_to_lines(align_result, clean_lines)
 

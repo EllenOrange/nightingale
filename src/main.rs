@@ -2,6 +2,7 @@
 
 mod analyzer;
 mod config;
+pub mod error;
 pub mod input;
 mod menu;
 mod player;

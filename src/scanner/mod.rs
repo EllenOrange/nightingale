@@ -169,7 +169,7 @@ fn read_transcript_meta(cache: &CacheDir, hash: &str) -> (TranscriptSource, Opti
     (TranscriptSource::Generated, None)
 }
 
-fn build_song(path: &Path, cache: &CacheDir) -> Result<Song, Box<dyn std::error::Error>> {
+fn build_song(path: &Path, cache: &CacheDir) -> Result<Song, crate::error::NightingaleError> {
     let file_hash = compute_file_hash(path)?;
 
     let (analysis_status, language) = if cache.transcript_exists(&file_hash) {
