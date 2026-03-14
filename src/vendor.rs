@@ -272,10 +272,10 @@ fn step_install_python(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), Strin
         return Ok(());
     }
 
-    send(tx, "Python", "Installing Python 3.11...");
+    send(tx, "Python", "Installing Python 3.10...");
 
     let output = silent_command(uv_path())
-        .args(["python", "install", "3.11", "--install-dir"])
+        .args(["python", "install", "3.10", "--install-dir"])
         .arg(&python_dir)
         .output()
         .map_err(|e| format!("Failed to run uv: {e}"))?;
@@ -285,7 +285,7 @@ fn step_install_python(tx: &mpsc::Sender<BootstrapProgress>) -> Result<(), Strin
         return Err(format!("uv python install failed: {stderr}"));
     }
 
-    send(tx, "Python", "Python 3.11 installed");
+    send(tx, "Python", "Python 3.10 installed");
     Ok(())
 }
 
@@ -293,7 +293,7 @@ fn has_python_in(dir: &PathBuf) -> bool {
     if !dir.is_dir() {
         return false;
     }
-    let target = if cfg!(windows) { "python.exe" } else { "python3.11" };
+    let target = if cfg!(windows) { "python.exe" } else { "python3.10" };
     for entry in walkdir::WalkDir::new(dir).max_depth(5).into_iter().flatten() {
         if entry.file_name().to_string_lossy() == target {
             return true;
@@ -306,7 +306,7 @@ fn has_python_in(dir: &PathBuf) -> bool {
 
 fn find_installed_python() -> Option<PathBuf> {
     let python_dir = vendor_dir().join("python");
-    let target = if cfg!(windows) { "python.exe" } else { "python3.11" };
+    let target = if cfg!(windows) { "python.exe" } else { "python3.10" };
     for entry in walkdir::WalkDir::new(&python_dir).max_depth(5).into_iter().flatten() {
         if entry.file_name().to_string_lossy() == target {
             return Some(entry.into_path());
