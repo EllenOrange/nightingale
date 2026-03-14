@@ -122,7 +122,7 @@ Everything lives under `~/.nightingale/`:
 ├── vendor/
 │   ├── ffmpeg          # Bundled ffmpeg binary
 │   ├── uv              # Bundled uv binary
-│   ├── python/         # Python 3.11 installed via uv
+│   ├── python/         # Python 3.10 installed via uv
 │   ├── venv/           # Virtual environment with ML packages
 │   ├── analyzer/       # Embedded analyzer Python scripts
 │   └── .ready          # Marker indicating setup is complete
@@ -164,11 +164,21 @@ The `build.rs` script creates placeholder files in `vendor-bin/` if the real bin
 
 ### Local release
 
+**Linux / macOS:**
+
 ```bash
 scripts/make-release.sh
 ```
 
 Fetches vendor binaries (if needed), builds the release binary, and packages it into `nightingale-<target>.tar.gz`.
+
+**Windows (PowerShell):**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/make-release.ps1
+```
+
+Downloads `ffmpeg.exe` and `uv.exe` into `vendor-bin/`, builds the release binary, and packages it into `nightingale-x86_64-pc-windows-msvc.zip`.
 
 ### CLI flags
 
