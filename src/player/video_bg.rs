@@ -1,7 +1,8 @@
 use std::io::Read;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::{Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
 use bevy::image::{Image, ImageSampler};
@@ -140,6 +141,7 @@ pub struct VideoBackground {
     frame_rx: Mutex<mpsc::Receiver<Vec<u8>>>,
     free_tx: Mutex<mpsc::SyncSender<Vec<u8>>>,
     cmd_tx: Mutex<mpsc::Sender<DecoderCommand>>,
+    stop_downloads: Arc<AtomicBool>,
     elapsed: f64,
     frame_interval: f64,
 }
@@ -316,6 +318,7 @@ fn background_video_worker(
     frame_tx: mpsc::SyncSender<Vec<u8>>,
     free_rx: mpsc::Receiver<Vec<u8>>,
     cmd_rx: mpsc::Receiver<DecoderCommand>,
+    stop_downloads: Arc<AtomicBool>,
 ) {
     let mut existing = cached_videos(flavor);
 
@@ -327,10 +330,11 @@ fn background_video_worker(
 
         {
             let playlist_ref = playlist.clone();
+            let stop = stop_downloads.clone();
             thread::Builder::new()
                 .name("video-dl".into())
                 .spawn(move || {
-                    download_and_refresh(flavor, &playlist_ref);
+                    download_and_refresh(flavor, &playlist_ref, &stop);
                 })
                 .ok();
         }
@@ -358,10 +362,14 @@ fn background_video_worker(
                 let remaining: Vec<PendingDownload> = pending_iter.collect();
                 if !remaining.is_empty() {
                     let playlist_ref = playlist.clone();
+                    let stop = stop_downloads.clone();
                     thread::Builder::new()
                         .name("video-dl".into())
                         .spawn(move || {
                             for dl in remaining {
+                                if stop.load(Ordering::Relaxed) {
+                                    return;
+                                }
                                 info!(
                                     "Pixabay: downloading video {} in background...",
                                     dl.video_id
@@ -400,6 +408,7 @@ fn background_video_worker(
 fn download_and_refresh(
     flavor: VideoFlavor,
     playlist: &std::sync::Mutex<Vec<PathBuf>>,
+    stop: &AtomicBool,
 ) {
     let listing = fetch_video_listing(flavor);
     let flavor_name = flavor.name().to_string();
@@ -409,6 +418,9 @@ fn download_and_refresh(
 
     if needed > 0 {
         for dl in listing.iter().filter(|p| !p.dest.exists()).take(needed) {
+            if stop.load(Ordering::Relaxed) {
+                return;
+            }
             info!(
                 "Pixabay[{}]: downloading video {} in background...",
                 flavor_name, dl.video_id
@@ -433,7 +445,7 @@ fn download_and_refresh(
     const ROTATE_COUNT: usize = 2;
     let mut rotated = 0;
     for dl in listing.iter().filter(|p| !p.dest.exists()) {
-        if rotated >= ROTATE_COUNT {
+        if stop.load(Ordering::Relaxed) || rotated >= ROTATE_COUNT {
             break;
         }
         info!(
@@ -607,15 +619,17 @@ pub fn spawn_video_background(
     let (frame_tx, frame_rx) = mpsc::sync_channel(POOL_SIZE);
     let (free_tx, free_rx) = mpsc::sync_channel(POOL_SIZE);
     let (cmd_tx, cmd_rx) = mpsc::channel();
+    let stop_downloads = Arc::new(AtomicBool::new(false));
 
     for _ in 0..POOL_SIZE {
         let _ = free_tx.send(vec![0u8; FRAME_BYTES]);
     }
 
+    let stop_clone = stop_downloads.clone();
     thread::Builder::new()
         .name("video-bg-worker".into())
         .spawn(move || {
-            background_video_worker(flavor, frame_tx, free_rx, cmd_rx);
+            background_video_worker(flavor, frame_tx, free_rx, cmd_rx, stop_clone);
         })
         .expect("failed to spawn video worker thread");
 
@@ -625,6 +639,7 @@ pub fn spawn_video_background(
         frame_rx: Mutex::new(frame_rx),
         free_tx: Mutex::new(free_tx),
         cmd_tx: Mutex::new(cmd_tx),
+        stop_downloads,
         elapsed: 0.0,
         frame_interval: 1.0 / TARGET_FPS,
     });
@@ -640,20 +655,23 @@ pub fn switch_flavor(video_bg: &mut VideoBackground, new_flavor: VideoFlavor) {
     if let Ok(tx) = video_bg.cmd_tx.lock() {
         let _ = tx.send(DecoderCommand::Stop);
     }
+    video_bg.stop_downloads.store(true, Ordering::Relaxed);
 
     let (frame_tx, frame_rx) = mpsc::sync_channel(POOL_SIZE);
     let (free_tx, free_rx) = mpsc::sync_channel(POOL_SIZE);
     let (cmd_tx, cmd_rx) = mpsc::channel();
+    let stop_downloads = Arc::new(AtomicBool::new(false));
 
     for _ in 0..POOL_SIZE {
         let _ = free_tx.send(vec![0u8; FRAME_BYTES]);
     }
 
     let flavor = new_flavor;
+    let stop_clone = stop_downloads.clone();
     thread::Builder::new()
         .name("video-bg-worker".into())
         .spawn(move || {
-            background_video_worker(flavor, frame_tx, free_rx, cmd_rx);
+            background_video_worker(flavor, frame_tx, free_rx, cmd_rx, stop_clone);
         })
         .expect("failed to spawn video worker thread");
 
@@ -666,6 +684,7 @@ pub fn switch_flavor(video_bg: &mut VideoBackground, new_flavor: VideoFlavor) {
     if let Ok(mut tx) = video_bg.cmd_tx.lock() {
         *tx = cmd_tx;
     }
+    video_bg.stop_downloads = stop_downloads;
     video_bg.flavor = new_flavor;
     video_bg.elapsed = 0.0;
 }
@@ -735,6 +754,7 @@ pub fn despawn_video_background(
 
 impl Drop for VideoBackground {
     fn drop(&mut self) {
+        self.stop_downloads.store(true, Ordering::Relaxed);
         if let Ok(tx) = self.cmd_tx.lock() {
             let _ = tx.send(DecoderCommand::Stop);
         }
