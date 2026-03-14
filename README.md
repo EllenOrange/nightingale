@@ -22,7 +22,9 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 👤 **Profiles** — create and switch between player profiles; scores are tracked per profile
 
-🌌 **6 Background Themes** — 5 GPU shader backgrounds (Plasma, Aurora, Waves, Nebula, Starfield) plus Pixabay video backgrounds with 5 flavors (Nature, Underwater, Space, City, Countryside)
+🎬 **Video Files** — drop video files (`.mp4`, `.mkv`, etc.) into your music folder; vocals are separated from the audio track and the original video plays as a synchronized background
+
+🌌 **7 Background Themes** — 5 GPU shader backgrounds (Plasma, Aurora, Waves, Nebula, Starfield), Pixabay video backgrounds with 5 flavors (Nature, Underwater, Space, City, Countryside), plus automatic source video playback for video files
 
 🎮 **Gamepad Support** — full navigation and control via gamepad (D-pad, sticks, face buttons)
 
@@ -34,7 +36,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 Download the latest release for your platform from the [Releases](../../releases) page and run it. On first launch, Nightingale will set up its Python environment and download ML models — this takes a few minutes and shows a progress screen.
 
-Supported formats: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`.
+Supported audio formats: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`. Video formats: `.mp4`, `.mkv`, `.avi`, `.webm`, `.mov`, `.m4v`.
 
 ## Controls
 
@@ -66,12 +68,12 @@ Supported formats: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`.
 ## How it works
 
 ```
-Music file (.mp3/.flac/...)
+Audio or video file
         │
         ▼
   ┌─────────────────┐
   │  UVR Karaoke /   │  ──▶  vocals.ogg + instrumental.ogg
-  │  Demucs          │
+  │  Demucs          │       (extracts audio track from videos)
   └─────────────────┘
         │
         ▼
@@ -89,7 +91,7 @@ Music file (.mp3/.flac/...)
   ┌─────────────────┐
   │  Bevy App        │  ──▶  Plays instrumental + synced lyrics
   │  (Rust)          │       with pitch scoring & backgrounds
-  └─────────────────┘
+  └─────────────────┘       (video files use source video as background)
 ```
 
 Analysis results are cached at `~/.nightingale/cache/` using blake3 file hashes. Re-analysis only happens if the source file changes or is manually triggered.
@@ -134,13 +136,13 @@ Everything lives under `~/.nightingale/`:
 
 ### Video backgrounds
 
-Video backgrounds use the [Pixabay API](https://pixabay.com/api/docs/). The API key is embedded in release builds. For development, create a `.env` file at the project root:
+Pixabay video backgrounds use the [Pixabay API](https://pixabay.com/api/docs/). The API key is embedded in release builds. For development, create a `.env` file at the project root:
 
 ```
 PIXABAY_API_KEY=your_key_here
 ```
 
-In CI, the key is provided via the `PIXABAY_API_KEY` secret. The local release script (`make-release.sh`) sources `.env` automatically.
+The release script (`make-release.sh`) sources `.env` automatically.
 
 ## Building from source
 
@@ -183,18 +185,15 @@ Builds the release binary and packages it into `nightingale-x86_64-pc-windows-ms
 |---|---|
 | `--setup` | Force re-run of the first-launch bootstrap |
 
-## CI/CD
-
-Pushing a tag matching `v*` triggers the [release workflow](.github/workflows/release.yml), which builds for:
+## Supported platforms
 
 | Platform | Target |
 |---|---|
 | Linux x86_64 | `x86_64-unknown-linux-gnu` |
+| Linux aarch64 | `aarch64-unknown-linux-gnu` |
 | macOS ARM | `aarch64-apple-darwin` |
 | macOS Intel | `x86_64-apple-darwin` |
 | Windows x86_64 | `x86_64-pc-windows-msvc` |
-
-Each build compiles the binary and uploads the packaged archive to a GitHub Release. ffmpeg and uv are downloaded at runtime on first launch.
 
 ## License
 
