@@ -4,3 +4,9 @@ __pycache__
 *.pyc
 samples/
 .env
+
+# Site
+site/node_modules/
+site/dist/
+site/docs/book/
+site/.astro/

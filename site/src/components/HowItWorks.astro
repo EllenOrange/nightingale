@@ -1,0 +1,75 @@
+---
+const steps = [
+  {
+    title: "Separate",
+    description:
+      "UVR Karaoke or Demucs splits the track into vocals and instrumental. Audio is extracted from video files automatically.",
+  },
+  {
+    title: "Transcribe",
+    description:
+      "Synced lyrics are looked up on LRCLIB first. If nothing's found, WhisperX transcribes the vocals with word-level alignment.",
+  },
+  {
+    title: "Play",
+    description:
+      "The instrumental plays back with highlighted lyrics, pitch scoring, dynamic backgrounds, and gamepad support.",
+  },
+];
+---
+
+<section id="how-it-works">
+  <div class="container">
+    <h2>How it works</h2>
+    <div class="steps">
+      {
+        steps.map((step) => (
+          <div class="step">
+            <h3>{step.title}</h3>
+            <p>{step.description}</p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 32px;
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .step {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 24px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .step h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--accent);
+  }
+
+  .step p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+  }
+
+  @media (max-width: 640px) {
+    .steps {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

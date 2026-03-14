@@ -1,0 +1,64 @@
+---
+const platforms = [
+  { name: "Linux", targets: ["x86_64", "aarch64"] },
+  { name: "macOS", targets: ["ARM", "Intel"] },
+  { name: "Windows", targets: ["x86_64"] },
+];
+---
+
+<section id="platforms">
+  <div class="container">
+    <h2>Platforms</h2>
+    <p class="sub">
+      Runs on Linux, macOS, and Windows. GPU acceleration via CUDA or Metal when
+      available, CPU fallback everywhere else.
+    </p>
+    <div class="platform-list">
+      {
+        platforms.map((p) => (
+          <div class="platform">
+            <strong>{p.name}</strong>
+            <span class="targets">{p.targets.join(", ")}</span>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .sub {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+    max-width: 480px;
+  }
+
+  .platform-list {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .platform {
+    background: var(--surface);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+  }
+
+  .targets {
+    color: var(--text-dim);
+    font-size: 0.8rem;
+  }
+</style>

@@ -1,0 +1,134 @@
+---
+---
+
+<section class="hero">
+  <div class="container">
+    <div class="hero-content">
+      <img src="/logo.png" alt="Nightingale" class="hero-logo" />
+      <p class="hero-tagline">
+        Turn any song into karaoke. A self-contained party game that separates
+        vocals, transcribes lyrics, and plays it all back with word-level sync
+        and pitch scoring.
+      </p>
+      <div class="hero-actions">
+        <a
+          href="https://github.com/rzru/nightingale/releases"
+          class="btn-primary"
+          target="_blank"
+          rel="noopener"
+        >
+          Download
+        </a>
+        <a href="/docs/" class="btn-secondary">Docs</a>
+      </div>
+    </div>
+
+    <div class="hero-media">
+      <div class="hero-video-wrapper">
+        <div class="hero-placeholder">
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+          >
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding: 120px 0 0;
+    text-align: center;
+  }
+
+  .hero-logo {
+    width: 300px;
+    max-width: 70%;
+    margin-bottom: 20px;
+  }
+
+  .hero-tagline {
+    font-size: 1.15rem;
+    color: var(--text-secondary);
+    max-width: 540px;
+    margin: 0 auto 32px;
+    line-height: 1.6;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    padding: 10px 28px;
+    border-radius: var(--radius);
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+
+  .btn-primary:hover {
+    background: var(--accent-hover);
+    color: white;
+  }
+
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--text-primary);
+    padding: 10px 28px;
+    border-radius: var(--radius);
+    font-weight: 500;
+    font-size: 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .btn-secondary:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
+  }
+
+  .hero-media {
+    margin-top: 48px;
+  }
+
+  .hero-video-wrapper {
+    max-width: 820px;
+    margin: 0 auto;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .hero-placeholder {
+    aspect-ratio: 16 / 9;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+  }
+
+  @media (max-width: 768px) {
+    .hero {
+      padding: 100px 0 40px;
+    }
+
+    .hero-tagline {
+      font-size: 1.05rem;
+    }
+
+    .hero-logo {
+      width: 240px;
+    }
+  }
+</style>

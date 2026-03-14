@@ -1,0 +1,108 @@
+---
+const features = [
+  {
+    icon: "🎤",
+    title: "Stem separation",
+    description:
+      "Vocals are isolated from instrumentals using the UVR Karaoke model or Demucs. Guide vocal volume is adjustable.",
+  },
+  {
+    icon: "📝",
+    title: "Word-level lyrics",
+    description:
+      "WhisperX transcribes and aligns every word to the audio. Existing lyrics from LRCLIB are used when available.",
+  },
+  {
+    icon: "🎯",
+    title: "Pitch scoring",
+    description:
+      "Sing into your mic and get scored in real-time. Star ratings and per-song scoreboards track your progress.",
+  },
+  {
+    icon: "👤",
+    title: "Player profiles",
+    description:
+      "Multiple profiles with separate score histories. Switch between singers without losing anyone's records.",
+  },
+  {
+    icon: "🎬",
+    title: "Video file support",
+    description:
+      "Drop .mp4 or .mkv files into your library. Vocals are separated and the original video plays as the background.",
+  },
+  {
+    icon: "🌌",
+    title: "Dynamic backgrounds",
+    description:
+      "GPU shader effects (plasma, aurora, nebula...), Pixabay video loops, or the source video for video files.",
+  },
+  {
+    icon: "🎮",
+    title: "Gamepad",
+    description:
+      "Navigate menus, pick songs, and control playback entirely with a controller. D-pad, sticks, face buttons.",
+  },
+  {
+    icon: "📦",
+    title: "Single binary",
+    description:
+      "ffmpeg, Python, PyTorch, and the ML models are all bootstrapped on first launch. Nothing to install.",
+  },
+];
+---
+
+<section id="features">
+  <div class="container">
+    <h2>Features</h2>
+    <div class="features-grid">
+      {
+        features.map((f) => (
+          <div class="feature-card">
+            <h3><span class="icon">{f.icon}</span> {f.title}</h3>
+            <p>{f.description}</p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>
+
+<style>
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 32px;
+  }
+
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+
+  .feature-card {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 24px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .feature-card h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .icon {
+    font-size: 1.1rem;
+  }
+
+  .feature-card p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+  }
+</style>

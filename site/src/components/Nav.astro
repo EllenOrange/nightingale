@@ -1,0 +1,100 @@
+---
+---
+
+<nav>
+  <div class="nav-inner container">
+    <a href="/" class="nav-brand">
+      <img src="/logo_square.png" alt="Nightingale" height="28" />
+      <span>Nightingale</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="/docs/">Docs</a>
+      <a
+        href="https://github.com/rzru/nightingale/releases"
+        class="nav-cta"
+        target="_blank"
+        rel="noopener"
+      >
+        Download
+      </a>
+    </div>
+  </div>
+</nav>
+
+<style>
+  nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(19, 19, 30, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+  }
+
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  .nav-brand:hover {
+    color: var(--text-primary);
+  }
+
+  .nav-brand img {
+    height: 28px;
+    width: 28px;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    font-size: 0.875rem;
+  }
+
+  .nav-links a {
+    color: var(--text-secondary);
+  }
+
+  .nav-links a:hover {
+    color: var(--text-primary);
+  }
+
+  .nav-cta {
+    background: var(--accent);
+    color: white !important;
+    padding: 6px 16px;
+    border-radius: var(--radius);
+    font-weight: 500;
+  }
+
+  .nav-cta:hover {
+    background: var(--accent-hover);
+  }
+
+  @media (max-width: 640px) {
+    .nav-links {
+      gap: 14px;
+      font-size: 0.8rem;
+    }
+
+    .nav-brand span {
+      display: none;
+    }
+  }
+</style>

@@ -1,0 +1,16 @@
+{
+  "name": "nightingale-site",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && npm run build:docs",
+    "build:docs": "mdbook build docs && cp -r docs/book dist/docs",
+    "preview": "npm run build && astro preview",
+    "deploy": "npm run build && npx wrangler pages deploy dist --project-name=nightingale"
+  },
+  "dependencies": {
+    "astro": "^5.7.0"
+  }
+}
