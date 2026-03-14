@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Arc;
 
 use bevy::prelude::*;
@@ -20,6 +21,7 @@ pub struct Song {
     pub album_art: Option<Arc<Vec<u8>>>,
     pub analysis_status: AnalysisStatus,
     pub language: Option<String>,
+    pub is_video: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,8 +45,13 @@ impl Song {
         file_hash: String,
         analysis_status: AnalysisStatus,
         language: Option<String>,
+        is_video: bool,
     ) -> Self {
-        let (title, artist, album, duration_secs, album_art) = read_metadata(path);
+        let (title, artist, album, duration_secs, album_art) = if is_video {
+            read_video_metadata(path)
+        } else {
+            read_metadata(path)
+        };
         Self {
             path: path.to_path_buf(),
             file_hash,
@@ -55,6 +62,7 @@ impl Song {
             album_art,
             analysis_status,
             language,
+            is_video,
         }
     }
 
@@ -107,4 +115,96 @@ fn read_metadata(path: &Path) -> (String, String, String, f64, Option<Arc<Vec<u8
     let album_art = tag.pictures().first().map(|pic| Arc::new(pic.data().to_vec()));
 
     (title, artist, album, duration_secs, album_art)
+}
+
+fn read_video_metadata(path: &Path) -> (String, String, String, f64, Option<Arc<Vec<u8>>>) {
+    let ffmpeg = crate::vendor::ffmpeg_path();
+
+    // Just probe the header -- no output file means ffmpeg reads metadata and exits immediately.
+    let probe = crate::vendor::silent_command(&ffmpeg)
+        .args(["-i", &path.to_string_lossy()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output();
+
+    let mut title = String::new();
+    let mut artist = String::new();
+    let mut album = String::new();
+    let mut duration_secs = 0.0;
+
+    if let Ok(output) = probe {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        for line in stderr.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("Duration:") {
+                if let Some(ts) = rest.split(',').next() {
+                    duration_secs = parse_ffmpeg_duration(ts.trim());
+                }
+            }
+            if let Some(val) = strip_meta_tag(trimmed, "title") {
+                title = val;
+            }
+            if let Some(val) = strip_meta_tag(trimmed, "artist") {
+                artist = val;
+            }
+            if let Some(val) = strip_meta_tag(trimmed, "album") {
+                album = val;
+            }
+        }
+    }
+
+    let album_art = extract_video_thumbnail(&ffmpeg, path);
+
+    (title, artist, album, duration_secs, album_art)
+}
+
+fn strip_meta_tag(line: &str, tag: &str) -> Option<String> {
+    let lower = line.to_lowercase();
+    if lower.starts_with(tag) {
+        let after = &line[tag.len()..];
+        let after = after.trim_start();
+        if let Some(val) = after.strip_prefix(':') {
+            let val = val.trim();
+            if !val.is_empty() {
+                return Some(val.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn parse_ffmpeg_duration(s: &str) -> f64 {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() == 3 {
+        let h: f64 = parts[0].parse().unwrap_or(0.0);
+        let m: f64 = parts[1].parse().unwrap_or(0.0);
+        let s: f64 = parts[2].parse().unwrap_or(0.0);
+        h * 3600.0 + m * 60.0 + s
+    } else {
+        0.0
+    }
+}
+
+fn extract_video_thumbnail(ffmpeg: &Path, video_path: &Path) -> Option<Arc<Vec<u8>>> {
+    let output = crate::vendor::silent_command(ffmpeg)
+        .args([
+            "-i",
+            &video_path.to_string_lossy(),
+            "-vframes", "1",
+            "-f", "image2pipe",
+            "-c:v", "mjpeg",
+            "-vf", "scale=300:-1",
+            "-v", "error",
+            "pipe:1",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    if output.status.success() && !output.stdout.is_empty() {
+        Some(Arc::new(output.stdout))
+    } else {
+        None
+    }
 }

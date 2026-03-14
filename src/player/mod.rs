@@ -114,6 +114,9 @@ impl Plugin for PlayerPlugin {
     }
 }
 
+#[derive(Resource)]
+pub struct SourceVideoPath(pub std::path::PathBuf);
+
 #[derive(Component)]
 struct PlayerHud;
 
@@ -184,7 +187,7 @@ fn enter_playing(
     mut waves_materials: ResMut<Assets<WavesMaterial>>,
     mut nebula_materials: ResMut<Assets<NebulaMaterial>>,
     mut starfield_materials: ResMut<Assets<StarfieldMaterial>>,
-    bg_theme: Res<ActiveTheme>,
+    mut bg_theme: ResMut<ActiveTheme>,
     video_flavor: Res<ActiveVideoFlavor>,
     ui_theme: Res<UiTheme>,
 ) {
@@ -223,7 +226,21 @@ fn enter_playing(
     );
     setup_lyrics(&mut commands, &transcript, &ui_theme);
 
-    if bg_theme.is_video() {
+    if song.is_video {
+        commands.insert_resource(SourceVideoPath(song.path.clone()));
+        bg_theme.set_source_video();
+    } else if bg_theme.is_source_video() {
+        bg_theme.index = config.last_theme.unwrap_or(0);
+    }
+
+    if bg_theme.is_source_video() {
+        video_bg::spawn_source_video_background(
+            &mut commands,
+            &mut images,
+            song.path.clone(),
+            0.0,
+        );
+    } else if bg_theme.is_pixabay_video() {
         video_bg::spawn_video_background(&mut commands, &mut images, video_flavor.flavor());
     } else {
         spawn_background(
@@ -403,7 +420,7 @@ fn enter_playing(
             position_type: PositionType::Absolute,
             bottom: Val::Px(8.0),
             right: Val::Px(16.0),
-            display: if bg_theme.is_video() {
+            display: if bg_theme.is_pixabay_video() {
                 Display::Flex
             } else {
                 Display::None
@@ -526,7 +543,9 @@ fn transition_on_song_end(
 }
 
 fn format_theme_text(theme: &ActiveTheme, flavor: &ActiveVideoFlavor) -> String {
-    if theme.is_video() {
+    if theme.is_source_video() {
+        "Theme: Source Video [T]".into()
+    } else if theme.is_pixabay_video() {
         format!("Theme: Video — {} [T/F]", flavor.flavor().name())
     } else {
         format!("Theme: {} [T]", theme.name())
@@ -657,6 +676,19 @@ fn player_update(
     }
 }
 
+fn seek_video_if_source(
+    bg_theme: &ActiveTheme,
+    source_video: &Option<Res<SourceVideoPath>>,
+    video_bg: &mut Option<ResMut<VideoBackground>>,
+    seek_target: f64,
+) {
+    if bg_theme.is_source_video() {
+        if let (Some(sv), Some(vbg)) = (source_video, video_bg) {
+            video_bg::seek_source_video(vbg, sv.0.clone(), seek_target);
+        }
+    }
+}
+
 fn handle_skip_buttons(
     mut commands: Commands,
     mut intro_query: Query<
@@ -679,21 +711,29 @@ fn handle_skip_buttons(
     lyrics_state: Option<Res<LyricsState>>,
     karaoke: Option<ResMut<KaraokeAudio>>,
     mut audio_instances: ResMut<Assets<AudioInstance>>,
-    mut next_state: ResMut<NextState<AppState>>,
-    mut profiles: ResMut<ProfileStore>,
-    target: Res<PlayTarget>,
-    library: Res<SongLibrary>,
-    scoring_state: Option<Res<scoring::ScoringState>>,
+    song_ctx: (
+        ResMut<NextState<AppState>>,
+        ResMut<ProfileStore>,
+        Res<PlayTarget>,
+        Res<SongLibrary>,
+        Option<Res<scoring::ScoringState>>,
+    ),
     theme: Res<UiTheme>,
     asset_server: Res<AssetServer>,
     audio: Res<bevy_kira_audio::Audio>,
+    bg_theme: Res<ActiveTheme>,
+    source_video: Option<Res<SourceVideoPath>>,
+    mut video_bg: Option<ResMut<VideoBackground>>,
 ) {
+    let (mut next_state, mut profiles, target, library, scoring_state) = song_ctx;
+
     for (interaction, mut bg) in &mut intro_query {
         match interaction {
             Interaction::Pressed => {
                 if let (Some(lyrics), Some(karaoke)) = (&lyrics_state, &karaoke) {
                     let seek_target = (lyrics::first_segment_start(lyrics) - 3.0).max(0.0);
                     audio::seek_to(karaoke, &mut audio_instances, seek_target);
+                    seek_video_if_source(&bg_theme, &source_video, &mut video_bg, seek_target);
                 }
             }
             Interaction::Hovered => {
@@ -738,6 +778,7 @@ fn handle_skip_buttons(
             if current_time < first_start - 3.0 {
                 let seek_target = (first_start - 3.0).max(0.0);
                 audio::seek_to(karaoke, &mut audio_instances, seek_target);
+                seek_video_if_source(&bg_theme, &source_video, &mut video_bg, seek_target);
             } else if current_time > last_end + 1.0 {
                 transition_on_song_end(
                     &mut commands,
@@ -924,6 +965,7 @@ fn handle_theme_switch(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut theme: ResMut<ActiveTheme>,
     video_flavor: Res<ActiveVideoFlavor>,
+    source_video: Option<Res<SourceVideoPath>>,
     mut config: ResMut<crate::config::AppConfig>,
     mut query: Query<&mut Text, (With<ThemeText>, Without<PixabayCreditText>)>,
     mut credit_query: Query<&mut Node, With<PixabayCreditText>>,
@@ -932,11 +974,15 @@ fn handle_theme_switch(
     video_query: Query<Entity, With<VideoSprite>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut images: ResMut<Assets<Image>>,
-    mut plasma_materials: ResMut<Assets<PlasmaMaterial>>,
-    mut aurora_materials: ResMut<Assets<AuroraMaterial>>,
-    mut waves_materials: ResMut<Assets<WavesMaterial>>,
-    mut nebula_materials: ResMut<Assets<NebulaMaterial>>,
-    mut starfield_materials: ResMut<Assets<StarfieldMaterial>>,
+    mut shader_mats: (
+        ResMut<Assets<PlasmaMaterial>>,
+        ResMut<Assets<AuroraMaterial>>,
+        ResMut<Assets<WavesMaterial>>,
+        ResMut<Assets<NebulaMaterial>>,
+        ResMut<Assets<StarfieldMaterial>>,
+    ),
+    karaoke: Option<Res<KaraokeAudio>>,
+    audio_instances: Res<Assets<AudioInstance>>,
 ) {
     if !keyboard.just_pressed(KeyCode::KeyT) {
         return;
@@ -945,32 +991,51 @@ fn handle_theme_switch(
     despawn_background(&mut commands, &bg_query);
     video_bg::despawn_video_background(&mut commands, &video_query);
 
-    theme.next();
+    let has_source_video = source_video.is_some();
+    if has_source_video {
+        theme.next();
+    } else {
+        theme.next_skip_source_video();
+    }
 
-    if theme.is_video() {
+    if theme.is_source_video() {
+        if let Some(ref sv) = source_video {
+            let t = karaoke.as_ref()
+                .map(|k| audio::playback_time(k, &audio_instances))
+                .unwrap_or(0.0);
+            video_bg::spawn_source_video_background(
+                &mut commands,
+                &mut images,
+                sv.0.clone(),
+                t,
+            );
+        }
+    } else if theme.is_pixabay_video() {
         video_bg::spawn_video_background(&mut commands, &mut images, video_flavor.flavor());
     } else {
         spawn_background(
             &mut commands,
             &mut meshes,
-            &mut plasma_materials,
-            &mut aurora_materials,
-            &mut waves_materials,
-            &mut nebula_materials,
-            &mut starfield_materials,
+            &mut shader_mats.0,
+            &mut shader_mats.1,
+            &mut shader_mats.2,
+            &mut shader_mats.3,
+            &mut shader_mats.4,
             &theme,
         );
     }
 
-    config.last_theme = Some(theme.index);
-    config.save();
+    if !theme.is_source_video() {
+        config.last_theme = Some(theme.index);
+        config.save();
+    }
 
     if let Ok(mut text) = query.single_mut() {
         **text = format_theme_text(&theme, &video_flavor);
     }
 
     if let Ok(mut node) = credit_query.single_mut() {
-        node.display = if theme.is_video() {
+        node.display = if theme.is_pixabay_video() {
             Display::Flex
         } else {
             Display::None
@@ -986,7 +1051,7 @@ fn handle_flavor_switch(
     mut query: Query<&mut Text, (With<ThemeText>, Without<PixabayCreditText>)>,
     mut video_bg: Option<ResMut<VideoBackground>>,
 ) {
-    if !keyboard.just_pressed(KeyCode::KeyF) || !theme.is_video() {
+    if !keyboard.just_pressed(KeyCode::KeyF) || !theme.is_pixabay_video() {
         return;
     }
 
@@ -1038,6 +1103,7 @@ fn exit_playing(
 
     video_bg::despawn_video_background(&mut commands, &video_query);
 
+    commands.remove_resource::<SourceVideoPath>();
     commands.remove_resource::<microphone::MicrophoneCapture>();
     commands.remove_resource::<microphone::MicLoadTask>();
     commands.remove_resource::<scoring::VocalsBuffer>();

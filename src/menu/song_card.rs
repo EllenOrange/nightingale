@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use super::components::*;
-use super::{IconFont, FA_REFRESH, FA_SPINNER};
+use super::{IconFont, FA_REFRESH};
 use crate::scanner::metadata::Song;
 use crate::ui::layout::{ART_SIZE, CARD_MIN_HEIGHT, OVERLAY_WIDTH_SM};
 use crate::ui::UiTheme;
@@ -31,6 +31,9 @@ pub struct AlbumArtSlot;
 pub struct SpinnerOverlay {
     pub song_index: usize,
 }
+
+#[derive(Component)]
+pub struct SpinnerIcon;
 
 #[derive(Component)]
 pub struct ReanalyzeButton {
@@ -63,6 +66,7 @@ const FA_STAR: &str = "\u{f005}";
 const FA_STAR_HALF: &str = "\u{f5c0}";
 const FA_GLOBE: &str = "\u{f0ac}";
 const FA_TRASH: &str = "\u{f1f8}";
+const FA_FILM: &str = "\u{f008}";
 
 pub const LANGUAGES: &[(&str, &str)] = &[
     ("en", "English"),
@@ -119,7 +123,7 @@ pub fn build_song_card(
             BackgroundColor(theme.card_bg),
         ))
         .with_children(|card| {
-            spawn_album_art(card, index, art_handle, theme, icon_font);
+            spawn_album_art(card, index, art_handle, song.is_video, theme, icon_font);
             spawn_song_info(card, song, theme, best_score, icon_font, index);
             spawn_right_column(card, index, song, badge_text, badge_color, theme, icon_font);
         });
@@ -183,6 +187,42 @@ fn spawn_mini_stars(
         });
 }
 
+fn spawn_video_badge(
+    parent: &mut ChildSpawnerCommands,
+    theme: &UiTheme,
+    icon_font: &IconFont,
+) {
+    let text_color = theme.badge_video;
+
+    parent
+        .spawn(Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(4.0),
+            margin: UiRect::bottom(Val::Px(1.0)),
+            ..default()
+        })
+        .with_children(|row| {
+            row.spawn((
+                Text::new(FA_FILM),
+                TextFont {
+                    font: icon_font.0.clone(),
+                    font_size: 9.0,
+                    ..default()
+                },
+                TextColor(text_color),
+            ));
+            row.spawn((
+                Text::new("VIDEO"),
+                TextFont {
+                    font_size: 10.0,
+                    ..default()
+                },
+                TextColor(text_color),
+            ));
+        });
+}
+
 fn badge_info<'a>(status: &AnalysisStatus, theme: &UiTheme) -> (&'a str, Color) {
     match status {
         AnalysisStatus::Ready(TranscriptSource::Lyrics) => ("LYRICS", theme.badge_lyrics),
@@ -198,6 +238,7 @@ fn spawn_album_art(
     card: &mut ChildSpawnerCommands,
     index: usize,
     art_handle: Option<Handle<Image>>,
+    is_video: bool,
     theme: &UiTheme,
     icon_font: &IconFont,
 ) {
@@ -221,6 +262,30 @@ fn spawn_album_art(
                     ..default()
                 },
             ));
+        } else if is_video {
+            wrapper
+                .spawn((
+                    Node {
+                        width: Val::Px(ART_SIZE),
+                        height: Val::Px(ART_SIZE),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        border_radius: BorderRadius::all(Val::Px(4.0)),
+                        ..default()
+                    },
+                    BackgroundColor(theme.surface_hover),
+                ))
+                .with_children(|art| {
+                    art.spawn((
+                        Text::new(FA_FILM),
+                        TextFont {
+                            font: icon_font.0.clone(),
+                            font_size: 22.0,
+                            ..default()
+                        },
+                        TextColor(theme.accent),
+                    ));
+                });
         } else {
             wrapper
                 .spawn((
@@ -263,10 +328,10 @@ fn spawn_album_art(
             ))
             .with_children(|overlay| {
                 overlay.spawn((
-                    Text::new(FA_SPINNER),
+                    SpinnerIcon,
+                    Text::new("⠋"),
                     TextFont {
-                        font: icon_font.0.clone(),
-                        font_size: 20.0,
+                        font_size: 24.0,
                         ..default()
                     },
                     TextColor(theme.accent),
@@ -295,6 +360,10 @@ fn spawn_song_info(
         ..default()
     })
     .with_children(|info| {
+        if song.is_video {
+            spawn_video_badge(info, theme, icon_font);
+        }
+
         info.spawn(Node {
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,

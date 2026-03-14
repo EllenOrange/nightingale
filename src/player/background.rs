@@ -66,12 +66,24 @@ impl Default for ActiveTheme {
 }
 
 impl ActiveTheme {
+    const VIDEO_INDEX: usize = SHADER_COUNT;
+    const SOURCE_VIDEO_INDEX: usize = SHADER_COUNT + 1;
+
     pub fn theme_count() -> usize {
-        SHADER_COUNT + 1
+        SHADER_COUNT + 2
     }
 
     pub fn is_video(&self) -> bool {
-        self.index % Self::theme_count() >= SHADER_COUNT
+        let i = self.index % Self::theme_count();
+        i == Self::VIDEO_INDEX || i == Self::SOURCE_VIDEO_INDEX
+    }
+
+    pub fn is_source_video(&self) -> bool {
+        self.index % Self::theme_count() == Self::SOURCE_VIDEO_INDEX
+    }
+
+    pub fn is_pixabay_video(&self) -> bool {
+        self.index % Self::theme_count() == Self::VIDEO_INDEX
     }
 
     pub fn name(&self) -> &str {
@@ -82,12 +94,24 @@ impl ActiveTheme {
             3 => "Nebula",
             4 => "Starfield",
             5 => "Video",
+            6 => "Source Video",
             _ => unreachable!(),
         }
     }
 
+    pub fn set_source_video(&mut self) {
+        self.index = Self::SOURCE_VIDEO_INDEX;
+    }
+
     pub fn next(&mut self) {
         self.index = (self.index + 1) % Self::theme_count();
+    }
+
+    pub fn next_skip_source_video(&mut self) {
+        self.next();
+        if self.is_source_video() {
+            self.next();
+        }
     }
 }
 

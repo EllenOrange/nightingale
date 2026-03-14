@@ -481,24 +481,36 @@ fn decode_video(
     free_rx: &mpsc::Receiver<Vec<u8>>,
     cmd_rx: &mpsc::Receiver<DecoderCommand>,
 ) -> bool {
-    info!("Video decoder: playing {}", path.display());
+    decode_video_at(path, frame_tx, free_rx, recycle_tx, cmd_rx, 0.0)
+}
+
+fn decode_video_at(
+    path: &PathBuf,
+    frame_tx: &mpsc::SyncSender<Vec<u8>>,
+    free_rx: &mpsc::Receiver<Vec<u8>>,
+    recycle_tx: &mpsc::SyncSender<Vec<u8>>,
+    cmd_rx: &mpsc::Receiver<DecoderCommand>,
+    start_secs: f64,
+) -> bool {
+    info!("Video decoder: playing {} (seek={:.1}s)", path.display(), start_secs);
+
+    let mut args: Vec<String> = Vec::new();
+    if start_secs > 0.5 {
+        args.extend(["-ss".into(), format!("{start_secs:.3}")]);
+    }
+    args.extend([
+        "-i".into(),
+        path.to_string_lossy().into_owned(),
+        "-f".into(), "rawvideo".into(),
+        "-pix_fmt".into(), "rgba".into(),
+        "-s".into(), format!("{VIDEO_WIDTH}x{VIDEO_HEIGHT}"),
+        "-r".into(), format!("{TARGET_FPS}"),
+        "-v".into(), "error".into(),
+        "-".into(),
+    ]);
 
     let result = crate::vendor::silent_command(crate::vendor::ffmpeg_path())
-        .args([
-            "-i",
-            path.to_str().unwrap_or(""),
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgba",
-            "-s",
-            &format!("{VIDEO_WIDTH}x{VIDEO_HEIGHT}"),
-            "-r",
-            &format!("{TARGET_FPS}"),
-            "-v",
-            "error",
-            "-",
-        ])
+        .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn();
@@ -689,6 +701,33 @@ pub fn switch_flavor(video_bg: &mut VideoBackground, new_flavor: VideoFlavor) {
     video_bg.elapsed = 0.0;
 }
 
+pub fn seek_source_video(video_bg: &mut VideoBackground, source_path: PathBuf, start_secs: f64) {
+    if let Ok(tx) = video_bg.cmd_tx.lock() {
+        let _ = tx.send(DecoderCommand::Stop);
+    }
+
+    let (frame_tx, frame_rx) = mpsc::sync_channel(POOL_SIZE);
+    let (free_tx, free_rx) = mpsc::sync_channel(POOL_SIZE);
+    let (cmd_tx, cmd_rx) = mpsc::channel();
+
+    for _ in 0..POOL_SIZE {
+        let _ = free_tx.send(vec![0u8; FRAME_BYTES]);
+    }
+
+    let recycle_tx = free_tx.clone();
+    thread::Builder::new()
+        .name("source-video-worker".into())
+        .spawn(move || {
+            source_video_decode_loop(source_path, frame_tx, free_rx, recycle_tx, cmd_rx, start_secs);
+        })
+        .expect("failed to spawn source video worker");
+
+    if let Ok(mut rx) = video_bg.frame_rx.lock() { *rx = frame_rx; }
+    if let Ok(mut tx) = video_bg.free_tx.lock() { *tx = free_tx; }
+    if let Ok(mut tx) = video_bg.cmd_tx.lock() { *tx = cmd_tx; }
+    video_bg.elapsed = 0.0;
+}
+
 pub fn update_video_frame(
     time: Res<Time>,
     mut video_bg: ResMut<VideoBackground>,
@@ -702,12 +741,8 @@ pub fn update_video_frame(
 
     let mut latest_frame = None;
     if let Ok(rx) = video_bg.frame_rx.lock() {
-        while let Ok(frame) = rx.try_recv() {
-            if let Some(prev) = latest_frame.replace(frame) {
-                if let Ok(ftx) = video_bg.free_tx.lock() {
-                    let _ = ftx.send(prev);
-                }
-            }
+        if let Ok(frame) = rx.try_recv() {
+            latest_frame = Some(frame);
         }
     }
 
@@ -750,6 +785,90 @@ pub fn despawn_video_background(
         commands.entity(entity).despawn();
     }
     commands.remove_resource::<VideoBackground>();
+}
+
+pub fn spawn_source_video_background(
+    commands: &mut Commands,
+    images: &mut Assets<Image>,
+    source_path: PathBuf,
+    start_secs: f64,
+) {
+    let size = Extent3d {
+        width: VIDEO_WIDTH,
+        height: VIDEO_HEIGHT,
+        depth_or_array_layers: 1,
+    };
+    let image = Image {
+        data: Some(vec![0u8; FRAME_BYTES]),
+        texture_descriptor: bevy::render::render_resource::TextureDescriptor {
+            label: None,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8UnormSrgb,
+            usage: bevy::render::render_resource::TextureUsages::TEXTURE_BINDING
+                | bevy::render::render_resource::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        sampler: ImageSampler::linear(),
+        ..default()
+    };
+    let image_handle = images.add(image);
+
+    let (frame_tx, frame_rx) = mpsc::sync_channel(POOL_SIZE);
+    let (free_tx, free_rx) = mpsc::sync_channel(POOL_SIZE);
+    let (cmd_tx, cmd_rx) = mpsc::channel();
+
+    for _ in 0..POOL_SIZE {
+        let _ = free_tx.send(vec![0u8; FRAME_BYTES]);
+    }
+
+    let recycle_tx = free_tx.clone();
+    thread::Builder::new()
+        .name("source-video-worker".into())
+        .spawn(move || {
+            source_video_decode_loop(source_path, frame_tx, free_rx, recycle_tx, cmd_rx, start_secs);
+        })
+        .expect("failed to spawn source video worker thread");
+
+    commands.insert_resource(VideoBackground {
+        image_handle: image_handle.clone(),
+        flavor: VideoFlavor::Nature,
+        frame_rx: Mutex::new(frame_rx),
+        free_tx: Mutex::new(free_tx),
+        cmd_tx: Mutex::new(cmd_tx),
+        stop_downloads: Arc::new(AtomicBool::new(false)),
+        elapsed: 0.0,
+        frame_interval: 1.0 / TARGET_FPS,
+    });
+
+    commands.spawn((
+        VideoSprite,
+        Sprite::from_image(image_handle),
+        Transform::from_translation(Vec3::new(0.0, 0.0, -10.0)),
+    ));
+}
+
+fn source_video_decode_loop(
+    path: PathBuf,
+    frame_tx: mpsc::SyncSender<Vec<u8>>,
+    free_rx: mpsc::Receiver<Vec<u8>>,
+    recycle_tx: mpsc::SyncSender<Vec<u8>>,
+    cmd_rx: mpsc::Receiver<DecoderCommand>,
+    start_secs: f64,
+) {
+    let mut first = true;
+    loop {
+        if should_stop(&cmd_rx) {
+            return;
+        }
+        let seek = if first { start_secs } else { 0.0 };
+        first = false;
+        if !decode_video_at(&path, &frame_tx, &free_rx, &recycle_tx, &cmd_rx, seek) {
+            return;
+        }
+    }
 }
 
 impl Drop for VideoBackground {

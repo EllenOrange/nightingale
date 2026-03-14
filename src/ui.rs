@@ -62,6 +62,7 @@ pub struct UiTheme {
     pub star_gold: Color,
     pub cache_videos: Color,
     pub cache_models: Color,
+    pub badge_video: Color,
 }
 
 impl UiTheme {
@@ -111,6 +112,7 @@ impl UiTheme {
             star_gold: Color::srgb(1.0, 0.84, 0.0),
             cache_videos: Color::srgb(0.28, 0.72, 0.42),
             cache_models: Color::srgb(0.88, 0.62, 0.18),
+            badge_video: Color::srgba(0.55, 0.65, 1.0, 0.85),
         }
     }
 
@@ -160,6 +162,7 @@ impl UiTheme {
             star_gold: Color::srgb(1.0, 0.84, 0.0),
             cache_videos: Color::srgb(0.28, 0.72, 0.42),
             cache_models: Color::srgb(0.88, 0.62, 0.18),
+            badge_video: Color::srgba(0.3, 0.42, 0.92, 0.8),
         }
     }
 

@@ -26,6 +26,7 @@ impl Plugin for ScannerPlugin {
 }
 
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "ogg", "wav", "m4a", "aac", "wma"];
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "avi", "webm", "mov", "m4v"];
 
 #[derive(Resource)]
 pub struct ScanRequest {
@@ -125,15 +126,19 @@ pub fn scan_folder(folder: &Path, cache: &CacheDir) -> Vec<Song> {
             .and_then(|e| e.to_str())
             .map(|e| e.to_lowercase());
 
-        let is_audio = ext
-            .as_deref()
-            .is_some_and(|e| AUDIO_EXTENSIONS.contains(&e));
+        let ext_str = match ext.as_deref() {
+            Some(e) => e,
+            None => continue,
+        };
 
-        if !is_audio {
+        let is_audio = AUDIO_EXTENSIONS.contains(&ext_str);
+        let is_video = VIDEO_EXTENSIONS.contains(&ext_str);
+
+        if !is_audio && !is_video {
             continue;
         }
 
-        match build_song(path, cache) {
+        match build_song(path, cache, is_video) {
             Ok(song) => songs.push(song),
             Err(e) => warn!("Failed to process {}: {}", path.display(), e),
         }
@@ -169,7 +174,7 @@ fn read_transcript_meta(cache: &CacheDir, hash: &str) -> (TranscriptSource, Opti
     (TranscriptSource::Generated, None)
 }
 
-fn build_song(path: &Path, cache: &CacheDir) -> Result<Song, crate::error::NightingaleError> {
+fn build_song(path: &Path, cache: &CacheDir, is_video: bool) -> Result<Song, crate::error::NightingaleError> {
     let file_hash = compute_file_hash(path)?;
 
     let (analysis_status, language) = if cache.transcript_exists(&file_hash) {
@@ -179,7 +184,7 @@ fn build_song(path: &Path, cache: &CacheDir) -> Result<Song, crate::error::Night
         (AnalysisStatus::NotAnalyzed, None)
     };
 
-    Ok(Song::from_path(path, file_hash, analysis_status, language))
+    Ok(Song::from_path(path, file_hash, analysis_status, language, is_video))
 }
 
 fn compute_file_hash(path: &Path) -> Result<String, std::io::Error> {

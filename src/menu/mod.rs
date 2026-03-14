@@ -165,7 +165,6 @@ pub struct IconFont(pub Handle<Font>);
 pub const FA_REFRESH: &str = "\u{f021}";
 pub const FA_SUN: &str = "\u{f0eb}";
 pub const FA_MOON: &str = "\u{f186}";
-pub const FA_SPINNER: &str = "\u{f1ce}";
 pub const FA_USER: &str = "\u{f007}";
 
 #[derive(Component)]
@@ -351,12 +350,17 @@ fn build_main_area(
             .iter()
             .filter(|s| matches!(s.analysis_status, AnalysisStatus::Ready(_)))
             .count();
+        let video_count = library.songs.iter().filter(|s| s.is_video).count();
+        let audio_count = library.songs.len() - video_count;
+        let found_text = if video_count > 0 {
+            format!("{audio_count} songs, {video_count} videos found")
+        } else {
+            format!("{} songs found", library.songs.len())
+        };
         main.spawn((
             StatsText,
             Text::new(format!(
-                "{} songs found · {} ready for karaoke",
-                library.songs.len(),
-                ready_count
+                "{found_text} · {ready_count} ready for karaoke"
             )),
             TextFont {
                 font_size: 14.0,
@@ -965,11 +969,14 @@ fn update_status_badges(
     }
 }
 
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
 fn animate_spinners(
     time: Res<Time>,
     theme: Res<UiTheme>,
     library: Res<SongLibrary>,
     mut spinner_query: Query<(&SpinnerOverlay, &mut BackgroundColor)>,
+    mut icon_query: Query<&mut Text, With<SpinnerIcon>>,
 ) {
     let spinner_alpha = (time.elapsed_secs() * 3.0).sin() * 0.25 + 0.75;
     for (spinner, mut bg) in &mut spinner_query {
@@ -979,6 +986,11 @@ fn animate_spinners(
         if library.songs[spinner.song_index].analysis_status == AnalysisStatus::Analyzing {
             *bg = BackgroundColor(theme.spinner_overlay.with_alpha(spinner_alpha));
         }
+    }
+
+    let frame_idx = ((time.elapsed_secs() * 10.0) as usize) % SPINNER_FRAMES.len();
+    for mut text in &mut icon_query {
+        **text = SPINNER_FRAMES[frame_idx].into();
     }
 }
 
