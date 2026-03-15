@@ -16,7 +16,7 @@ These run at full frame rate and adapt to your display resolution.
 
 <!-- TODO: 2-3 screenshots showing different shader backgrounds (e.g. Aurora and Nebula) during playback -->
 ![Aurora background](images/bg-aurora.png)
-![Nebula background](images/bg-nebula.png)
+![Waves background](images/bg-waves.png)
 
 ## Pixabay Video Backgrounds
 
