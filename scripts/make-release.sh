@@ -7,13 +7,29 @@ cd "$SCRIPT_DIR/.."
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-case "$OS-$ARCH" in
-  Linux-x86_64)   TARGET="x86_64-unknown-linux-gnu" ;;
-  Linux-aarch64)  TARGET="aarch64-unknown-linux-gnu" ;;
-  Darwin-arm64)   TARGET="aarch64-apple-darwin" ;;
-  Darwin-x86_64)  TARGET="x86_64-apple-darwin" ;;
+case "$OS" in
+  Linux)
+    case "$ARCH" in
+      x86_64)  TARGET="x86_64-unknown-linux-gnu" ;;
+      aarch64) TARGET="aarch64-unknown-linux-gnu" ;;
+      *)       echo "Unsupported Linux arch: $ARCH"; exit 1 ;;
+    esac
+    ;;
+  Darwin)
+    echo "Build for which architecture?"
+    echo "  1) ARM - Apple Silicon"
+    echo "  2) Intel - x86_64"
+    printf "#? "
+    read -r -n 1 CHOICE
+    echo ""
+    case "$CHOICE" in
+      1) TARGET="aarch64-apple-darwin" ;;
+      2) TARGET="x86_64-apple-darwin" ;;
+      *) echo "Invalid choice"; exit 1 ;;
+    esac
+    ;;
   *)
-    echo "Unsupported platform: $OS-$ARCH"
+    echo "Unsupported platform: $OS"
     exit 1
     ;;
 esac
