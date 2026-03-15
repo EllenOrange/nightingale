@@ -3,9 +3,26 @@ import Video from "./Video.astro";
 
 const base = "https://github.com/rzru/nightingale/releases/latest/download";
 const platforms = [
-  { os: "linux",   label: "Linux",   file: "nightingale-x86_64-unknown-linux-gnu.tar.gz",  altFile: "nightingale-aarch64-unknown-linux-gnu.tar.gz" },
-  { os: "macos",   label: "macOS",   file: "nightingale-aarch64-apple-darwin.tar.gz",       altFile: "nightingale-x86_64-apple-darwin.tar.gz" },
-  { os: "windows", label: "Windows", file: "nightingale-x86_64-pc-windows-msvc.zip",       altFile: null },
+  {
+    os: "linux", label: "Linux",
+    archs: [
+      { label: "x86_64", file: "nightingale-x86_64-unknown-linux-gnu.tar.gz" },
+      { label: "ARM (aarch64)", file: "nightingale-aarch64-unknown-linux-gnu.tar.gz" },
+    ],
+  },
+  {
+    os: "macos", label: "macOS",
+    archs: [
+      { label: "Apple Silicon", file: "nightingale-aarch64-apple-darwin.tar.gz" },
+      { label: "Intel", file: "nightingale-x86_64-apple-darwin.tar.gz" },
+    ],
+  },
+  {
+    os: "windows", label: "Windows",
+    archs: [
+      { label: "x86_64", file: "nightingale-x86_64-pc-windows-msvc.zip" },
+    ],
+  },
 ];
 ---
 
@@ -23,22 +40,37 @@ const platforms = [
       <div class="hero-actions">
         <div class="hero-downloads">
           {platforms.map((p) => (
-            <a
-              href={`${base}/${p.file}`}
-              class="btn-download"
-              data-os={p.os}
-              data-default={p.file}
-              data-alt={p.altFile}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              {p.label}
-            </a>
+            <div class="download-group" data-os={p.os}>
+              <a
+                href={`${base}/${p.archs[0].file}`}
+                class="btn-download"
+                data-os={p.os}
+                data-has-archs={p.archs.length > 1 ? "true" : undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                {p.label}
+              </a>
+              {p.archs.length > 1 && (
+                <div class="arch-dropdown">
+                  {p.archs.map((a) => (
+                    <a
+                      href={`${base}/${a.file}`}
+                      class="arch-option"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {a.label}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
         <a href="/docs/" class="btn-secondary">Docs</a>
@@ -67,7 +99,7 @@ const platforms = [
   function isARM(): boolean {
     const ua = navigator.userAgent;
     if ("userAgentData" in navigator) {
-      return false; // resolved asynchronously below
+      return false;
     }
     return /aarch64|arm64|armv8/i.test(ua);
   }
@@ -84,25 +116,47 @@ const platforms = [
 
   async function init() {
     const os = detectOS();
-    const buttons = document.querySelectorAll<HTMLAnchorElement>(".btn-download");
-
     let arm = isARM();
     const arch = await getArchFromUAData();
     if (arch === "arm") arm = true;
 
-    buttons.forEach((btn) => {
+    const groups = document.querySelectorAll<HTMLDivElement>(".download-group");
+
+    groups.forEach((group) => {
+      const btn = group.querySelector<HTMLAnchorElement>(".btn-download")!;
+      const dropdown = group.querySelector<HTMLDivElement>(".arch-dropdown");
       const btnOS = btn.dataset.os;
-      const altFile = btn.dataset.alt;
+      const isDetected = btnOS === os;
+      const hasArchs = btn.dataset.hasArchs === "true";
 
-      if (btnOS === os) {
+      if (isDetected) {
         btn.classList.add("detected");
+
+        if (btnOS === "macos" && !arm) {
+          const options = dropdown?.querySelectorAll<HTMLAnchorElement>(".arch-option");
+          if (options && options.length > 1) btn.href = options[1].href;
+        }
+        if (btnOS === "linux" && arm) {
+          const options = dropdown?.querySelectorAll<HTMLAnchorElement>(".arch-option");
+          if (options && options.length > 1) btn.href = options[1].href;
+        }
       }
 
-      if (btnOS === "macos" && !arm && altFile) {
-        btn.href = `${base}/${altFile}`;
+      if (!isDetected && hasArchs && dropdown) {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          document.querySelectorAll(".arch-dropdown.open").forEach((d) => {
+            if (d !== dropdown) d.classList.remove("open");
+          });
+          dropdown.classList.toggle("open");
+        });
       }
-      if (btnOS === "linux" && arm && altFile) {
-        btn.href = `${base}/${altFile}`;
+    });
+
+    document.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".download-group")) {
+        document.querySelectorAll(".arch-dropdown.open").forEach((d) => d.classList.remove("open"));
       }
     });
   }
@@ -184,6 +238,43 @@ const platforms = [
     width: 16px;
     height: 16px;
     flex-shrink: 0;
+  }
+
+  .download-group {
+    position: relative;
+  }
+
+  .arch-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius);
+    overflow: hidden;
+    z-index: 10;
+    min-width: 140px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .arch-dropdown.open {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .arch-option {
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+
+  .arch-option:hover {
+    background: var(--surface-hover);
+    color: var(--text-primary);
   }
 
   .btn-secondary {

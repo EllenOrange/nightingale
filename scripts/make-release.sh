@@ -9,11 +9,21 @@ ARCH="$(uname -m)"
 
 case "$OS" in
   Linux)
-    case "$ARCH" in
-      x86_64)  TARGET="x86_64-unknown-linux-gnu" ;;
-      aarch64) TARGET="aarch64-unknown-linux-gnu" ;;
-      *)       echo "Unsupported Linux arch: $ARCH"; exit 1 ;;
+    echo "Build for which architecture?"
+    echo "  1) x86_64 (native)"
+    echo "  2) ARM - aarch64 (cross-compile)"
+    printf "#? "
+    read -r -n 1 CHOICE
+    echo ""
+    case "$CHOICE" in
+      1) TARGET="x86_64-unknown-linux-gnu" ;;
+      2) TARGET="aarch64-unknown-linux-gnu" ;;
+      *) echo "Invalid choice"; exit 1 ;;
     esac
+    if [ "$TARGET" = "aarch64-unknown-linux-gnu" ] && [ "$ARCH" != "aarch64" ]; then
+      echo "==> Cross-compiling for aarch64 (ensure gcc-aarch64-linux-gnu is installed)"
+      export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+    fi
     ;;
   Darwin)
     echo "Build for which architecture?"
