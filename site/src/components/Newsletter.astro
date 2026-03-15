@@ -1,0 +1,163 @@
+---
+---
+
+<section class="newsletter" id="newsletter">
+  <div class="container">
+    <h2 class="newsletter-title">Stay in the loop</h2>
+    <p class="newsletter-desc">
+      Get notified about new releases and updates. No spam, unsubscribe anytime.
+    </p>
+    <form id="newsletter-form" class="newsletter-form">
+      <input
+        type="email"
+        name="email"
+        placeholder="your@email.com"
+        required
+        autocomplete="email"
+        class="newsletter-input"
+      />
+      <button type="submit" class="newsletter-btn">Subscribe</button>
+    </form>
+    <p id="newsletter-msg" class="newsletter-msg" aria-live="polite"></p>
+  </div>
+</section>
+
+<script>
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFzlGg_WUgvm8OcFAZQZtHQ6CXokE3vqBQwlboT2Rt1QftuF5_NryI_Jk-JSY3HIFjEw/exec";
+
+  const form = document.getElementById("newsletter-form") as HTMLFormElement;
+  const msg = document.getElementById("newsletter-msg")!;
+  const btn = form.querySelector("button")!;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const email = new FormData(form).get("email") as string;
+    if (!email) return;
+
+    btn.disabled = true;
+    btn.textContent = "Sending…";
+    msg.textContent = "";
+    msg.className = "newsletter-msg";
+
+    try {
+      const res = await fetch(SCRIPT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `email=${encodeURIComponent(email)}`,
+      });
+
+      if (res.ok) {
+        msg.textContent = "You're in! We'll keep you posted.";
+        msg.classList.add("success");
+        form.reset();
+      } else {
+        throw new Error("request failed");
+      }
+    } catch {
+      msg.textContent = "Something went wrong. Please try again.";
+      msg.classList.add("error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Subscribe";
+    }
+  });
+</script>
+
+<style>
+  .newsletter {
+    padding: 64px 0;
+    text-align: center;
+  }
+
+  .newsletter-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
+
+  .newsletter-desc {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    margin-bottom: 24px;
+  }
+
+  .newsletter-form {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    max-width: 420px;
+    margin: 0 auto;
+  }
+
+  .newsletter-input {
+    flex: 1;
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .newsletter-input::placeholder {
+    color: var(--text-dim);
+  }
+
+  .newsletter-input:focus {
+    border-color: var(--accent);
+  }
+
+  .newsletter-btn {
+    padding: 10px 24px;
+    border-radius: var(--radius);
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-weight: 500;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+  }
+
+  .newsletter-btn:hover {
+    background: var(--accent-hover);
+  }
+
+  .newsletter-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .newsletter-msg {
+    margin-top: 12px;
+    font-size: 0.85rem;
+    min-height: 1.2em;
+  }
+
+  .newsletter-msg.success {
+    color: var(--badge-ready);
+  }
+
+  .newsletter-msg.error {
+    color: #f87171;
+  }
+
+  @media (max-width: 768px) {
+    .newsletter {
+      padding: 48px 0;
+    }
+
+    .newsletter-form {
+      flex-direction: column;
+    }
+
+    .newsletter-btn {
+      width: 100%;
+    }
+  }
+</style>
