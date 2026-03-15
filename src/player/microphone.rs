@@ -95,10 +95,13 @@ impl MicrophoneCapture {
 }
 
 fn device_display_name(device: &cpal::Device) -> String {
-    device
-        .description()
-        .map(|d| d.name().to_string())
-        .unwrap_or_else(|_| "(unknown)".into())
+    let Ok(desc) = device.description() else {
+        return "(unknown)".into();
+    };
+    if let Some(friendly) = desc.extended().first() {
+        return friendly.clone();
+    }
+    desc.to_string()
 }
 
 pub fn available_devices() -> Vec<String> {
@@ -106,9 +109,7 @@ pub fn available_devices() -> Vec<String> {
     let Some(devices) = host.input_devices().ok() else {
         return vec![];
     };
-    devices
-        .filter_map(|d| d.description().ok().map(|desc| desc.name().to_string()))
-        .collect()
+    devices.map(|d| device_display_name(&d)).collect()
 }
 
 fn select_device(host: &cpal::Host, preferred: Option<&str>) -> Option<cpal::Device> {
