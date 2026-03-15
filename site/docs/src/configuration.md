@@ -37,3 +37,5 @@ PIXABAY_API_KEY=your_key_here
 ## Theme
 
 Toggle between dark and light themes from the sidebar. The theme preference is saved in the config.
+
+![White theme](images/white-theme.png)
