@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Nightingale
+GenericName=Karaoke Player
+Comment=Turn any song into karaoke with vocal separation, lyrics sync, and pitch scoring
+Exec=nightingale
+Icon=nightingale
+Terminal=false
+Categories=AudioVideo;Audio;Music;Game;
+Keywords=karaoke;singing;music;

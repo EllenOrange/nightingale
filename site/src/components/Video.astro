@@ -1,0 +1,94 @@
+---
+interface Props {
+  src: string;
+  poster?: string;
+}
+
+const { src, poster } = Astro.props;
+---
+
+<div class="video-container">
+  <video autoplay muted loop playsinline poster={poster}>
+    <source src={src} type="video/mp4" />
+  </video>
+  <button class="mute-toggle" aria-label="Unmute">
+    <svg class="icon-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <line x1="23" y1="9" x2="17" y2="15" />
+      <line x1="17" y1="9" x2="23" y2="15" />
+    </svg>
+    <svg class="icon-unmuted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+    </svg>
+  </button>
+</div>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>(".mute-toggle").forEach((btn) => {
+    const video = btn.parentElement!.querySelector("video")!;
+    btn.addEventListener("click", () => {
+      video.muted = !video.muted;
+      btn.classList.toggle("is-unmuted", !video.muted);
+      btn.setAttribute("aria-label", video.muted ? "Unmute" : "Mute");
+    });
+  });
+</script>
+
+<style>
+  .video-container {
+    position: relative;
+  }
+
+  video {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  .mute-toggle {
+    position: absolute;
+    bottom: 12px;
+    right: 12px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.55);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s, background 0.2s;
+    backdrop-filter: blur(4px);
+  }
+
+  .video-container:hover .mute-toggle {
+    opacity: 1;
+  }
+
+  .mute-toggle:hover {
+    background: rgba(0, 0, 0, 0.75);
+  }
+
+  .mute-toggle svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .mute-toggle .icon-unmuted {
+    display: none;
+  }
+
+  .mute-toggle.is-unmuted .icon-muted {
+    display: none;
+  }
+
+  .mute-toggle.is-unmuted .icon-unmuted {
+    display: block;
+  }
+</style>

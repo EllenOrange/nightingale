@@ -7,6 +7,17 @@
       <img src="/logo_square.png" alt="Nightingale" height="28" />
       <span>Nightingale</span>
     </a>
+    <button class="nav-toggle" aria-label="Toggle menu" hidden>
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="18" x2="21" y2="18" />
+      </svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    </button>
     <div class="nav-links">
       <a href="#features">Features</a>
       <a href="#how-it-works">How it works</a>
@@ -22,6 +33,24 @@
     </div>
   </div>
 </nav>
+
+<script>
+  const toggle = document.querySelector<HTMLButtonElement>(".nav-toggle")!;
+  const links = document.querySelector<HTMLDivElement>(".nav-links")!;
+
+  toggle.addEventListener("click", () => {
+    const open = links.classList.toggle("is-open");
+    toggle.classList.toggle("is-open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+  });
+
+  links.querySelectorAll("a").forEach((a) => {
+    a.addEventListener("click", () => {
+      links.classList.remove("is-open");
+      toggle.classList.remove("is-open");
+    });
+  });
+</script>
 
 <style>
   nav {
@@ -60,6 +89,32 @@
     width: 28px;
   }
 
+  .nav-toggle {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 4px;
+  }
+
+  .nav-toggle svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .nav-toggle .icon-close {
+    display: none;
+  }
+
+  .nav-toggle.is-open .icon-open {
+    display: none;
+  }
+
+  .nav-toggle.is-open .icon-close {
+    display: block;
+  }
+
   .nav-links {
     display: flex;
     align-items: center;
@@ -88,13 +143,36 @@
   }
 
   @media (max-width: 640px) {
-    .nav-links {
-      gap: 14px;
-      font-size: 0.8rem;
+    .nav-toggle[hidden] {
+      display: block;
     }
 
-    .nav-brand span {
+    .nav-links {
       display: none;
+      position: absolute;
+      top: 56px;
+      left: 0;
+      right: 0;
+      flex-direction: column;
+      gap: 0;
+      background: rgba(19, 19, 30, 0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 8px 0;
+    }
+
+    .nav-links.is-open {
+      display: flex;
+    }
+
+    .nav-links a {
+      padding: 12px 24px;
+      width: 100%;
+    }
+
+    .nav-cta {
+      border-radius: 0;
+      text-align: center;
     }
   }
 </style>

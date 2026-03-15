@@ -203,7 +203,8 @@ pub fn spawn_results_overlay(
     let active_profile = profiles.active.clone().unwrap_or_default();
     let icon_font: Handle<Font> = asset_server.load("fonts/fa-solid-900.ttf");
 
-    let star_empty = theme.accent.with_alpha(0.15);
+    let star_filled = theme.accent;
+    let star_empty = theme.text_dim.with_alpha(0.2);
 
     let root = spawn_overlay_root(commands, ResultsOverlay, theme.overlay_dim);
     commands.entity(root).with_children(|overlay| {
@@ -274,7 +275,7 @@ pub fn spawn_results_overlay(
                                 font_size: 24.0,
                                 ..default()
                             },
-                            TextColor(theme.star_gold),
+                            TextColor(star_filled),
                         ));
                     }
                     if has_half {
@@ -285,7 +286,7 @@ pub fn spawn_results_overlay(
                                 font_size: 24.0,
                                 ..default()
                             },
-                            TextColor(theme.star_gold),
+                            TextColor(star_filled),
                         ));
                     }
                     for _ in 0..empty {
