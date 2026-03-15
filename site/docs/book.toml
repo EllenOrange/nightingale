@@ -1,5 +1,6 @@
 [book]
 title = "Nightingale Documentation"
+description = "Documentation for Nightingale, an open-source karaoke app that turns any song into karaoke with stem separation, lyrics transcription, and pitch scoring."
 authors = ["Nightingale Contributors"]
 language = "en"
 src = "src"

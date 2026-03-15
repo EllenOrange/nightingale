@@ -8,6 +8,9 @@ const {
   title = "Nightingale — Karaoke from your music library",
   description = "Turn any song into karaoke with neural network-powered stem separation, word-level lyrics, pitch scoring, and dynamic backgrounds. Ships as a single binary.",
 } = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+const ogImage = new URL("/og-image.png", Astro.site);
 ---
 
 <!doctype html>
@@ -15,14 +18,43 @@ const {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#13131e" />
+
+    <title>{title}</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalURL.href} />
+
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image" content={ogImage.href} />
+    <meta property="og:url" content={canonicalURL.href} />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Nightingale" />
+    <meta property="og:locale" content="en_US" />
+
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage.href} />
+
     <link rel="icon" type="image/png" href="/logo_square.png" />
-    <title>{title}</title>
+    <link rel="apple-touch-icon" href="/logo_square.png" />
+
+    <script type="application/ld+json" set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Nightingale",
+      "description": description,
+      "applicationCategory": "MultimediaApplication",
+      "operatingSystem": "Linux, macOS, Windows",
+      "url": Astro.site?.href,
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "license": "https://www.gnu.org/licenses/gpl-3.0.html"
+    })} />
   </head>
   <body>
     <slot />

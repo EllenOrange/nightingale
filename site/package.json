@@ -11,6 +11,7 @@
     "deploy": "npm run build && npx wrangler pages deploy dist --project-name=nightingale"
   },
   "dependencies": {
+    "@astrojs/sitemap": "^3.7.1",
     "astro": "^5.7.0"
   }
 }
