@@ -8,6 +8,6 @@ src = "src"
 default-theme = "nightingale"
 preferred-dark-theme = "nightingale"
 additional-css = ["theme/nightingale.css"]
-additional-js = ["theme/sidebar-link.js"]
+additional-js = ["theme/sidebar-link.js", "theme/mermaid-init.js"]
 git-repository-url = "https://github.com/rzru/nightingale"
 site-url = "/docs/"

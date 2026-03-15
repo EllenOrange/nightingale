@@ -4,32 +4,14 @@ Nightingale's pipeline transforms any audio or video file into a karaoke experie
 
 ## Pipeline Overview
 
-```
-Audio or video file
-        │
-        ▼
-  ┌─────────────────┐
-  │  UVR Karaoke /   │  ──▶  vocals.ogg + instrumental.ogg
-  │  Demucs          │       (extracts audio track from videos)
-  └─────────────────┘
-        │
-        ▼
-  ┌─────────────────┐
-  │  LRCLIB          │  ──▶  Fetches synced lyrics if available
-  └─────────────────┘
-        │
-        ▼
-  ┌─────────────────┐
-  │  WhisperX        │  ──▶  Transcription + word-level alignment
-  │  (large-v3)      │
-  └─────────────────┘
-        │
-        ▼
-  ┌─────────────────┐
-  │  Bevy App        │  ──▶  Plays instrumental + synced lyrics
-  │  (Rust)          │       with pitch scoring & backgrounds
-  └─────────────────┘
-```
+<pre class="mermaid">
+flowchart TD
+    A["🎵 Audio or video file"] --> B["UVR Karaoke / Demucs"]
+    B --> |"vocals.ogg + instrumental.ogg"| C["LRCLIB"]
+    C --> |"Fetches synced lyrics if available"| D["WhisperX (large-v3)"]
+    D --> |"Transcription + word-level alignment"| E["Bevy App (Rust)"]
+    E --> F["🎤 Plays instrumental + synced lyrics\nwith pitch scoring & backgrounds"]
+</pre>
 
 ## Caching
 
