@@ -135,11 +135,11 @@ table {
 }
 
 .sidebar .sidebar-scrollbox ol.chapter li.chapter-item {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .sidebar .sidebar-scrollbox ol.chapter li.chapter-item ol.section li {
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 a {
@@ -205,4 +205,49 @@ blockquote {
 
 #theme-list > button:hover {
   background: rgb(41, 41, 56) !important;
+}
+
+pre.mermaid {
+  background: transparent !important;
+  border: none !important;
+  text-align: center;
+  padding: 24px 0 !important;
+}
+
+pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+pre.mermaid .node rect,
+pre.mermaid .node polygon {
+  fill: rgb(28, 28, 43) !important;
+  stroke: rgba(107, 138, 255, 0.3) !important;
+  rx: 8;
+  ry: 8;
+}
+
+pre.mermaid .node .label {
+  color: rgb(237, 237, 245) !important;
+  fill: rgb(237, 237, 245) !important;
+}
+
+pre.mermaid .edgeLabel {
+  background: rgb(19, 19, 30) !important;
+  color: rgb(140, 140, 158) !important;
+  fill: rgb(140, 140, 158) !important;
+}
+
+pre.mermaid .edgeLabel rect {
+  fill: rgb(19, 19, 30) !important;
+  stroke: none !important;
+}
+
+pre.mermaid .flowchart-link {
+  stroke: rgba(107, 138, 255, 0.4) !important;
+}
+
+pre.mermaid .marker {
+  fill: rgba(107, 138, 255, 0.4) !important;
+  stroke: rgba(107, 138, 255, 0.4) !important;
 }
