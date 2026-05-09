@@ -1,3 +1,5 @@
+mod reactive;
+
 use cpal::device_description::DeviceType;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use pitch_detection::detector::mcleod::McLeodDetector;
@@ -9,6 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 use ts_rs::TS;
+
+use reactive::ReactiveAnalyzer;
 
 const PITCH_WINDOW: usize = 2048;
 const AUDIO_QUEUE_CAP: usize = 24_000;
@@ -148,6 +152,7 @@ pub struct MicAudioEvent {
 pub struct MicCaptureOptions {
     pub emit_pitch: bool,
     pub emit_audio: bool,
+    pub emit_reactive: bool,
 }
 
 impl Default for MicCaptureOptions {
@@ -155,6 +160,7 @@ impl Default for MicCaptureOptions {
         Self {
             emit_pitch: true,
             emit_audio: false,
+            emit_reactive: false,
         }
     }
 }
@@ -228,19 +234,21 @@ fn try_build_stream(
     sample_format: cpal::SampleFormat,
     pitch_shared: Arc<Mutex<VecDeque<f32>>>,
     audio_shared: Arc<Mutex<VecDeque<f32>>>,
+    reactive_shared: Arc<Mutex<VecDeque<f32>>>,
     options: Arc<Mutex<MicCaptureOptions>>,
 ) -> Option<cpal::Stream> {
     let ch = config.channels as usize;
     let push_samples: Arc<dyn Fn(&[f32]) + Send + Sync> = {
         let pitch_cb = Arc::clone(&pitch_shared);
         let audio_cb = Arc::clone(&audio_shared);
+        let reactive_cb = Arc::clone(&reactive_shared);
         let options_cb = Arc::clone(&options);
         Arc::new(move |data: &[f32]| {
             let options = options_cb
                 .lock()
                 .map(|o| o.clone())
                 .unwrap_or_else(|_| MicCaptureOptions::default());
-            if !options.emit_pitch && !options.emit_audio {
+            if !options.emit_pitch && !options.emit_audio && !options.emit_reactive {
                 return;
             }
 
@@ -266,6 +274,17 @@ fn try_build_stream(
                         q.push_back(*sample);
                     }
                     while q.len() > AUDIO_QUEUE_CAP {
+                        q.pop_front();
+                    }
+                }
+            }
+
+            if options.emit_reactive {
+                if let Ok(mut q) = reactive_cb.try_lock() {
+                    for sample in &mono_samples {
+                        q.push_back(*sample);
+                    }
+                    while q.len() > reactive::QUEUE_CAP {
                         q.pop_front();
                     }
                 }
@@ -468,12 +487,15 @@ fn run_mic_loop(
 
     let pitch_shared = Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(PITCH_WINDOW * 2)));
     let audio_shared = Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(AUDIO_QUEUE_CAP)));
+    let reactive_shared =
+        Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(reactive::QUEUE_CAP)));
     let Some(_stream) = try_build_stream(
         &device,
         &config,
         sample_format,
         Arc::clone(&pitch_shared),
         Arc::clone(&audio_shared),
+        Arc::clone(&reactive_shared),
         Arc::clone(&options),
     ) else {
         warn!("[mic] failed to open '{name}'");
@@ -491,6 +513,9 @@ fn run_mic_loop(
     info!("[mic] active: {name}");
 
     let mut detector = McLeodDetector::new(PITCH_WINDOW, PITCH_WINDOW / 2);
+    let mut analyzer = ReactiveAnalyzer::new(MIN_PITCH_HZ, MAX_PITCH_HZ, MIC_RMS_GATE);
+    let mut last_reactive_emit =
+        std::time::Instant::now() - std::time::Duration::from_millis(reactive::EMIT_PERIOD_MS);
     let sleep_dur = std::time::Duration::from_millis(4);
 
     loop {
@@ -529,6 +554,26 @@ fn run_mic_loop(
             }
         }
 
+        if opts.emit_reactive
+            && last_reactive_emit.elapsed()
+                >= std::time::Duration::from_millis(reactive::EMIT_PERIOD_MS)
+        {
+            let window = {
+                let Ok(q) = reactive_shared.lock() else { break };
+                if q.len() < reactive::FFT_SIZE {
+                    Vec::new()
+                } else {
+                    let start = q.len() - reactive::FFT_SIZE;
+                    q.range(start..).copied().collect::<Vec<_>>()
+                }
+            };
+
+            if !window.is_empty() {
+                let event = analyzer.analyze(&window, sr as u32);
+                let _ = app.emit("mic-reactive", event);
+                last_reactive_emit = std::time::Instant::now();
+            }
+        }
     }
 }
 

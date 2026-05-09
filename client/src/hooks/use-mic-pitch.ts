@@ -95,7 +95,7 @@ export function useMicCapture(
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
-  const enabled = options.emit_pitch || options.emit_audio;
+  const enabled = options.emit_pitch || options.emit_audio || options.emit_reactive;
 
   useEffect(() => {
     if (!enabled) {
@@ -142,7 +142,7 @@ export function useMicCapture(
       }
       setActive(false);
     };
-  }, [enabled, options.emit_pitch, options.emit_audio, deviceId, adapter]);
+  }, [enabled, options.emit_pitch, options.emit_audio, options.emit_reactive, deviceId, adapter]);
 
   return { active, error };
 }

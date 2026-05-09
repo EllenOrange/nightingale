@@ -1,4 +1,5 @@
 import type { TimeSubscriber } from "@/hooks/use-audio-player";
+import type { MicReactiveRef } from "@/hooks/use-mic-reactive";
 import { loadingFragment, shaders } from "./shaders";
 import { ShaderVisualizer } from "./shader-visualizer";
 import { FLAVORS, PixabayVideo, SourceVideo, type VideoFlavor } from "./video-background";
@@ -14,6 +15,7 @@ export interface BackgroundProps {
   isPlaying: boolean;
   subscribe: (fn: TimeSubscriber) => () => void;
   getCurrentTime: () => number;
+  reactiveRef?: MicReactiveRef;
 }
 
 const SHADER_COUNT = shaders.length;
@@ -74,13 +76,20 @@ function backgroundContent(
     isPlaying: boolean;
     subscribe: BackgroundProps["subscribe"];
     getCurrentTime: BackgroundProps["getCurrentTime"];
+    reactiveRef?: MicReactiveRef;
   },
 ) {
-  const { themeIndex, videoFlavor, isPlaying } = props;
+  const { themeIndex, videoFlavor, isPlaying, reactiveRef } = props;
 
   switch (mode) {
     case "shader":
-      return <ShaderVisualizer shaderIndex={themeIndex % SHADER_COUNT} isPlaying={isPlaying} />;
+      return (
+        <ShaderVisualizer
+          shaderIndex={themeIndex % SHADER_COUNT}
+          isPlaying={isPlaying}
+          reactiveRef={reactiveRef}
+        />
+      );
     case "pixabay":
       return <PixabayVideo flavor={videoFlavor} isPlaying={isPlaying} />;
     case "source":
@@ -97,6 +106,7 @@ export const Background = ({
   isPlaying,
   subscribe,
   getCurrentTime,
+  reactiveRef,
 }: BackgroundProps) => {
   const mode = themeMode(themeIndex);
   const showSourceVideo = mode === "source";
@@ -129,6 +139,7 @@ export const Background = ({
         isPlaying: isReady && isPlaying,
         subscribe,
         getCurrentTime,
+        reactiveRef,
       })}
     </div>
   );

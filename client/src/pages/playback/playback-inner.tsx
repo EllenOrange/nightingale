@@ -16,6 +16,7 @@ import {
 } from "@/hooks/playback";
 import { useAudioPlayer } from "@/hooks/use-audio-player";
 import { useMicCapture, useMicDevices, useMicPitch } from "@/hooks/use-mic-pitch";
+import { useMicReactive } from "@/hooks/use-mic-reactive";
 import { usePitchScoring } from "@/hooks/use-pitch-scoring";
 import { PROFILES } from "@/queries/keys";
 import { useProfiles } from "@/queries/use-profiles";
@@ -119,12 +120,14 @@ export function PlaybackInner({ song, config }: PlaybackInnerProps) {
   const { active: micCaptureActive, error: micCaptureError } = useMicCapture(selectedMicId, {
     emit_pitch: micPitchEnabled,
     emit_audio: micMirrorEnabled,
+    emit_reactive: micPitchEnabled,
   });
   const {
     latestPitch,
     active: micPitchActive,
     error: micPitchError,
   } = useMicPitch(micPitchEnabled);
+  const reactiveRef = useMicReactive(micPitchEnabled);
   const { series, score } = usePitchScoring(audio, latestPitch);
   const micErrorShown = useRef(false);
   const scoreRef = useRef(score);
@@ -320,6 +323,7 @@ export function PlaybackInner({ song, config }: PlaybackInnerProps) {
         isPlaying={audio.isPlaying}
         subscribe={audio.subscribe}
         getCurrentTime={audio.getCurrentTime}
+        reactiveRef={reactiveRef}
       />
 
       {audio.isReady && (
