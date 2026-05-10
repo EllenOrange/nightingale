@@ -1,32 +1,46 @@
-mod reactive;
-
 use cpal::device_description::DeviceType;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use pitch_detection::detector::mcleod::McLeodDetector;
-use pitch_detection::detector::PitchDetector;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn};
 use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::ipc::Channel;
+use tracing::{info, warn};
 use ts_rs::TS;
 
-use reactive::ReactiveAnalyzer;
-
-const PITCH_WINDOW: usize = 2048;
+/// Worker drains the cpal queue in fixed-size chunks before forwarding to the
+/// JS side; smaller chunks lower IPC latency at the cost of more sends/sec.
+const SAMPLE_CHUNK: usize = 512;
 const AUDIO_QUEUE_CAP: usize = 24_000;
+const PCM_QUEUE_CAP: usize = 24_000;
 const MONITOR_GAIN: f32 = 0.65;
-const MIN_PITCH_HZ: f32 = 80.0;
-const MAX_PITCH_HZ: f32 = 1000.0;
-const PITCH_POWER_THRESHOLD: f32 = 0.2;
-const PITCH_CLARITY_THRESHOLD: f32 = 0.4;
-const MIC_RMS_GATE: f32 = 0.012;
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct MicrophoneInfo {
     pub name: String,
+}
+
+/// Mono PCM frame streamed from Rust to JS. JS owns all DSP (pitch, reactive
+/// analysis) and runs it on a sliding window built from these frames.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct MicSampleFrame {
+    pub sample_rate: u32,
+    pub samples: Vec<f32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[ts(export)]
+#[serde(default)]
+pub struct MicCaptureOptions {
+    pub emit_audio: bool,
+}
+
+impl Default for MicCaptureOptions {
+    fn default() -> Self {
+        Self { emit_audio: false }
+    }
 }
 
 fn device_display_name(device: &cpal::Device) -> String {
@@ -70,14 +84,6 @@ pub fn list_microphones() -> Result<Vec<MicrophoneInfo>, String> {
     Ok(out)
 }
 
-fn rms(samples: &[f32]) -> f32 {
-    if samples.is_empty() {
-        return 0.0;
-    }
-    let sum_sq: f32 = samples.iter().map(|s| s * s).sum();
-    (sum_sq / samples.len() as f32).sqrt()
-}
-
 fn i16_to_f32(sample: i16) -> f32 {
     sample as f32 / i16::MAX as f32
 }
@@ -102,11 +108,7 @@ fn f32_to_u32(sample: f32) -> u32 {
     ((sample.clamp(-1.0, 1.0) * 0.5 + 0.5) * u32::MAX as f32) as u32
 }
 
-fn push_mapped_input<T, F>(
-    data: &[T],
-    push: &Arc<dyn Fn(&[f32]) + Send + Sync>,
-    mut map: F,
-)
+fn push_mapped_input<T, F>(data: &[T], push: &Arc<dyn Fn(&[f32]) + Send + Sync>, mut map: F)
 where
     T: Copy,
     F: FnMut(T) -> f32,
@@ -120,8 +122,7 @@ fn write_output_frames<T, F>(
     channels: usize,
     next_sample: &Arc<dyn Fn() -> f32 + Send + Sync>,
     mut map: F,
-)
-where
+) where
     T: Copy,
     F: FnMut(f32) -> T,
 {
@@ -133,43 +134,12 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct MicPitchEvent {
-    pitch: Option<f32>,
-}
-
-#[derive(Debug, Clone, Serialize, TS)]
-#[ts(export)]
-#[allow(dead_code)]
-pub struct MicAudioEvent {
-    sample_rate: u32,
-    samples: Vec<f32>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, TS)]
-#[ts(export)]
-#[serde(default)]
-pub struct MicCaptureOptions {
-    pub emit_pitch: bool,
-    pub emit_audio: bool,
-    pub emit_reactive: bool,
-}
-
-impl Default for MicCaptureOptions {
-    fn default() -> Self {
-        Self {
-            emit_pitch: true,
-            emit_audio: false,
-            emit_reactive: false,
-        }
-    }
-}
-
 static MIC_RUNNING: AtomicBool = AtomicBool::new(false);
 static MIC_SHUTDOWN: once_cell::sync::Lazy<Arc<AtomicBool>> =
     once_cell::sync::Lazy::new(|| Arc::new(AtomicBool::new(false)));
-static MIC_OPTIONS: once_cell::sync::Lazy<Arc<Mutex<MicCaptureOptions>>> =
-    once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(MicCaptureOptions::default())));
+static MIRROR_ENABLED: AtomicBool = AtomicBool::new(false);
+static MIC_CHANNEL: once_cell::sync::Lazy<Arc<Mutex<Option<Channel<MicSampleFrame>>>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
 fn find_device(preferred: Option<&str>) -> Result<(cpal::Device, String), String> {
     let host = cpal::default_host();
@@ -195,13 +165,14 @@ fn find_device(preferred: Option<&str>) -> Result<(cpal::Device, String), String
 
 #[tauri::command]
 pub fn start_mic_capture(
-    app: AppHandle,
     preferred: Option<String>,
     options: Option<MicCaptureOptions>,
+    on_samples: Channel<MicSampleFrame>,
 ) -> Result<String, String> {
     let next_options = options.unwrap_or_default();
-    if let Ok(mut opts) = MIC_OPTIONS.lock() {
-        *opts = next_options;
+    MIRROR_ENABLED.store(next_options.emit_audio, Ordering::SeqCst);
+    if let Ok(mut slot) = MIC_CHANNEL.lock() {
+        *slot = Some(on_samples);
     }
 
     if MIC_RUNNING.swap(true, Ordering::SeqCst) {
@@ -218,10 +189,9 @@ pub fn start_mic_capture(
 
     let device_name = name.clone();
     let shutdown = Arc::clone(&MIC_SHUTDOWN);
-    let options = Arc::clone(&MIC_OPTIONS);
 
     std::thread::spawn(move || {
-        run_mic_loop(device, &name, app, shutdown, options);
+        run_mic_loop(device, &name, shutdown);
         MIC_RUNNING.store(false, Ordering::SeqCst);
     });
 
@@ -232,59 +202,34 @@ fn try_build_stream(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     sample_format: cpal::SampleFormat,
-    pitch_shared: Arc<Mutex<VecDeque<f32>>>,
+    pcm_shared: Arc<Mutex<VecDeque<f32>>>,
     audio_shared: Arc<Mutex<VecDeque<f32>>>,
-    reactive_shared: Arc<Mutex<VecDeque<f32>>>,
-    options: Arc<Mutex<MicCaptureOptions>>,
 ) -> Option<cpal::Stream> {
     let ch = config.channels as usize;
     let push_samples: Arc<dyn Fn(&[f32]) + Send + Sync> = {
-        let pitch_cb = Arc::clone(&pitch_shared);
+        let pcm_cb = Arc::clone(&pcm_shared);
         let audio_cb = Arc::clone(&audio_shared);
-        let reactive_cb = Arc::clone(&reactive_shared);
-        let options_cb = Arc::clone(&options);
         Arc::new(move |data: &[f32]| {
-            let options = options_cb
-                .lock()
-                .map(|o| o.clone())
-                .unwrap_or_else(|_| MicCaptureOptions::default());
-            if !options.emit_pitch && !options.emit_audio && !options.emit_reactive {
-                return;
-            }
-
             let mut mono_samples = Vec::with_capacity(data.len() / ch.max(1));
             for chunk in data.chunks(ch) {
                 mono_samples.push(chunk.iter().sum::<f32>() / ch as f32);
             }
 
-            if options.emit_pitch {
-                if let Ok(mut q) = pitch_cb.try_lock() {
-                    for sample in &mono_samples {
-                        q.push_back(*sample);
-                    }
-                    while q.len() > PITCH_WINDOW * 2 {
-                        q.pop_front();
-                    }
+            if let Ok(mut q) = pcm_cb.try_lock() {
+                for sample in &mono_samples {
+                    q.push_back(*sample);
+                }
+                while q.len() > PCM_QUEUE_CAP {
+                    q.pop_front();
                 }
             }
 
-            if options.emit_audio {
+            if MIRROR_ENABLED.load(Ordering::Relaxed) {
                 if let Ok(mut q) = audio_cb.try_lock() {
                     for sample in &mono_samples {
                         q.push_back(*sample);
                     }
                     while q.len() > AUDIO_QUEUE_CAP {
-                        q.pop_front();
-                    }
-                }
-            }
-
-            if options.emit_reactive {
-                if let Ok(mut q) = reactive_cb.try_lock() {
-                    for sample in &mono_samples {
-                        q.push_back(*sample);
-                    }
-                    while q.len() > reactive::QUEUE_CAP {
                         q.pop_front();
                     }
                 }
@@ -347,7 +292,6 @@ fn try_build_stream(
 fn try_build_output_stream(
     device: &cpal::Device,
     audio_shared: Arc<Mutex<VecDeque<f32>>>,
-    options: Arc<Mutex<MicCaptureOptions>>,
 ) -> Option<cpal::Stream> {
     let default_cfg = match device.default_output_config() {
         Ok(c) => c,
@@ -365,11 +309,9 @@ fn try_build_output_stream(
     let ch = config.channels as usize;
 
     let next_sample: Arc<dyn Fn() -> f32 + Send + Sync> = {
-        let options = Arc::clone(&options);
         let audio_shared = Arc::clone(&audio_shared);
         Arc::new(move || -> f32 {
-            let emit_audio = options.lock().map(|o| o.emit_audio).unwrap_or(false);
-            if !emit_audio {
+            if !MIRROR_ENABLED.load(Ordering::Relaxed) {
                 return 0.0;
             }
             if let Ok(mut q) = audio_shared.try_lock() {
@@ -457,13 +399,15 @@ fn try_build_output_stream(
     Some(stream)
 }
 
-fn run_mic_loop(
-    device: cpal::Device,
-    name: &str,
-    app: AppHandle,
-    shutdown: Arc<AtomicBool>,
-    options: Arc<Mutex<MicCaptureOptions>>,
-) {
+fn drain_chunk(queue: &Mutex<VecDeque<f32>>) -> Option<Vec<f32>> {
+    let mut q = queue.try_lock().ok()?;
+    if q.len() < SAMPLE_CHUNK {
+        return None;
+    }
+    Some(q.drain(..SAMPLE_CHUNK).collect())
+}
+
+fn run_mic_loop(device: cpal::Device, name: &str, shutdown: Arc<AtomicBool>) {
     let default_cfg = match device.default_input_config() {
         Ok(c) => c,
         Err(e) => {
@@ -478,44 +422,34 @@ fn run_mic_loop(
         sample_rate: default_cfg.sample_rate(),
         buffer_size: cpal::BufferSize::Default,
     };
-    let sr = config.sample_rate as usize;
+    let sr = config.sample_rate;
 
     info!(
         "[mic] opening '{name}': {sr} Hz, {}ch, {sample_format:?}",
         config.channels
     );
 
-    let pitch_shared = Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(PITCH_WINDOW * 2)));
+    let pcm_shared = Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(PCM_QUEUE_CAP)));
     let audio_shared = Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(AUDIO_QUEUE_CAP)));
-    let reactive_shared =
-        Arc::new(Mutex::new(VecDeque::<f32>::with_capacity(reactive::QUEUE_CAP)));
     let Some(_stream) = try_build_stream(
         &device,
         &config,
         sample_format,
-        Arc::clone(&pitch_shared),
+        Arc::clone(&pcm_shared),
         Arc::clone(&audio_shared),
-        Arc::clone(&reactive_shared),
-        Arc::clone(&options),
     ) else {
         warn!("[mic] failed to open '{name}'");
         return;
     };
     let monitor_stream = cpal::default_host()
         .default_output_device()
-        .and_then(|output_device| {
-            try_build_output_stream(&output_device, Arc::clone(&audio_shared), Arc::clone(&options))
-        });
+        .and_then(|output_device| try_build_output_stream(&output_device, Arc::clone(&audio_shared)));
     if monitor_stream.is_none() {
         warn!("[mic] no output monitoring stream available");
     }
 
     info!("[mic] active: {name}");
 
-    let mut detector = McLeodDetector::new(PITCH_WINDOW, PITCH_WINDOW / 2);
-    let mut analyzer = ReactiveAnalyzer::new(MIN_PITCH_HZ, MAX_PITCH_HZ, MIC_RMS_GATE);
-    let mut last_reactive_emit =
-        std::time::Instant::now() - std::time::Duration::from_millis(reactive::EMIT_PERIOD_MS);
     let sleep_dur = std::time::Duration::from_millis(4);
 
     loop {
@@ -525,53 +459,16 @@ fn run_mic_loop(
             break;
         }
 
-        let opts = options
-            .lock()
-            .map(|o| o.clone())
-            .unwrap_or_else(|_| MicCaptureOptions::default());
-
-        if opts.emit_pitch {
-            let window = {
-                let Ok(q) = pitch_shared.lock() else { break };
-                if q.len() < PITCH_WINDOW {
-                    Vec::new()
-                } else {
-                    let start = q.len() - PITCH_WINDOW;
-                    q.range(start..).copied().collect::<Vec<_>>()
-                }
-            };
-
-            if !window.is_empty() {
-                let pitch = if rms(&window) < MIC_RMS_GATE {
-                    None
-                } else {
-                    detector
-                        .get_pitch(&window, sr, PITCH_POWER_THRESHOLD, PITCH_CLARITY_THRESHOLD)
-                        .filter(|p| p.frequency >= MIN_PITCH_HZ && p.frequency <= MAX_PITCH_HZ)
-                        .map(|p| p.frequency)
+        while let Some(samples) = drain_chunk(&pcm_shared) {
+            let channel = MIC_CHANNEL.lock().ok().and_then(|s| s.clone());
+            if let Some(channel) = channel {
+                let frame = MicSampleFrame {
+                    sample_rate: sr,
+                    samples,
                 };
-                let _ = app.emit("mic-pitch", MicPitchEvent { pitch });
-            }
-        }
-
-        if opts.emit_reactive
-            && last_reactive_emit.elapsed()
-                >= std::time::Duration::from_millis(reactive::EMIT_PERIOD_MS)
-        {
-            let window = {
-                let Ok(q) = reactive_shared.lock() else { break };
-                if q.len() < reactive::FFT_SIZE {
-                    Vec::new()
-                } else {
-                    let start = q.len() - reactive::FFT_SIZE;
-                    q.range(start..).copied().collect::<Vec<_>>()
+                if let Err(e) = channel.send(frame) {
+                    warn!("[mic] channel send failed: {e}");
                 }
-            };
-
-            if !window.is_empty() {
-                let event = analyzer.analyze(&window, sr as u32);
-                let _ = app.emit("mic-reactive", event);
-                last_reactive_emit = std::time::Instant::now();
             }
         }
     }
@@ -580,4 +477,8 @@ fn run_mic_loop(
 #[tauri::command]
 pub fn stop_mic_capture() {
     MIC_SHUTDOWN.store(true, Ordering::SeqCst);
+    MIRROR_ENABLED.store(false, Ordering::SeqCst);
+    if let Ok(mut slot) = MIC_CHANNEL.lock() {
+        *slot = None;
+    }
 }

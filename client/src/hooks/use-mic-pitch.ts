@@ -2,10 +2,17 @@ import {
   tauriMicrophoneAdapter,
   type MicCaptureOptions,
   type MicrophoneAdapter,
-  type StopListening,
 } from "@/adapters/microphone";
+import { useMicSamples } from "@/hooks/use-mic-samples";
+import { PITCH_WINDOW_SAMPLES } from "@/lib/pitch/constants";
+import { createMicPitchDetector, detectPitchFromSamplesMic } from "@/lib/pitch/detect";
+import { SampleRing } from "@/lib/mic/sample-ring";
 import type { MicrophoneInfo } from "@/types/MicrophoneInfo";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+/** ~30 Hz pitch updates: more than enough for vocal pitch tracking. */
+const PITCH_TICK_MS = 33;
+const RING_CAPACITY = PITCH_WINDOW_SAMPLES * 2;
 
 export interface MicDevice {
   deviceId: string;
@@ -38,64 +45,64 @@ export function useMicDevices(adapter: MicrophoneAdapter = defaultAdapter) {
   return devices;
 }
 
-export function useMicPitch(enabled: boolean, adapter: MicrophoneAdapter = defaultAdapter) {
+export function useMicPitch(enabled: boolean) {
   const [latestPitch, setLatestPitch] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(false);
+  const ringRef = useRef<SampleRing | null>(null);
+  const sampleRateRef = useRef(0);
+
+  if (ringRef.current === null) {
+    ringRef.current = new SampleRing(RING_CAPACITY);
+  }
+
+  useMicSamples((frame) => {
+    sampleRateRef.current = frame.sample_rate;
+    ringRef.current?.push(frame.samples);
+  }, enabled);
 
   useEffect(() => {
     if (!enabled) {
       setLatestPitch(null);
-      setError(null);
       setActive(false);
+      ringRef.current?.reset();
+      sampleRateRef.current = 0;
       return;
     }
 
-    let cancelled = false;
-    let stopListening: StopListening | null = null;
+    setActive(true);
+    const detector = createMicPitchDetector();
+    const window = new Float32Array(PITCH_WINDOW_SAMPLES);
 
-    const run = async () => {
-      try {
-        stopListening = await adapter.onPitch((pitch) => {
-          if (!cancelled) setLatestPitch(pitch);
-        });
-        if (cancelled) {
-          stopListening();
-          return;
-        }
-        setError(null);
-        setActive(true);
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
-          setLatestPitch(null);
-          setActive(false);
-        }
-      }
+    const tick = () => {
+      const ring = ringRef.current;
+      const sr = sampleRateRef.current;
+      if (!ring || sr === 0) return;
+      if (!ring.readMostRecent(window)) return;
+      const hz = detectPitchFromSamplesMic(detector, window, sr);
+      setLatestPitch(hz);
     };
 
-    void run();
+    const id = setInterval(tick, PITCH_TICK_MS);
 
     return () => {
-      cancelled = true;
-      stopListening?.();
+      clearInterval(id);
       setLatestPitch(null);
       setActive(false);
     };
-  }, [enabled, adapter]);
+  }, [enabled]);
 
-  return { latestPitch, active, error };
+  return { latestPitch, active, error: null as string | null };
 }
 
 export function useMicCapture(
   deviceId: string | null,
+  enabled: boolean,
   options: MicCaptureOptions,
   adapter: MicrophoneAdapter = defaultAdapter,
 ) {
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
-  const enabled = options.emit_pitch || options.emit_audio || options.emit_reactive;
 
   useEffect(() => {
     if (!enabled) {
@@ -142,7 +149,7 @@ export function useMicCapture(
       }
       setActive(false);
     };
-  }, [enabled, options.emit_pitch, options.emit_audio, options.emit_reactive, deviceId, adapter]);
+  }, [enabled, options.emit_audio, deviceId, adapter]);
 
   return { active, error };
 }

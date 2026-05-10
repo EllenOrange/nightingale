@@ -1,5 +1,5 @@
 import type { MicReactiveRef } from "@/hooks/use-mic-reactive";
-import type { MicReactiveEvent } from "@/types/MicReactiveEvent";
+import type { MicReactiveEvent } from "@/lib/mic/reactive-analyzer";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";

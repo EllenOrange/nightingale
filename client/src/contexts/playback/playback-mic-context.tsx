@@ -70,18 +70,13 @@ export function PlaybackMicProvider({ config, children }: PlaybackMicProviderPro
 
   const micPitchEnabled = isReady && isPlaying && !paused && micUserEnabled;
   const micMirrorEnabled = isReady && isPlaying && !paused && micMirrorUserEnabled;
+  const captureEnabled = micPitchEnabled || micMirrorEnabled;
 
-  const captureOptions = useMemo(
-    () => ({
-      emit_pitch: micPitchEnabled,
-      emit_audio: micMirrorEnabled,
-      emit_reactive: micPitchEnabled,
-    }),
-    [micPitchEnabled, micMirrorEnabled],
-  );
+  const captureOptions = useMemo(() => ({ emit_audio: micMirrorEnabled }), [micMirrorEnabled]);
 
   const { active: micCaptureActive, error: micCaptureError } = useMicCapture(
     selectedMicId,
+    captureEnabled,
     captureOptions,
   );
   const {
