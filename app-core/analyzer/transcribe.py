@@ -3,9 +3,10 @@
 import re
 
 from audio import detect_vocal_region, highpass_filter, normalize_rms
+from gpu import gpu_model, hard_free_gpu
 from hallucination import is_hallucination, remove_hallucinated_words
 from language import detect_language_multiwindow
-from whisper_compat import progress, align_with_fallback, free_gpu
+from whisper_compat import progress, align_with_fallback
 
 
 def transcribe_vocals(
@@ -169,47 +170,44 @@ def _whisper_asr_options(beam_size: int) -> tuple[dict, dict]:
 def _transcribe_whisper(
     *, audio, full_audio, vocal_start, device, compute_type,
     model_name, beam_size, batch_size,
-    language_override, whisper_model,
+    language_override, whisper_model=None,
 ) -> tuple[list[dict], str]:
     import whisperx
 
     _, no_vad_asr = _whisper_asr_options(beam_size)
-    owns_model = whisper_model is None
 
-    if language_override:
-        language = language_override
-        print(f"[nightingale:LOG] Using language override: '{language}'", flush=True)
-        progress(59, f"Language override: {language}")
-        if whisper_model is None:
-            whisper_model = whisperx.load_model(
+    with gpu_model(f"whisper:{model_name}") as held:
+        if language_override:
+            language = language_override
+            print(f"[nightingale:LOG] Using language override: '{language}'", flush=True)
+            progress(59, f"Language override: {language}")
+            model = whisperx.load_model(
                 model_name, device, compute_type=compute_type,
                 task="transcribe", language=language,
                 asr_options=no_vad_asr,
             )
-    else:
-        progress(58, "Detecting language from vocals (multi-window)...")
-        if whisper_model is None:
-            whisper_model = whisperx.load_model(
+            held.append(model)
+        else:
+            progress(58, "Detecting language from vocals (multi-window)...")
+            model = whisperx.load_model(
                 model_name, device, compute_type=compute_type,
                 task="transcribe", asr_options=no_vad_asr,
             )
-        language = detect_language_multiwindow(whisper_model, full_audio)
-        print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
-        progress(59, f"Detected language: {language}")
+            held.append(model)
+            language = detect_language_multiwindow(model, full_audio)
+            print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
+            progress(59, f"Detected language: {language}")
 
-    model = whisper_model
-    print(f"[nightingale:LOG] Model ready for lang={language}", flush=True)
+        print(f"[nightingale:LOG] Model ready for lang={language}", flush=True)
 
-    progress(60, "Transcribing vocals...")
-    result = model.transcribe(
-        audio,
-        batch_size=batch_size,
-        task="transcribe",
-        language=language,
-        chunk_size=30,
-    )
-    if owns_model:
-        del model
+        progress(60, "Transcribing vocals...")
+        result = model.transcribe(
+            audio,
+            batch_size=batch_size,
+            task="transcribe",
+            language=language,
+            chunk_size=30,
+        )
 
     raw_segments = result.get("segments", [])
     for seg in raw_segments:
@@ -222,7 +220,7 @@ def _transcribe_whisper(
 def _transcribe_parakeet_or_fallback(
     *, vocals_path, audio, full_audio, vocal_start, device, compute_type,
     model_name, beam_size, batch_size,
-    language_override, whisper_model, pre_align_cleanup,
+    language_override, pre_align_cleanup, whisper_model=None,
 ) -> tuple[list[dict], str, str]:
     import whisperx
     import parakeet
@@ -235,14 +233,12 @@ def _transcribe_parakeet_or_fallback(
         progress(58, "Detecting language with whisper-tiny...")
         if pre_align_cleanup:
             pre_align_cleanup()
-        tiny = whisperx.load_model(
-            "tiny", device, compute_type=compute_type, task="transcribe",
-        )
-        try:
+        with gpu_model("whisper-tiny:lang_detect") as held:
+            tiny = whisperx.load_model(
+                "tiny", device, compute_type=compute_type, task="transcribe",
+            )
+            held.append(tiny)
             language = detect_language_multiwindow(tiny, full_audio)
-        finally:
-            del tiny
-            free_gpu()
         print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
         progress(59, f"Detected language: {language}")
 
@@ -251,13 +247,12 @@ def _transcribe_parakeet_or_fallback(
             f"[nightingale:LOG] Language '{language}' not in Parakeet's supported set; falling back to Whisper",
             flush=True,
         )
-        parakeet.free_models()
-        free_gpu()
+        hard_free_gpu("parakeet_unsupported_lang")
         raw_segments, language = _transcribe_whisper(
             audio=audio, full_audio=full_audio, vocal_start=vocal_start,
             device=device, compute_type=compute_type,
             model_name=model_name, beam_size=beam_size, batch_size=batch_size,
-            language_override=language, whisper_model=whisper_model,
+            language_override=language,
         )
         return raw_segments, language, "whisper-fallback"
 
@@ -274,13 +269,12 @@ def _transcribe_parakeet_or_fallback(
             f"[nightingale:LOG] {e}; falling back to Whisper for this song",
             flush=True,
         )
-        parakeet.free_models()
-        free_gpu()
+        hard_free_gpu("parakeet_empty_output")
         raw_segments, language = _transcribe_whisper(
             audio=audio, full_audio=full_audio, vocal_start=vocal_start,
             device=device, compute_type=compute_type,
             model_name=model_name, beam_size=beam_size, batch_size=batch_size,
-            language_override=language, whisper_model=whisper_model,
+            language_override=language,
         )
         return raw_segments, language, "whisper-fallback"
 

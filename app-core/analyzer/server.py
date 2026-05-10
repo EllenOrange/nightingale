@@ -32,42 +32,9 @@ if os.name == "nt":
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from whisper_compat import detect_device, compute_type_for, is_oom, free_gpu, set_progress_sink
+from gpu import end_of_song_cleanup, hard_free_gpu, log_vram, reset_peak_stats, vram_snapshot
+from whisper_compat import detect_device, is_oom, set_progress_sink
 from pipeline import run_pipeline
-
-_whisper_model = None
-_whisper_key = None  # (model_name, device, compute_type)
-
-
-def _clear_models():
-    global _whisper_model, _whisper_key
-    if _whisper_model is not None:
-        del _whisper_model
-    _whisper_model = None
-    _whisper_key = None
-    try:
-        import parakeet
-        parakeet.free_models()
-    except Exception:
-        pass
-    free_gpu()
-
-
-def _get_whisper(model_name, device, compute_type):
-    global _whisper_model, _whisper_key
-    key = (model_name, device, compute_type)
-    if _whisper_model is not None and _whisper_key == key:
-        return _whisper_model
-    if _whisper_model is not None:
-        del _whisper_model
-        _whisper_model = None
-        free_gpu()
-    import whisperx
-    _whisper_model = whisperx.load_model(
-        model_name, device, compute_type=compute_type, task="transcribe",
-    )
-    _whisper_key = key
-    return _whisper_model
 
 
 def process_song(cmd, device):
@@ -82,22 +49,25 @@ def process_song(cmd, device):
     lyrics_path = cmd.get("lyrics")
     language_override = cmd.get("language")
 
-    c_type = compute_type_for(device)
-    actual_device = "cpu" if device == "mps" else device
-
-    run_pipeline(
-        audio_path, output_dir, file_hash, device,
-        model_name=model_name,
-        beam_size=beam_size,
-        batch_size=batch_size,
-        separator=separator,
-        engine=engine,
-        lyrics_path=lyrics_path,
-        language_override=language_override,
-        whisper_model=lambda: _get_whisper(model_name, actual_device, c_type),
-        pre_align_cleanup=_clear_models,
-        free_gpu_fn=lambda: free_gpu(),
-    )
+    reset_peak_stats()
+    log_vram("song_start")
+    try:
+        run_pipeline(
+            audio_path, output_dir, file_hash, device,
+            model_name=model_name,
+            beam_size=beam_size,
+            batch_size=batch_size,
+            separator=separator,
+            engine=engine,
+            lyrics_path=lyrics_path,
+            language_override=language_override,
+            whisper_model=None,
+            pre_align_cleanup=end_of_song_cleanup,
+            free_gpu_fn=hard_free_gpu,
+        )
+    finally:
+        end_of_song_cleanup()
+        log_vram("song_end")
 
 
 def _send(wfile, payload):
@@ -173,7 +143,13 @@ def main():
                     traceback.print_exc(file=sys.stderr)
                     err_str = str(e)
                     if is_oom(err_str):
-                        _clear_models()
+                        snap = vram_snapshot()
+                        if snap:
+                            print(
+                                f"[nightingale:LOG] OOM in process_song; vram={snap}",
+                                file=sys.stderr, flush=True,
+                            )
+                        end_of_song_cleanup()
                         _send(wfile, {"type": "error", "kind": "oom", "msg": err_str})
                     else:
                         _send(wfile, {"type": "error", "kind": "generic", "msg": err_str})

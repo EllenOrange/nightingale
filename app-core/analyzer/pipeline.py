@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 
+from gpu import hard_free_gpu, log_vram
 from whisper_compat import progress
 from key_detect import detect_key
 from stems import separate_stems, separate_stems_uvr
@@ -153,33 +154,41 @@ def run_pipeline(
         return
 
     progress(2, f"Using device: {device}")
-    detected_key = detect_key(audio_path)
-    tempo = 1.0
 
-    vocals_path = separate_and_cache(
-        audio_path, output_dir, file_hash, separator, device,
-        key=detected_key,
-        tempo=tempo,
-        free_gpu_fn=free_gpu_fn,
-    )
+    try:
+        log_vram("phase:start")
+        detected_key = detect_key(audio_path)
+        tempo = 1.0
 
-    if callable(whisper_model):
-        whisper_model = whisper_model()
+        vocals_path = separate_and_cache(
+            audio_path, output_dir, file_hash, separator, device,
+            key=detected_key,
+            tempo=tempo,
+            free_gpu_fn=free_gpu_fn,
+        )
+        log_vram("phase:after_separation")
 
-    transcript = transcribe_or_align(
-        vocals_path, audio_path, device,
-        model_name=model_name,
-        beam_size=beam_size,
-        batch_size=batch_size,
-        engine=engine,
-        lyrics_path=lyrics_path,
-        language_override=language_override,
-        whisper_model=whisper_model,
-        pre_align_cleanup=pre_align_cleanup,
-    )
-    transcript["key"] = detected_key
-    transcript["tempo"] = normalize_tempo(tempo)
+        if callable(whisper_model):
+            whisper_model = whisper_model()
 
-    progress(95, "Writing transcript...")
-    with open(transcript_path, "w", encoding="utf-8") as f:
-        json.dump(transcript, f, ensure_ascii=False, indent=2)
+        transcript = transcribe_or_align(
+            vocals_path, audio_path, device,
+            model_name=model_name,
+            beam_size=beam_size,
+            batch_size=batch_size,
+            engine=engine,
+            lyrics_path=lyrics_path,
+            language_override=language_override,
+            whisper_model=whisper_model,
+            pre_align_cleanup=pre_align_cleanup,
+        )
+        log_vram("phase:after_transcribe_or_align")
+
+        transcript["key"] = detected_key
+        transcript["tempo"] = normalize_tempo(tempo)
+
+        progress(95, "Writing transcript...")
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            json.dump(transcript, f, ensure_ascii=False, indent=2)
+    finally:
+        hard_free_gpu("pipeline_end")

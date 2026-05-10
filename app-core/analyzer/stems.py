@@ -5,7 +5,8 @@ import subprocess
 
 import torch
 
-from whisper_compat import free_gpu, progress
+from gpu import gpu_model
+from whisper_compat import progress
 
 KARAOKE_MODEL = "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"
 
@@ -33,39 +34,45 @@ def separate_stems(audio_path: str, work_dir: str, device: str) -> tuple[str, st
     from demucs.pretrained import get_model
     import torchaudio
 
-    progress(5, "Loading Demucs model...")
-    model = get_model("htdemucs")
-    actual_device = torch.device(device if device != "mps" else "cpu")
-    model.to(actual_device)
-
-    progress(10, "Loading audio file...")
-    load_path = _ensure_wav(audio_path, work_dir)
-    wav, sr = torchaudio.load(load_path)
-    wav = wav.to(actual_device)
-
-    ref = wav.mean(0)
-    wav_centered = wav - ref.mean()
-    wav_scaled = wav_centered / ref.abs().max().clamp(min=1e-8)
-
-    progress(15, "Separating vocals from instrumentals...")
-    sources = apply_model(model, wav_scaled[None], device=actual_device, shifts=1, overlap=0.25)[0]
-
-    source_names = model.sources
-    vocals_idx = source_names.index("vocals")
-
-    vocals = sources[vocals_idx] * ref.abs().max() + ref.mean()
-    instrumental = wav.to(actual_device) - vocals
-    del model, wav, sources, wav_centered, wav_scaled, ref
-
-    progress(45, "Saving separated stems...")
-
     vocals_path = os.path.join(work_dir, "vocals.wav")
     instrumental_path = os.path.join(work_dir, "instrumental.wav")
+    actual_device = torch.device(device if device != "mps" else "cpu")
 
-    save_audio(vocals.cpu(), vocals_path, sr)
-    save_audio(instrumental.cpu(), instrumental_path, sr)
-    del vocals, instrumental
-    free_gpu()
+    with gpu_model("demucs") as held:
+        progress(5, "Loading Demucs model...")
+        model = get_model("htdemucs")
+        held.append(model)
+        model.to(actual_device)
+
+        progress(10, "Loading audio file...")
+        load_path = _ensure_wav(audio_path, work_dir)
+        wav, sr = torchaudio.load(load_path)
+        wav = wav.to(actual_device)
+
+        ref = wav.mean(0)
+        wav_centered = wav - ref.mean()
+        wav_scaled = wav_centered / ref.abs().max().clamp(min=1e-8)
+
+        progress(15, "Separating vocals from instrumentals...")
+        sources = apply_model(
+            model, wav_scaled[None], device=actual_device, shifts=1, overlap=0.25,
+        )[0]
+
+        source_names = model.sources
+        vocals_idx = source_names.index("vocals")
+
+        vocals = sources[vocals_idx] * ref.abs().max() + ref.mean()
+        instrumental = wav - vocals
+
+        progress(45, "Saving separated stems...")
+        vocals_cpu = vocals.detach().cpu()
+        instrumental_cpu = instrumental.detach().cpu()
+
+        del wav, sources, wav_centered, wav_scaled, ref, vocals, instrumental
+
+        save_audio(vocals_cpu, vocals_path, sr)
+        save_audio(instrumental_cpu, instrumental_path, sr)
+        del vocals_cpu, instrumental_cpu
 
     progress(50, "Stem separation complete")
     return vocals_path, instrumental_path
@@ -90,17 +97,18 @@ def separate_stems_uvr(audio_path: str, work_dir: str, models_dir: str) -> tuple
     """
     from audio_separator.separator import Separator
 
-    progress(5, "Loading karaoke separation model...")
-    separator = Separator(
-        model_file_dir=models_dir,
-        output_dir=work_dir,
-    )
-    separator.load_model(KARAOKE_MODEL)
+    with gpu_model("uvr-karaoke") as held:
+        progress(5, "Loading karaoke separation model...")
+        separator = Separator(
+            model_file_dir=models_dir,
+            output_dir=work_dir,
+        )
+        held.append(separator)
+        separator.load_model(KARAOKE_MODEL)
 
-    progress(15, "Separating vocals from instrumentals...")
-    output_files = separator.separate(audio_path)
-    del separator
-    free_gpu()
+        progress(15, "Separating vocals from instrumentals...")
+        output_files = separator.separate(audio_path)
+
     print(f"[nightingale:LOG] Separator outputs: {output_files}", flush=True)
 
     vocals = _resolve_separator_output(output_files, work_dir, "(Vocals)")

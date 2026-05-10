@@ -4,6 +4,7 @@ import json
 import re
 
 from audio import detect_vocal_region
+from gpu import gpu_model
 from language import detect_language_multiwindow
 from whisper_compat import progress, align_device_for, compute_type_for, align_with_fallback
 
@@ -58,14 +59,12 @@ def align_lyrics(
         progress(59, f"Language override: {language}")
     else:
         progress(58, "Detecting language...")
-        owns_model = whisper_model is None
-        if whisper_model is None:
-            whisper_model = whisperx.load_model(
+        with gpu_model(f"whisper:{model_name}:lang_detect") as held:
+            model = whisperx.load_model(
                 model_name, a_device, compute_type=c_type, task="transcribe",
             )
-        language = detect_language_multiwindow(whisper_model, audio)
-        if owns_model:
-            del whisper_model
+            held.append(model)
+            language = detect_language_multiwindow(model, audio)
         print(f"[nightingale:LOG] Detected language: '{language}'", flush=True)
         progress(59, f"Detected language: {language}")
 

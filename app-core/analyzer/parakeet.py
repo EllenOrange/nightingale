@@ -13,7 +13,8 @@ import os
 import subprocess
 import tempfile
 
-from whisper_compat import progress, is_oom, free_gpu
+from gpu import gpu_model, hard_free_gpu, log_vram
+from whisper_compat import progress, is_oom
 
 PARAKEET_LANGS = {
     "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu",
@@ -22,9 +23,6 @@ PARAKEET_LANGS = {
 
 NEMO_MODEL_ID = "nvidia/parakeet-tdt-0.6b-v3"
 ONNX_MODEL_ID = "istupakov/parakeet-tdt-0.6b-v3-onnx"
-
-_nemo_model = None
-_onnx_model = None
 
 
 class ParakeetEmptyOutputError(RuntimeError):
@@ -41,14 +39,13 @@ def is_supported(lang: str) -> bool:
 
 
 def free_models():
-    """Drop cached Parakeet handles to free RAM/VRAM."""
-    global _nemo_model, _onnx_model
-    if _nemo_model is not None:
-        del _nemo_model
-        _nemo_model = None
-    if _onnx_model is not None:
-        del _onnx_model
-        _onnx_model = None
+    """No-op shim kept for backwards compatibility.
+
+    Models are no longer cached at module level; each call to :func:`transcribe`
+    loads inside a ``gpu_model`` scope that releases on exit. We still expose
+    this symbol so existing callers (server.py, transcribe.py) don't break.
+    """
+    hard_free_gpu("parakeet_free_models")
 
 
 def transcribe(
@@ -113,15 +110,18 @@ def _transcribe_nemo_with_fallback(
         except Exception as e:
             if not is_oom(e):
                 raise
+            log_vram(f"oom:parakeet_nemo_attempt{attempt}")
             print(
                 f"[nightingale:LOG] Parakeet NeMo OOM on attempt {attempt} (batch={current_batch}); "
                 f"freeing models and retrying",
                 flush=True,
             )
-            free_models()
             if pre_load_cleanup:
-                pre_load_cleanup()
-            free_gpu()
+                try:
+                    pre_load_cleanup()
+                except Exception:
+                    pass
+            hard_free_gpu(f"parakeet_nemo_oom_attempt{attempt}")
             current_batch = max(1, current_batch // 2)
 
     print(
@@ -129,8 +129,7 @@ def _transcribe_nemo_with_fallback(
         flush=True,
     )
     progress(60, "Transcribing with Parakeet v3 (onnx, CPU fallback)...")
-    free_models()
-    free_gpu()
+    hard_free_gpu("parakeet_nemo_to_onnx_fallback")
     return _transcribe_onnx(vocals_path), "onnx-cpu-fallback"
 
 
@@ -146,24 +145,23 @@ def _ensure_wav_16k_mono(src_path: str, work_dir: str) -> str:
 
 
 def _load_nemo():
-    global _nemo_model
-    if _nemo_model is not None:
-        return _nemo_model
     import nemo.collections.asr as nemo_asr
 
     print(f"[nightingale:LOG] Loading NeMo model {NEMO_MODEL_ID}", flush=True)
-    _nemo_model = nemo_asr.models.ASRModel.from_pretrained(model_name=NEMO_MODEL_ID)
-    _nemo_model.eval()
-    _nemo_model.cuda()
-    return _nemo_model
+    model = nemo_asr.models.ASRModel.from_pretrained(model_name=NEMO_MODEL_ID)
+    model.eval()
+    model.cuda()
+    return model
 
 
 def _transcribe_nemo(vocals_path: str, batch_size: int = 8) -> list[dict]:
-    model = _load_nemo()
+    with gpu_model("parakeet-nemo") as held:
+        model = _load_nemo()
+        held.append(model)
 
-    with tempfile.TemporaryDirectory(prefix="nightingale_parakeet_") as work_dir:
-        wav_path = _ensure_wav_16k_mono(vocals_path, work_dir)
-        outputs = model.transcribe([wav_path], timestamps=True, batch_size=batch_size)
+        with tempfile.TemporaryDirectory(prefix="nightingale_parakeet_") as work_dir:
+            wav_path = _ensure_wav_16k_mono(vocals_path, work_dir)
+            outputs = model.transcribe([wav_path], timestamps=True, batch_size=batch_size)
 
     if not outputs:
         return []
@@ -183,31 +181,29 @@ def _transcribe_nemo(vocals_path: str, batch_size: int = 8) -> list[dict]:
 
 
 def _load_onnx():
-    global _onnx_model
-    if _onnx_model is not None:
-        return _onnx_model
     import onnx_asr
 
     print(f"[nightingale:LOG] Loading ONNX model {ONNX_MODEL_ID} (CPU)", flush=True)
     cpu_providers = ["CPUExecutionProvider"]
     try:
-        _onnx_model = onnx_asr.load_model(
+        return onnx_asr.load_model(
             ONNX_MODEL_ID, quantization="int8", providers=cpu_providers,
         )
     except TypeError:
         try:
-            _onnx_model = onnx_asr.load_model(ONNX_MODEL_ID, providers=cpu_providers)
+            return onnx_asr.load_model(ONNX_MODEL_ID, providers=cpu_providers)
         except TypeError:
-            _onnx_model = onnx_asr.load_model(ONNX_MODEL_ID)
-    return _onnx_model
+            return onnx_asr.load_model(ONNX_MODEL_ID)
 
 
 def _transcribe_onnx(vocals_path: str) -> list[dict]:
-    model = _load_onnx()
+    with gpu_model("parakeet-onnx") as held:
+        model = _load_onnx()
+        held.append(model)
 
-    with tempfile.TemporaryDirectory(prefix="nightingale_parakeet_") as work_dir:
-        wav_path = _ensure_wav_16k_mono(vocals_path, work_dir)
-        result = model.recognize(wav_path, timestamps=True)
+        with tempfile.TemporaryDirectory(prefix="nightingale_parakeet_") as work_dir:
+            wav_path = _ensure_wav_16k_mono(vocals_path, work_dir)
+            result = model.recognize(wav_path, timestamps=True)
 
     return _extract_words_from_onnx_result(result)
 
