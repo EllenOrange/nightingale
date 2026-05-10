@@ -36,7 +36,7 @@ const SEPARATORS = [
 
 const ASR_ENGINES = [
   { value: "whisper", label: "Whisper" },
-  { value: "parakeet", label: "Parakeet v3 (NeMo / ONNX)" },
+  { value: "parakeet", label: "Parakeet v3 (Experimental)" },
 ];
 
 const MODELS = ["large-v3", "large-v3-turbo", "medium", "small", "base", "tiny"];
