@@ -482,6 +482,8 @@ pub fn step_install_packages() -> Result<(), String> {
         "soundfile",
         "huggingface_hub>=0.27.0",
         audio_sep_pkg,
+        "onnx-asr>=0.5.0",
+        "onnxruntime>=1.17",
     ];
 
     if gpu.legacy_torch {
@@ -529,6 +531,24 @@ pub fn step_install_packages() -> Result<(), String> {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(format!("CUDA PyTorch install failed: {stderr}"));
+        }
+
+        let nemo_args: Vec<&str> = vec![
+            "pip",
+            "install",
+            "nemo_toolkit[asr]>=2.0.0",
+            "--python",
+            &py_str,
+        ];
+
+        let output = silent_command(&uv)
+            .args(&nemo_args)
+            .output()
+            .map_err(|e| format!("Failed to install NeMo: {e}"))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("NeMo install failed: {stderr}"));
         }
     }
 

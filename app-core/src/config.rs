@@ -25,6 +25,7 @@ pub struct AppConfig {
     pub batch_size: Option<u32>,
     pub last_video_flavor: Option<usize>,
     pub separator: Option<String>,
+    pub asr_engine: Option<String>,
     pub language_overrides: Option<HashMap<String, String>>,
 }
 
@@ -50,6 +51,7 @@ impl Default for AppConfig {
             batch_size: None,
             last_video_flavor: None,
             separator: None,
+            asr_engine: None,
             language_overrides: None,
         }
     }
@@ -125,6 +127,10 @@ impl AppConfig {
 
     pub fn separator(&self) -> &str {
         self.separator.as_deref().unwrap_or("karaoke")
+    }
+
+    pub fn asr_engine(&self) -> &str {
+        self.asr_engine.as_deref().unwrap_or("whisper")
     }
 
     pub fn mic_mirror_gain(&self) -> f32 {

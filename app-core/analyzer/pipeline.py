@@ -110,6 +110,7 @@ def separate_and_cache(audio_path, output_dir, file_hash, separator, device, key
 def transcribe_or_align(
     vocals_path, audio_path, device, *,
     model_name, beam_size=5, batch_size=16,
+    engine="whisper",
     lyrics_path=None, language_override=None,
     whisper_model=None, pre_align_cleanup=None,
 ):
@@ -129,6 +130,7 @@ def transcribe_or_align(
         model_name=model_name,
         beam_size=beam_size,
         batch_size=batch_size,
+        engine=engine,
         language_override=language_override,
         whisper_model=whisper_model,
         pre_align_cleanup=pre_align_cleanup,
@@ -138,7 +140,8 @@ def transcribe_or_align(
 def run_pipeline(
     audio_path, output_dir, file_hash, device, *,
     model_name="large-v3", beam_size=5, batch_size=16,
-    separator="karaoke", lyrics_path=None, language_override=None,
+    separator="karaoke", engine="whisper",
+    lyrics_path=None, language_override=None,
     whisper_model=None, pre_align_cleanup=None, free_gpu_fn=None,
 ):
     """Full analysis pipeline: stem separation -> transcription -> save."""
@@ -168,6 +171,7 @@ def run_pipeline(
         model_name=model_name,
         beam_size=beam_size,
         batch_size=batch_size,
+        engine=engine,
         lyrics_path=lyrics_path,
         language_override=language_override,
         whisper_model=whisper_model,

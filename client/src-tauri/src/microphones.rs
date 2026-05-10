@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use tauri::ipc::Channel;
 use tracing::{info, warn};
 use ts_rs::TS;
@@ -152,6 +153,36 @@ static MIC_SHUTDOWN: once_cell::sync::Lazy<Arc<AtomicBool>> =
 static MIRROR_ENABLED: AtomicBool = AtomicBool::new(false);
 static MIC_CHANNEL: once_cell::sync::Lazy<Arc<Mutex<Option<Channel<MicSampleFrame>>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
+static MIC_THREAD: once_cell::sync::Lazy<Mutex<Option<JoinHandle<()>>>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(None));
+/// Serializes start/stop so concurrent IPC dispatches can't interleave a
+/// teardown with a fresh spawn.
+static MIC_OP_LOCK: once_cell::sync::Lazy<Mutex<()>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(()));
+
+fn take_mic_thread() -> Option<JoinHandle<()>> {
+    MIC_THREAD
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+}
+
+fn stop_internal() {
+    MIC_SHUTDOWN.store(true, Ordering::SeqCst);
+    MIRROR_ENABLED.store(false, Ordering::SeqCst);
+    /*
+     * Drop the channel before joining: this triggers Tauri's `Channel` Drop,
+     * which sends `{end: true}` to JS so the callback id is unregistered
+     * cleanly. The mic loop also gets `None` next iteration and stops sending.
+     */
+    if let Ok(mut slot) = MIC_CHANNEL.lock() {
+        *slot = None;
+    }
+    if let Some(handle) = take_mic_thread() {
+        let _ = handle.join();
+    }
+    MIC_RUNNING.store(false, Ordering::SeqCst);
+}
 
 fn find_device(preferred: Option<&str>) -> Result<(cpal::Device, String), String> {
     let host = cpal::default_host();
@@ -181,31 +212,46 @@ pub fn start_mic_capture(
     options: Option<MicCaptureOptions>,
     on_samples: Channel<MicSampleFrame>,
 ) -> Result<String, String> {
+    let _guard = MIC_OP_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    /*
+     * Always tear down any prior session first. We used to short-circuit with
+     * "already running" if MIC_RUNNING was true, but that hit a race where
+     * the previous worker had already broken out on shutdown but not yet
+     * cleared MIC_RUNNING — the new start would skip spawning, and capture
+     * would silently die for the rest of the session.
+     */
+    stop_internal();
+
     let next_options = options.unwrap_or_default();
     MIRROR_ENABLED.store(next_options.emit_audio, Ordering::SeqCst);
+
+    let (device, name) = match find_device(preferred.as_deref()) {
+        Ok(pair) => pair,
+        Err(e) => {
+            MIRROR_ENABLED.store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+    };
+
     if let Ok(mut slot) = MIC_CHANNEL.lock() {
         *slot = Some(on_samples);
     }
 
-    if MIC_RUNNING.swap(true, Ordering::SeqCst) {
-        MIC_SHUTDOWN.store(false, Ordering::SeqCst);
-        return Ok("already running".into());
-    }
-
     MIC_SHUTDOWN.store(false, Ordering::SeqCst);
-
-    let (device, name) = find_device(preferred.as_deref()).map_err(|e| {
-        MIC_RUNNING.store(false, Ordering::SeqCst);
-        e
-    })?;
+    MIC_RUNNING.store(true, Ordering::SeqCst);
 
     let device_name = name.clone();
     let shutdown = Arc::clone(&MIC_SHUTDOWN);
 
-    std::thread::spawn(move || {
+    let handle = std::thread::spawn(move || {
         run_mic_loop(device, &name, shutdown);
         MIC_RUNNING.store(false, Ordering::SeqCst);
     });
+
+    if let Ok(mut slot) = MIC_THREAD.lock() {
+        *slot = Some(handle);
+    }
 
     Ok(device_name)
 }
@@ -488,9 +534,6 @@ fn run_mic_loop(device: cpal::Device, name: &str, shutdown: Arc<AtomicBool>) {
 
 #[tauri::command]
 pub fn stop_mic_capture() {
-    MIC_SHUTDOWN.store(true, Ordering::SeqCst);
-    MIRROR_ENABLED.store(false, Ordering::SeqCst);
-    if let Ok(mut slot) = MIC_CHANNEL.lock() {
-        *slot = None;
-    }
+    let _guard = MIC_OP_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    stop_internal();
 }

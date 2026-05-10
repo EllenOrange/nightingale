@@ -34,10 +34,16 @@ const SEPARATORS = [
   { value: "demucs", label: "Demucs" },
 ];
 
+const ASR_ENGINES = [
+  { value: "whisper", label: "Whisper" },
+  { value: "parakeet", label: "Parakeet v3 (NeMo / ONNX)" },
+];
+
 const MODELS = ["large-v3", "large-v3-turbo", "medium", "small", "base", "tiny"];
 
 const DEFAULT_MODEL: (typeof MODELS)[number] = "large-v3";
 const DEFAULT_SEPARATOR = "karaoke";
+const DEFAULT_ASR_ENGINE = "whisper";
 
 const DEFAULT_BEAM_BATCH_SIZE = 8;
 const DEFAULT_MIC_MIRROR_GAIN = 0.65;
@@ -46,7 +52,8 @@ const MIC_MIRROR_GAIN_MAX = 2;
 
 const MIC_MIRROR_GAIN_SEGMENT = 2;
 
-const SETTINGS_STOPS = [2, 1, 1, 1, 1, 16, 16, 2];
+const SETTINGS_STOPS_WHISPER = [2, 1, 1, 1, 1, 1, 16, 16, 2];
+const SETTINGS_STOPS_PARAKEET = [2, 1, 1, 1, 1, 16, 2];
 
 const RING = "ring-2 ring-primary";
 const NO_FOCUS_RING = "focus-visible:ring-0 focus-visible:border-transparent";
@@ -67,10 +74,17 @@ export const SettingsDialog = () => {
     micMirrorGainRef.current = config?.mic_mirror_gain ?? DEFAULT_MIC_MIRROR_GAIN;
   }, [config?.mic_mirror_gain]);
 
+  const asrEngine = config?.asr_engine ?? DEFAULT_ASR_ENGINE;
+  const isParakeet = asrEngine === "parakeet";
+
+  const stops = isParakeet ? SETTINGS_STOPS_PARAKEET : SETTINGS_STOPS_WHISPER;
+  const itemCount = stops.reduce((sum, n) => sum + n, 0);
+  const footerSegment = stops.length - 1;
+
   const { isFocused } = useDialogNav({
     open,
-    itemCount: 40,
-    stops: SETTINGS_STOPS,
+    itemCount,
+    stops,
     onBack: close,
     containerRef,
     onAction: (segment, _slot, action) => {
@@ -102,7 +116,11 @@ export const SettingsDialog = () => {
     return cn(NO_FOCUS_RING, isFocused(segment, slot) && RING);
   };
 
-  const generateNumberSelect = (settingName: "beam_size" | "batch_size", value: number) => {
+  const generateNumberSelect = (
+    settingName: "beam_size" | "batch_size",
+    value: number,
+    segment: number,
+  ) => {
     return Array.from({ length: 16 })
       .fill(null)
       .map((_, idx) => {
@@ -112,13 +130,15 @@ export const SettingsDialog = () => {
           <Button
             onClick={() => mutate({ [settingName]: idxToRender })}
             variant={value === idxToRender ? "default" : "outline"}
-            className={generateRingClassName(settingName === "beam_size" ? 5 : 6, idx)}
+            className={generateRingClassName(segment, idx)}
           >
             {idx + 1}
           </Button>
         );
       });
   };
+
+  const batchSegment = isParakeet ? 5 : 7;
 
   const batchSize = config?.batch_size ?? DEFAULT_BEAM_BATCH_SIZE;
   const beamSize = config?.beam_size ?? DEFAULT_BEAM_BATCH_SIZE;
@@ -222,38 +242,64 @@ export const SettingsDialog = () => {
               </Select>
             </Field>
             <Field>
-              <Label htmlFor="model-1">Model</Label>
+              <Label htmlFor="asr-engine-1">ASR Engine</Label>
               <FieldDescription>
-                Smaller models are faster but produce worse results
+                Whisper is multilingual and supports custom model sizes; Parakeet v3 is faster and
+                covers 25 European languages (falls back to Whisper otherwise)
               </FieldDescription>
-              <Select
-                onValueChange={(value) => mutate({ whisper_model: value })}
-                value={config?.whisper_model ?? DEFAULT_MODEL}
-              >
-                <SelectTrigger id="model-1" className={generateRingClassName(4)}>
-                  <SelectValue placeholder="Select a model" />
+              <Select onValueChange={(value) => mutate({ asr_engine: value })} value={asrEngine}>
+                <SelectTrigger id="asr-engine-1" className={generateRingClassName(4)}>
+                  <SelectValue placeholder="Select an engine" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectLabel>Model</SelectLabel>
-                    {MODELS.map((model) => (
-                      <SelectItem value={model}>{model}</SelectItem>
+                    <SelectLabel>ASR Engine</SelectLabel>
+                    {ASR_ENGINES.map(({ value, label }) => (
+                      <SelectItem value={value}>{label}</SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
             </Field>
-            <Field>
-              <Label>Beam Size</Label>
-              <FieldDescription>
-                Higher values improve accuracy at the cost of speed
-              </FieldDescription>
-              <ButtonGroup>{generateNumberSelect("beam_size", beamSize)}</ButtonGroup>
-            </Field>
+            {!isParakeet && (
+              <>
+                <Field>
+                  <Label htmlFor="model-1">Model</Label>
+                  <FieldDescription>
+                    Smaller models are faster but produce worse results
+                  </FieldDescription>
+                  <Select
+                    onValueChange={(value) => mutate({ whisper_model: value })}
+                    value={config?.whisper_model ?? DEFAULT_MODEL}
+                  >
+                    <SelectTrigger id="model-1" className={generateRingClassName(5)}>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>Model</SelectLabel>
+                        {MODELS.map((model) => (
+                          <SelectItem value={model}>{model}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <Label>Beam Size</Label>
+                  <FieldDescription>
+                    Higher values improve accuracy at the cost of speed
+                  </FieldDescription>
+                  <ButtonGroup>{generateNumberSelect("beam_size", beamSize, 6)}</ButtonGroup>
+                </Field>
+              </>
+            )}
             <Field>
               <Label>Batch Size</Label>
               <FieldDescription>Higher values use more memory but process faster</FieldDescription>
-              <ButtonGroup>{generateNumberSelect("batch_size", batchSize)}</ButtonGroup>
+              <ButtonGroup>
+                {generateNumberSelect("batch_size", batchSize, batchSegment)}
+              </ButtonGroup>
             </Field>
           </FieldGroup>
           <DialogFooter>
@@ -262,17 +308,22 @@ export const SettingsDialog = () => {
               onClick={() =>
                 mutate({
                   separator: DEFAULT_SEPARATOR,
+                  asr_engine: DEFAULT_ASR_ENGINE,
                   whisper_model: DEFAULT_MODEL,
                   beam_size: DEFAULT_BEAM_BATCH_SIZE,
                   batch_size: DEFAULT_BEAM_BATCH_SIZE,
                   mic_mirror_gain: DEFAULT_MIC_MIRROR_GAIN,
                 })
               }
-              className={generateRingClassName(7, 0)}
+              className={generateRingClassName(footerSegment, 0)}
             >
               Restore Defaults
             </Button>
-            <Button variant="outline" onClick={close} className={generateRingClassName(7, 1)}>
+            <Button
+              variant="outline"
+              onClick={close}
+              className={generateRingClassName(footerSegment, 1)}
+            >
               Close
             </Button>
           </DialogFooter>

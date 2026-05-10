@@ -45,6 +45,11 @@ def _clear_models():
         del _whisper_model
     _whisper_model = None
     _whisper_key = None
+    try:
+        import parakeet
+        parakeet.free_models()
+    except Exception:
+        pass
     free_gpu()
 
 
@@ -73,6 +78,7 @@ def process_song(cmd, device):
     beam_size = cmd.get("beam_size", 8)
     batch_size = cmd.get("batch_size", 8)
     separator = cmd.get("separator", "karaoke")
+    engine = cmd.get("engine", "whisper")
     lyrics_path = cmd.get("lyrics")
     language_override = cmd.get("language")
 
@@ -85,6 +91,7 @@ def process_song(cmd, device):
         beam_size=beam_size,
         batch_size=batch_size,
         separator=separator,
+        engine=engine,
         lyrics_path=lyrics_path,
         language_override=language_override,
         whisper_model=lambda: _get_whisper(model_name, actual_device, c_type),

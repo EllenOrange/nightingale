@@ -1,11 +1,11 @@
-"""WhisperX transcription: full-audio transcription of vocals with forced alignment."""
+"""WhisperX / Parakeet transcription: full-audio transcription of vocals with forced alignment."""
 
 import re
 
 from audio import detect_vocal_region, highpass_filter, normalize_rms
 from hallucination import is_hallucination, remove_hallucinated_words
 from language import detect_language_multiwindow
-from whisper_compat import progress, align_with_fallback
+from whisper_compat import progress, align_with_fallback, free_gpu
 
 
 def transcribe_vocals(
@@ -15,20 +15,20 @@ def transcribe_vocals(
     model_name: str = "large-v3",
     beam_size: int = 5,
     batch_size: int = 16,
+    engine: str = "whisper",
     language_override: str | None = None,
     whisper_model=None,
     pre_align_cleanup=None,
 ) -> dict:
-    """Transcribe vocals with WhisperX to get word-level timestamps.
+    """Transcribe vocals to get word-level timestamps.
 
-    Steps:
-      1. Load vocals audio, detect vocal region, trim & normalize
-      2. Detect language (multi-window)
-      3. Transcribe full audio in one pass (no VAD, no chunking)
-      4. Offset timestamps back to original timeline
-      5. Filter hallucinations
-      6. Run forced alignment + interpolation
-      7. Build final segments
+    With Whisper: transcription gives sentence-level segments which are then
+    refined with wav2vec2 forced alignment for word-level timestamps.
+
+    With Parakeet: the model emits word-level timestamps natively, so the
+    wav2vec2 alignment step is skipped and segments are built directly from
+    Parakeet's words. The Whisper fallback path (unsupported language) still
+    goes through forced alignment.
     """
     import whisperx
 
@@ -37,7 +37,7 @@ def transcribe_vocals(
     if device == "mps":
         device = "cpu"
 
-    progress(55, f"Loading WhisperX model ({model_name})...")
+    progress(55, f"Loading audio ({vocals_path})...")
     full_audio = whisperx.load_audio(vocals_path)
     duration_secs = len(full_audio) / 16000
     print(f"[nightingale:LOG] Audio loaded: {len(full_audio)} samples ({duration_secs:.1f}s) from {vocals_path}", flush=True)
@@ -52,8 +52,96 @@ def transcribe_vocals(
 
     audio = highpass_filter(audio)
     audio = normalize_rms(audio)
-    print(f"[nightingale:LOG] Settings: model={model_name}, beam_size={beam_size}, batch_size={batch_size}", flush=True)
+    print(f"[nightingale:LOG] Settings: engine={engine}, model={model_name}, beam_size={beam_size}, batch_size={batch_size}", flush=True)
 
+    if engine == "parakeet":
+        payload, language, engine_used = _transcribe_parakeet_or_fallback(
+            vocals_path=vocals_path,
+            audio=audio,
+            full_audio=full_audio,
+            vocal_start=vocal_start,
+            device=device,
+            compute_type=compute_type,
+            model_name=model_name,
+            beam_size=beam_size,
+            batch_size=batch_size,
+            language_override=language_override,
+            whisper_model=whisper_model,
+            pre_align_cleanup=pre_align_cleanup,
+        )
+        if engine_used in ("parakeet", "onnx-cpu-fallback"):
+            return _build_result_from_words(payload, language, duration_secs, engine_used)
+
+        raw_segments = payload
+    else:
+        raw_segments, language = _transcribe_whisper(
+            audio=audio,
+            full_audio=full_audio,
+            vocal_start=vocal_start,
+            device=device,
+            compute_type=compute_type,
+            model_name=model_name,
+            beam_size=beam_size,
+            batch_size=batch_size,
+            language_override=language_override,
+            whisper_model=whisper_model,
+        )
+        engine_used = "whisper"
+
+    return _build_result_from_raw_segments(
+        raw_segments, full_audio, language, duration_secs, device, pre_align_cleanup, engine_used,
+    )
+
+
+def _build_result_from_raw_segments(
+    raw_segments, full_audio, language, duration_secs, device, pre_align_cleanup, engine_used,
+) -> dict:
+    """Whisper path: filter hallucinations, run wav2vec2 forced alignment, build segments."""
+    total_raw_words = sum(len(s.get("text", "").split()) for s in raw_segments)
+    print(f"[nightingale:LOG] Transcription ({engine_used}): language='{language}', segments={len(raw_segments)}, ~{total_raw_words} words", flush=True)
+
+    for i, seg in enumerate(raw_segments):
+        duration = seg.get("end", 0) - seg.get("start", 0)
+        words = len(seg.get("text", "").split())
+        wps = words / duration if duration > 0 else 0
+        print(f"[nightingale:LOG] Seg {i}: [{seg.get('start',0):.1f}-{seg.get('end',0):.1f}] ({duration:.1f}s, {words}w, {wps:.1f}w/s) {seg.get('text','')[:80]}", flush=True)
+
+    raw_segments = _filter_hallucinations(raw_segments, duration_secs)
+
+    progress(75, f"Language: {language}")
+    result = _align_and_build(raw_segments, full_audio, language, device, pre_align_cleanup)
+    result["source"] = "generated"
+    return result
+
+
+def _build_result_from_words(
+    words: list[dict], language: str, duration_secs: float, engine_used: str,
+) -> dict:
+    """Parakeet path: skip wav2vec2 alignment, build segments straight from word timestamps."""
+    print(f"[nightingale:LOG] Transcription ({engine_used}): language='{language}', words={len(words)}", flush=True)
+
+    if words:
+        covered = words[-1]["end"] - words[0]["start"]
+        pct = (covered / duration_secs * 100) if duration_secs else 0
+        print(f"[nightingale:LOG] Coverage: {covered:.1f}s / {duration_secs:.1f}s ({pct:.0f}%)", flush=True)
+
+    progress(75, f"Language: {language}")
+    progress(80, "Building segments from Parakeet word timestamps...")
+    cleaned = remove_hallucinated_words(words)
+    segments = _build_segments(cleaned)
+    progress(90, f"Transcription complete: {len(segments)} segments, lang={language}")
+
+    if segments:
+        print(f"[nightingale:LOG] First segment: '{segments[0]['text'][:100]}'", flush=True)
+        if segments[0].get("words"):
+            print(f"[nightingale:LOG] First word: '{segments[0]['words'][0]}'", flush=True)
+        print(f"[nightingale:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
+
+    return {"language": language, "segments": segments, "source": "generated"}
+
+
+def _whisper_asr_options(beam_size: int) -> tuple[dict, dict]:
+    """Returns (asr_options, no_vad_asr) used by the WhisperX path."""
     asr_options = {
         "beam_size": beam_size,
         "initial_prompt": (
@@ -63,14 +151,6 @@ def transcribe_vocals(
             "GO"
         ),
     }
-
-    vad_options = {
-        "vad_onset": 0.12,
-        "vad_offset": 0.05,
-        "min_duration_on": 0.15,
-        "min_duration_off": 0.6,
-    }
-
     no_vad_asr = {
         "beam_size": beam_size,
         "initial_prompt": asr_options["initial_prompt"],
@@ -83,7 +163,17 @@ def transcribe_vocals(
         "no_repeat_ngram_size": 0,
         "suppress_blank": False,
     }
+    return asr_options, no_vad_asr
 
+
+def _transcribe_whisper(
+    *, audio, full_audio, vocal_start, device, compute_type,
+    model_name, beam_size, batch_size,
+    language_override, whisper_model,
+) -> tuple[list[dict], str]:
+    import whisperx
+
+    _, no_vad_asr = _whisper_asr_options(beam_size)
     owns_model = whisper_model is None
 
     if language_override:
@@ -126,21 +216,76 @@ def transcribe_vocals(
         seg["start"] = round(seg.get("start", 0) + vocal_start, 3)
         seg["end"] = round(seg.get("end", 0) + vocal_start, 3)
 
-    total_raw_words = sum(len(s.get("text", "").split()) for s in raw_segments)
-    print(f"[nightingale:LOG] Transcription: language='{language}', segments={len(raw_segments)}, ~{total_raw_words} words", flush=True)
+    return raw_segments, language
 
-    for i, seg in enumerate(raw_segments):
-        duration = seg.get("end", 0) - seg.get("start", 0)
-        words = len(seg.get("text", "").split())
-        wps = words / duration if duration > 0 else 0
-        print(f"[nightingale:LOG] Seg {i}: [{seg.get('start',0):.1f}-{seg.get('end',0):.1f}] ({duration:.1f}s, {words}w, {wps:.1f}w/s) {seg.get('text','')[:80]}", flush=True)
 
-    raw_segments = _filter_hallucinations(raw_segments, duration_secs)
+def _transcribe_parakeet_or_fallback(
+    *, vocals_path, audio, full_audio, vocal_start, device, compute_type,
+    model_name, beam_size, batch_size,
+    language_override, whisper_model, pre_align_cleanup,
+) -> tuple[list[dict], str, str]:
+    import whisperx
+    import parakeet
 
-    progress(75, f"Language: {language}")
-    result = _align_and_build(raw_segments, full_audio, language, device, pre_align_cleanup)
-    result["source"] = "generated"
-    return result
+    if language_override:
+        language = language_override
+        print(f"[nightingale:LOG] Using language override: '{language}'", flush=True)
+        progress(59, f"Language override: {language}")
+    else:
+        progress(58, "Detecting language with whisper-tiny...")
+        if pre_align_cleanup:
+            pre_align_cleanup()
+        tiny = whisperx.load_model(
+            "tiny", device, compute_type=compute_type, task="transcribe",
+        )
+        try:
+            language = detect_language_multiwindow(tiny, full_audio)
+        finally:
+            del tiny
+            free_gpu()
+        print(f"[nightingale:LOG] Final detected language: '{language}'", flush=True)
+        progress(59, f"Detected language: {language}")
+
+    if not parakeet.is_supported(language):
+        print(
+            f"[nightingale:LOG] Language '{language}' not in Parakeet's supported set; falling back to Whisper",
+            flush=True,
+        )
+        parakeet.free_models()
+        free_gpu()
+        raw_segments, language = _transcribe_whisper(
+            audio=audio, full_audio=full_audio, vocal_start=vocal_start,
+            device=device, compute_type=compute_type,
+            model_name=model_name, beam_size=beam_size, batch_size=batch_size,
+            language_override=language, whisper_model=whisper_model,
+        )
+        return raw_segments, language, "whisper-fallback"
+
+    try:
+        words, backend = parakeet.transcribe(
+            vocals_path=vocals_path,
+            device=device,
+            language=language,
+            batch_size=batch_size,
+            pre_load_cleanup=pre_align_cleanup,
+        )
+    except parakeet.ParakeetEmptyOutputError as e:
+        print(
+            f"[nightingale:LOG] {e}; falling back to Whisper for this song",
+            flush=True,
+        )
+        parakeet.free_models()
+        free_gpu()
+        raw_segments, language = _transcribe_whisper(
+            audio=audio, full_audio=full_audio, vocal_start=vocal_start,
+            device=device, compute_type=compute_type,
+            model_name=model_name, beam_size=beam_size, batch_size=batch_size,
+            language_override=language, whisper_model=whisper_model,
+        )
+        return raw_segments, language, "whisper-fallback"
+
+    engine_used = "onnx-cpu-fallback" if backend == "onnx-cpu-fallback" else "parakeet"
+    return words, language, engine_used
 
 
 def _filter_hallucinations(raw_segments: list[dict], duration_secs: float) -> list[dict]:

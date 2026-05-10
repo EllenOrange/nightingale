@@ -16,5 +16,6 @@ export type AppConfig = {
   batch_size: number | null;
   last_video_flavor: number | null;
   separator: string | null;
+  asr_engine: string | null;
   language_overrides: { [key in string]: string } | null;
 };

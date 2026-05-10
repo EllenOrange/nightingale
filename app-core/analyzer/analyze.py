@@ -43,6 +43,8 @@ def main():
     parser.add_argument("--batch-size", type=int, default=16, help="Batch size for transcription")
     parser.add_argument("--separator", default="karaoke", choices=["karaoke", "demucs"],
                         help="Stem separation method: karaoke (UVR, cleaner) or demucs (faster)")
+    parser.add_argument("--engine", default="whisper", choices=["whisper", "parakeet"],
+                        help="Transcription engine: whisper (default) or parakeet (NeMo on CUDA, ONNX elsewhere)")
     parser.add_argument("--lyrics", help="Path to pre-fetched lyrics JSON (align-only mode)")
     parser.add_argument("--language", default=None, help="Override automatic language detection")
     args = parser.parse_args()
@@ -65,6 +67,7 @@ def main():
         beam_size=args.beam_size,
         batch_size=args.batch_size,
         separator=args.separator,
+        engine=args.engine,
         lyrics_path=args.lyrics,
         language_override=args.language,
     )

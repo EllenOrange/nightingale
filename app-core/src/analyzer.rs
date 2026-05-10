@@ -223,6 +223,8 @@ fn spawn_server() -> Result<ServerProcess, NightingaleError> {
         .env("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
         .env("NLTK_DATA", models.join("nltk_data"))
+        .env("NEMO_CACHE_DIR", models.join("nemo"))
+        .env("ONNX_ASR_CACHE_DIR", models.join("onnx_asr"))
         .arg(&script)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -520,6 +522,7 @@ fn process_song(file_hash: &str, cache: &CacheDir) {
         "beam_size": config.beam_size(),
         "batch_size": config.batch_size(),
         "separator": config.separator(),
+        "engine": config.asr_engine(),
     });
 
     if let Some(ref lp) = lyrics_path {
