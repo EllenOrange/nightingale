@@ -222,9 +222,6 @@ pub fn ensure_playable_source_video(file_hash: &str) -> Result<Option<String>, N
             return Err(NightingaleError::Other("Invalid playable video path".into()));
         };
         std::fs::create_dir_all(parent)?;
-,
-                
-            
         let tmp = parent.join(format!("{file_hash}.{}.tmp.mp4", std::process::id()));
         convert_video_to_mp4(&source_path, &target, &tmp)?;
         Ok::<(), NightingaleError>(())
@@ -359,7 +356,11 @@ fn resolve_canonical_stems_for_key(
 fn resolve_source_transcript_path(
     cache: &CacheDir,
     file_hash: &str,
-    tempo: f64, PathBuf { if normalize_tem     return    }
+    tempo: f64,
+) -> PathBuf {
+    if normalize_tempo(tempo) == 1.0 {
+        return cache.transcript_path(file_hash);
+    }
     let variant = cache.variant_transcript_path(file_hash, tempo);
     if variant.is_file() {
         return variant;
