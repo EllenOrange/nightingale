@@ -18,7 +18,7 @@ use cache::{
     calculate_cache_stats, clear_all, clear_models_command, clear_videos_command,
 };
 use config::{load_config, save_config};
-use microphones::{list_microphones, start_mic_capture, stop_mic_capture};
+use microphones::{list_microphones, set_monitor_gain, start_mic_capture, stop_mic_capture};
 use playback::{
     ensure_mp3_stems, ensure_playable_source_video, fetch_pixabay_videos, get_audio_paths,
     load_transcript,
@@ -132,6 +132,7 @@ pub fn run() {
             app_core::media_server::start();
 
             let config = AppConfig::load();
+            set_monitor_gain(config.mic_mirror_gain());
             app.handle()
                 .asset_protocol_scope()
                 .allow_directory(config.effective_data_path(), true)

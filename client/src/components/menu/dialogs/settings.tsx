@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { useEffect, useRef, useState } from "react";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
 import { setFullScreen, isFullScreen as tauriIsFullScreen } from "@/tauri-bridge/fullScreen";
@@ -39,8 +40,13 @@ const DEFAULT_MODEL: (typeof MODELS)[number] = "large-v3";
 const DEFAULT_SEPARATOR = "karaoke";
 
 const DEFAULT_BEAM_BATCH_SIZE = 8;
+const DEFAULT_MIC_MIRROR_GAIN = 0.65;
+const MIC_MIRROR_GAIN_STEP = 0.01;
+const MIC_MIRROR_GAIN_MAX = 2;
 
-const SETTINGS_STOPS = [2, 1, 1, 1, 16, 16, 2];
+const MIC_MIRROR_GAIN_SEGMENT = 2;
+
+const SETTINGS_STOPS = [2, 1, 1, 1, 1, 16, 16, 2];
 
 const RING = "ring-2 ring-primary";
 const NO_FOCUS_RING = "focus-visible:ring-0 focus-visible:border-transparent";
@@ -56,12 +62,26 @@ export const SettingsDialog = () => {
 
   const open = mode === "settings";
 
+  const micMirrorGainRef = useRef(config?.mic_mirror_gain ?? DEFAULT_MIC_MIRROR_GAIN);
+  useEffect(() => {
+    micMirrorGainRef.current = config?.mic_mirror_gain ?? DEFAULT_MIC_MIRROR_GAIN;
+  }, [config?.mic_mirror_gain]);
+
   const { isFocused } = useDialogNav({
     open,
-    itemCount: 39,
+    itemCount: 40,
     stops: SETTINGS_STOPS,
     onBack: close,
     containerRef,
+    onAction: (segment, _slot, action) => {
+      if (segment !== MIC_MIRROR_GAIN_SEGMENT) return false;
+      if (!action.left && !action.right) return false;
+      const delta = action.right ? MIC_MIRROR_GAIN_STEP : -MIC_MIRROR_GAIN_STEP;
+      const next = Math.min(MIC_MIRROR_GAIN_MAX, Math.max(0, micMirrorGainRef.current + delta));
+      micMirrorGainRef.current = next;
+      mutate({ mic_mirror_gain: next });
+      return true;
+    },
   });
 
   useEffect(() => {
@@ -92,7 +112,7 @@ export const SettingsDialog = () => {
           <Button
             onClick={() => mutate({ [settingName]: idxToRender })}
             variant={value === idxToRender ? "default" : "outline"}
-            className={generateRingClassName(settingName === "beam_size" ? 4 : 5, idx)}
+            className={generateRingClassName(settingName === "beam_size" ? 5 : 6, idx)}
           >
             {idx + 1}
           </Button>
@@ -102,6 +122,7 @@ export const SettingsDialog = () => {
 
   const batchSize = config?.batch_size ?? DEFAULT_BEAM_BATCH_SIZE;
   const beamSize = config?.beam_size ?? DEFAULT_BEAM_BATCH_SIZE;
+  const micMirrorGainPct = Math.round((config?.mic_mirror_gain ?? DEFAULT_MIC_MIRROR_GAIN) * 100);
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -164,6 +185,21 @@ export const SettingsDialog = () => {
               </Select>
             </Field>
             <Field>
+              <Label>Mic mirror gain</Label>
+              <FieldDescription>
+                Volume of your microphone played back through the speakers when mirroring (
+                {micMirrorGainPct}%)
+              </FieldDescription>
+              <Slider
+                min={0}
+                max={200}
+                step={1}
+                value={[micMirrorGainPct]}
+                onValueChange={([pct]) => mutate({ mic_mirror_gain: pct / 100 })}
+                className={generateRingClassName(2)}
+              />
+            </Field>
+            <Field>
               <Label htmlFor="model-1">Separator</Label>
               <FieldDescription>
                 Karaoke removes backing vocals for cleaner lyrics; Demucs is faster
@@ -172,7 +208,7 @@ export const SettingsDialog = () => {
                 onValueChange={(value) => mutate({ separator: value })}
                 value={config?.separator ?? DEFAULT_SEPARATOR}
               >
-                <SelectTrigger id="separator-1" className={generateRingClassName(2)}>
+                <SelectTrigger id="separator-1" className={generateRingClassName(3)}>
                   <SelectValue placeholder="Select a separator" />
                 </SelectTrigger>
                 <SelectContent>
@@ -194,7 +230,7 @@ export const SettingsDialog = () => {
                 onValueChange={(value) => mutate({ whisper_model: value })}
                 value={config?.whisper_model ?? DEFAULT_MODEL}
               >
-                <SelectTrigger id="model-1" className={generateRingClassName(3)}>
+                <SelectTrigger id="model-1" className={generateRingClassName(4)}>
                   <SelectValue placeholder="Select a model" />
                 </SelectTrigger>
                 <SelectContent>
@@ -229,13 +265,14 @@ export const SettingsDialog = () => {
                   whisper_model: DEFAULT_MODEL,
                   beam_size: DEFAULT_BEAM_BATCH_SIZE,
                   batch_size: DEFAULT_BEAM_BATCH_SIZE,
+                  mic_mirror_gain: DEFAULT_MIC_MIRROR_GAIN,
                 })
               }
-              className={generateRingClassName(6, 0)}
+              className={generateRingClassName(7, 0)}
             >
               Restore Defaults
             </Button>
-            <Button variant="outline" onClick={close} className={generateRingClassName(6, 1)}>
+            <Button variant="outline" onClick={close} className={generateRingClassName(7, 1)}>
               Close
             </Button>
           </DialogFooter>

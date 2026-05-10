@@ -2,7 +2,7 @@ use cpal::device_description::DeviceType;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 use tracing::{info, warn};
@@ -13,7 +13,19 @@ use ts_rs::TS;
 const SAMPLE_CHUNK: usize = 512;
 const AUDIO_QUEUE_CAP: usize = 24_000;
 const PCM_QUEUE_CAP: usize = 24_000;
-const MONITOR_GAIN: f32 = 0.65;
+const DEFAULT_MONITOR_GAIN: f32 = 0.65;
+const MAX_MONITOR_GAIN: f32 = 2.0;
+
+static MONITOR_GAIN_BITS: AtomicU32 = AtomicU32::new(DEFAULT_MONITOR_GAIN.to_bits());
+
+fn monitor_gain() -> f32 {
+    f32::from_bits(MONITOR_GAIN_BITS.load(Ordering::Relaxed))
+}
+
+pub fn set_monitor_gain(gain: f32) {
+    let clamped = gain.clamp(0.0, MAX_MONITOR_GAIN);
+    MONITOR_GAIN_BITS.store(clamped.to_bits(), Ordering::Relaxed);
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -315,7 +327,7 @@ fn try_build_output_stream(
                 return 0.0;
             }
             if let Ok(mut q) = audio_shared.try_lock() {
-                q.pop_front().unwrap_or(0.0) * MONITOR_GAIN
+                q.pop_front().unwrap_or(0.0) * monitor_gain()
             } else {
                 0.0
             }

@@ -9,6 +9,7 @@ export type AppConfig = {
   dark_mode: boolean | null;
   mic_active: boolean | null;
   mic_mirroring: boolean | null;
+  mic_mirror_gain: number | null;
   preferred_mic: string | null;
   whisper_model: string | null;
   beam_size: number | null;

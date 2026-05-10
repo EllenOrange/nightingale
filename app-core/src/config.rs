@@ -18,6 +18,7 @@ pub struct AppConfig {
     pub dark_mode: Option<bool>,
     pub mic_active: Option<bool>,
     pub mic_mirroring: Option<bool>,
+    pub mic_mirror_gain: Option<f64>,
     pub preferred_mic: Option<String>,
     pub whisper_model: Option<String>,
     pub beam_size: Option<u32>,
@@ -42,6 +43,7 @@ impl Default for AppConfig {
             dark_mode: None,
             mic_active: None,
             mic_mirroring: None,
+            mic_mirror_gain: None,
             preferred_mic: None,
             whisper_model: None,
             beam_size: None,
@@ -123,6 +125,13 @@ impl AppConfig {
 
     pub fn separator(&self) -> &str {
         self.separator.as_deref().unwrap_or("karaoke")
+    }
+
+    pub fn mic_mirror_gain(&self) -> f32 {
+        self.mic_mirror_gain
+            .map(|v| v as f32)
+            .unwrap_or(0.65)
+            .clamp(0.0, 2.0)
     }
 
     pub fn language_override(&self, file_hash: &str) -> Option<&str> {

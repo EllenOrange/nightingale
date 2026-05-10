@@ -13,6 +13,7 @@ export const DIALOG_FOCUSABLE_SELECTOR = [
   "textarea:not([disabled])",
   "a[href]",
   '[role="combobox"]:not([disabled])',
+  '[role="slider"]:not([data-disabled])',
 ].join(", ");
 
 /** Ignore confirm on the first frames after open (avoids acting on the same press that opened the dialog). */
@@ -77,6 +78,13 @@ export interface UseDialogNavOptions {
   onBack: () => void;
   /** If set, called on confirm instead of clicking the focused element. */
   onConfirm?: (flatIndex: number) => void;
+  /**
+   * Optional per-segment hook fired before default navigation handling. Return
+   * `true` to mark the action as consumed and skip default segment movement
+   * / confirm / click. Use for segments that need custom value adjustment
+   * (sliders, steppers) where left/right shouldn't traverse focusables.
+   */
+  onAction?: (segment: number, slot: number, action: NavAction) => boolean | void;
   /** Root used to resolve focusables and optional `.click()` on confirm. */
   containerRef?: RefObject<HTMLElement | null>;
 }
@@ -102,6 +110,7 @@ export function useDialogNav({
   itemCount,
   onConfirm,
   onBack,
+  onAction,
   stops,
   containerRef,
 }: UseDialogNavOptions) {
@@ -119,6 +128,8 @@ export function useDialogNav({
   onBackRef.current = onBack;
   const onConfirmRef = useRef(onConfirm);
   onConfirmRef.current = onConfirm;
+  const onActionRef = useRef(onAction);
+  onActionRef.current = onAction;
 
   const wasOpenRef = useRef(false);
   const justOpened = open && !wasOpenRef.current;
@@ -165,6 +176,10 @@ export function useDialogNav({
         if (active instanceof HTMLElement) {
           dispatchMenuKeyFromNav(active, action);
         }
+        return;
+      }
+
+      if (onActionRef.current?.(clampedSegmentIndex, clampedSlot, action)) {
         return;
       }
 
@@ -215,6 +230,8 @@ export function useDialogNav({
     [
       open,
       segmentCount,
+      clampedSegmentIndex,
+      clampedSlot,
       flatFocusedIndex,
       slotsThisSegment,
       useSegmentedHorizontalNav,
