@@ -7,6 +7,7 @@ export type DialogMode =
   | "select-profile"
   | "settings"
   | "about"
+  | "update"
   | { mode: "language"; song: Song }
   | null;
 

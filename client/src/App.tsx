@@ -8,10 +8,17 @@ import { Menu } from "./pages/menu/menu";
 import { Playback } from "./pages/playback/playback";
 import { ThemeProvider } from "./contexts/theme-context";
 import { useConfig } from "./queries/use-config";
+import { useUpdate } from "./queries/use-update";
 import { Setup } from "./components/menu/dialogs/setup";
 import { TooltipProvider } from "./components/ui/tooltip";
 
 const queryClient = new QueryClient();
+
+const UpdateAutoCheck = () => {
+  useUpdate();
+
+  return null;
+};
 
 const InnerWrapper = () => (
   <>
@@ -23,6 +30,7 @@ const InnerWrapper = () => (
     </BrowserRouter>
     <Toaster />
     <Setup />
+    <UpdateAutoCheck />
   </>
 );
 

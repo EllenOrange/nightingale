@@ -30,6 +30,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "shortDescription": "Nightingale — Karaoke from your music library.",
     "longDescription": "Nightingale — Karaoke from your music library. Synchronized lyrics, immersive backgrounds, and fullscreen playback for your own tracks. Licensed under the GNU General Public License v3.",
@@ -45,5 +46,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkwODM4MDM1QjIzNTVGRQpSV1QrVlNOYkF6Z0lDYjRmZzlRR3VWVHFSQllmOVVWMnpxTUlrYlNrTlhXVEQrZjNYY0ttNWIvSgo=",
+      "endpoints": ["https://github.com/rzru/nightingale/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

@@ -21,6 +21,7 @@ import {
   ChevronsUpDownIcon,
   CogIcon,
   DoorOpenIcon,
+  DownloadIcon,
   FolderIcon,
   InfoIcon,
   MoonIcon,
@@ -34,6 +35,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavInput } from "@/hooks/navigation/use-nav-input";
 import { useFolderActions } from "@/hooks/use-folder-actions";
+import { useUpdate } from "@/queries/use-update";
 
 interface ActionsProps {
   registerCallback: (callback: (() => void) | null) => void;
@@ -49,6 +51,9 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
   const { focus, actionsRef } = useMenuFocus();
   const { setShouldRunSetup } = useShouldRunSetup();
   const { rescanFolder, rescanFolderDisabled, selectFolder } = useFolderActions();
+
+  const update = useUpdate();
+  const updateAvailable = update.status === "available";
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownOpenRef = useRef(false);
@@ -133,11 +138,19 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
                   : ""
               }`}
             >
-              <Avatar>
-                <AvatarFallback>
-                  {profile ? profile.slice(0, 2).toLocaleUpperCase() : "NP"}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative">
+                <Avatar>
+                  <AvatarFallback>
+                    {profile ? profile.slice(0, 2).toLocaleUpperCase() : "NP"}
+                  </AvatarFallback>
+                </Avatar>
+                {updateAvailable && (
+                  <span
+                    aria-label="Update available"
+                    className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-chart-3 ring-2 ring-sidebar"
+                  />
+                )}
+              </div>
               <span className="truncate font-medium">{profile ?? "No Selected Profile"}</span>
               <ChevronsUpDownIcon className="ml-auto size-4" />
             </SidebarMenuButton>
@@ -206,6 +219,16 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
               >
                 <ThemeIcon />
                 {themeLabel}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMode("update")}>
+                <DownloadIcon />
+                <span>Update</span>
+                {updateAvailable && (
+                  <span
+                    aria-label="Update available"
+                    className="ml-auto size-2 rounded-full bg-chart-3"
+                  />
+                )}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setMode("about")}>
                 <InfoIcon />

@@ -127,6 +127,9 @@ pub fn run() {
         ])
         .setup(|app| {
             let _ = dotenvy::dotenv();
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
             app_core::init_library().map_err(|e| e.to_string())?;
             app_core::AnalysisQueue::clear();
             if let Err(e) = app_core::refresh_analyzer_scripts_if_ready() {
