@@ -13,13 +13,16 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 - **Stem Separation** — isolates lead vocals from instrumentals
 - **Word-Level Lyrics** — automatic transcription with alignment
+- **CJK Lyrics** — Japanese / Chinese / Korean songs get per-character forced alignment and romanized readings (Hepburn, pinyin, Revised Romanization) above each token
+- **Pluggable ASR** — Whisper (default) or Parakeet v3 (experimental, ~25 European languages)
+- **UltraStar Deluxe Songs (experimental)** — drop USDX folders into your library and play them with their built-in pitch + lyric data
 - **Pitch Scoring** — real-time microphone input with star ratings
 - **Key & Tempo Shifts** — adjust analyzed songs to better fit your voice
 - **Profiles** — per-player score tracking
 - **Video Files** — use video files with synchronized background playback
-- **7 Background Themes** — GPU shaders, Pixabay videos, source video
+- **Audio-Reactive Backgrounds** — 10 GPU shaders that react to your mic, 5 Pixabay video flavors, source-video for video files
 - **Sidebar Filters + Analyze All** — quickly browse and batch-analyze your library
-- **Mic Mirroring** — optional low-latency live mic monitoring during playback
+- **Mic Mirroring** — optional low-latency live mic monitoring with adjustable gain (0–200%)
 - **Gamepad Support** — full navigation via gamepad
 - **Self-Contained** — zero manual dependency setup
 

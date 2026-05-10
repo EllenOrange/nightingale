@@ -16,7 +16,11 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 🎤 **Stem Separation** — isolates lead vocals from instrumentals using the UVR Karaoke model (default) or Demucs, with adjustable guide vocal volume. The karaoke model preserves backing vocals in the instrumental for a more natural sound
 
-📝 **Word-Level Lyrics** — automatic transcription with alignment, or fetched from [LRCLIB](https://lrclib.net) when available
+📝 **Word-Level Lyrics** — automatic transcription with alignment, or fetched from [LRCLIB](https://lrclib.net) when available. CJK songs (Japanese / Chinese / Korean) get per-character forced alignment and romanized readings (Hepburn / pinyin / Revised Romanization) shown above each token
+
+🗣️ **Pluggable ASR Engines** — choose Whisper (default, broad language coverage) or **Parakeet v3 (experimental)** for ~25 European languages, with NeMo on CUDA and ONNX Runtime everywhere else
+
+🎼 **UltraStar Deluxe Songs (experimental)** — drop USDX song folders (`.txt` or `.usdx` plus sibling audio/vocals/instrumental/video) into your library; pitch and lyric data come from the file directly, no analyzer pass needed. See [docs/usdx](site/docs/src/usdx.md)
 
 🎯 **Pitch Scoring** — real-time microphone input with pitch detection, star ratings, and per-song scoreboards
 
@@ -26,11 +30,11 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 🎬 **Video Files** — drop video files (`.mp4`, `.mkv`, etc.) into your music folder; vocals are separated from the audio track and the original video plays as a synchronized background
 
-🌌 **7 Background Themes** — 5 GPU shader backgrounds (Plasma, Aurora, Waves, Nebula, Starfield), Pixabay video backgrounds with 5 flavors (Nature, Underwater, Space, City, Countryside), plus automatic source video playback for video files
+🌌 **Audio-Reactive Backgrounds** — 10 GPU shaders that react to your microphone in real time (Plasma, Waves, Nebula, Starfield, Sonar, Voronoi, Vortex, Metaballs, Spectrum, Oscilloscope), Pixabay video loops in 5 flavors (Nature, Underwater, Space, City, Countryside), plus source-video playback for video files
 
 🧭 **Sidebar + Library Filters** — quick filters, metadata cleanup buckets, artist/album groups, and an **Analyze All** action for bulk analysis
 
-🎙️ **Mic Mirroring** — optionally route your live mic into playback for low-latency practice and monitoring
+🎙️ **Mic Mirroring** — optionally route your live mic into playback for low-latency practice and monitoring, with an adjustable monitor gain (0–200%) in Settings
 
 🎮 **Gamepad Support** — full navigation and control via gamepad (D-pad, sticks, face buttons)
 
@@ -52,7 +56,7 @@ xattr -cr /Applications/Nightingale.app
 
 ### Supported formats
 
-Audio: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`. Video: `.mp4`, `.mkv`, `.avi`, `.webm`, `.mov`, `.m4v`.
+Audio: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`. Video: `.mp4`, `.mkv`, `.avi`, `.webm`, `.mov`, `.m4v`. UltraStar: `.usdx`, plus `.txt` files whose contents look like USDX.
 
 ## Controls
 
@@ -84,35 +88,19 @@ Audio: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`. Video: `.mp4`, `
 
 ## How it works
 
-```
-Audio or video file
-        │
-        ▼
-  ┌─────────────────┐
-  │  UVR Karaoke /  │  ──▶  vocals.mp3 + instrumental.mp3
-  │  Demucs         │       (extracts audio track from videos)
-  └─────────────────┘
-        │
-        ▼
-  ┌─────────────────┐
-  │  LRCLIB         │  ──▶  Fetches synced lyrics if available
-  └─────────────────┘
-        │
-        ▼
-  ┌─────────────────┐
-  │  WhisperX       │  ──▶  Transcription + word-level alignment
-  │  (large-v3)     │
-  └─────────────────┘
-        │
-        ▼
-  ┌─────────────────┐
-  │  Tauri App      │  ──▶  Plays instrumental + synced lyrics
-  │  (Rust + React) │       with pitch scoring, key/tempo controls,
-  └─────────────────┘       mic mirroring, and dynamic backgrounds
-                            (video files use source video when available)
+```mermaid
+flowchart TD
+    A["Audio or video file"] --> B["UVR Karaoke / Demucs"]
+    A2["USDX bundle (.txt / .usdx)"] --> E["Tauri App (Rust + React)"]
+    B -->|"vocals + instrumental"| C["LRCLIB"]
+    C -->|"synced lyrics if available"| D["WhisperX or Parakeet v3 (exp.)"]
+    D -->|"word-level alignment, CJK reading"| E
+    E --> F["Plays instrumental + synced lyrics with pitch scoring, key/tempo, mic mirroring, audio-reactive backgrounds"]
 ```
 
-Analysis results are cached using blake3 file hashes. Re-analysis only happens if the source file changes, the user triggers it manually, or you choose to shift key/tempo and create playback variants.
+The analyzer runs as a persistent local process: Nightingale starts it once and talks to it over a token-authenticated loopback TCP socket using newline-delimited JSON, so per-song startup overhead (model load, CUDA init) is paid only once.
+
+Analysis results are cached using blake3 file hashes. Re-analysis only happens if the source file changes, the user triggers it manually, or you choose to shift key/tempo and create playback variants. USDX songs skip stem separation entirely when `#VOCALS` and `#INSTRUMENTAL` are provided.
 
 ## Hardware
 

@@ -10,6 +10,7 @@
 - [How It Works](./how-it-works.md)
   - [Stem Separation](./stems.md)
   - [Lyrics & Transcription](./lyrics.md)
+  - [UltraStar Deluxe](./usdx.md)
 - [Scoring](./scoring.md)
 - [Backgrounds](./backgrounds.md)
 - [Profiles](./profiles.md)
