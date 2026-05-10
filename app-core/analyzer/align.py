@@ -83,48 +83,86 @@ def align_lyrics(
 
     return {"language": language, "segments": segments, "source": "lyrics"}
 
-def _collect_words(align_result: dict) -> list[dict]:
-    """Extract all words with timestamps from alignment result."""
-    words = []
+def _normalize(word: str) -> str:
+    return re.sub(r"[^\w]", "", word).lower()
+
+
+def _collect_aligned(align_result: dict) -> list[dict]:
+    """Extract every aligned word in input-text order, including NaN-timestamp ones.
+
+    WhisperX iterates input characters in order and groups them by a
+    monotonically-increasing word index, so the resulting word list preserves
+    lyric order. Words the CTC backtrack could not place are emitted without
+    "start"/"end" keys (whisperx/alignment.py l.343-350); we keep those in the
+    stream as None-timestamp entries so the line-mapper can treat them as
+    missing rather than silently consuming a later occurrence's timestamp.
+    """
+    out: list[dict] = []
     for seg in align_result.get("segments", []):
         for w in seg.get("words", []):
-            word_text = w.get("word", "").strip()
-            if word_text and "start" in w and "end" in w:
-                words.append(w)
-    return words
+            text = w.get("word", "").strip()
+            if not text:
+                continue
+            out.append({
+                "word": text,
+                "norm": _normalize(text),
+                "start": w.get("start"),
+                "end": w.get("end"),
+                "score": w.get("score"),
+            })
+    return out
 
 
 def _map_words_to_lines(align_result: dict, clean_lines: list[str]) -> list[dict]:
-    """Map aligned word timestamps back to original lyric lines."""
-    all_aligned_words = _collect_words(align_result)
-    print(f"[nightingale:LOG] Final alignment: {len(all_aligned_words)} words aligned", flush=True)
+    """Map aligned word timestamps back to original lyric lines.
 
-    word_times: dict[str, list[tuple]] = {}
-    for w in all_aligned_words:
-        key = re.sub(r"[^\w]", "", w["word"]).lower()
-        if key not in word_times:
-            word_times[key] = []
-        word_times[key].append((w["start"], w["end"], w.get("score")))
+    Walks the aligned stream with a single forward cursor and bounded lookahead
+    so that a dropped word in a repeated phrase (e.g. the 2nd "love" of three)
+    no longer causes downstream occurrences to inherit each other's timestamps.
+    """
+    aligned = _collect_aligned(align_result)
+    timed_count = sum(1 for a in aligned if a["start"] is not None and a["end"] is not None)
+    print(
+        f"[nightingale:LOG] Final alignment: {len(aligned)} words emitted "
+        f"({timed_count} timed, {len(aligned) - timed_count} NaN)",
+        flush=True,
+    )
 
-    used_counts: dict[str, int] = {}
+    LOOKAHEAD = 6
+    ai = 0
     segments = []
+    missed_lyric_words = 0
+    interpolated_drops = 0
 
     for line_text in clean_lines:
-        line_words = line_text.split()
         word_entries = []
+        for word_text in line_text.split():
+            target = _normalize(word_text)
+            matched = -1
+            if target:
+                limit = min(ai + LOOKAHEAD, len(aligned))
+                for k in range(ai, limit):
+                    if aligned[k]["norm"] == target:
+                        matched = k
+                        break
 
-        for word_text in line_words:
-            key = re.sub(r"[^\w]", "", word_text).lower()
-            idx = used_counts.get(key, 0)
-            times_list = word_times.get(key, [])
-            if idx < len(times_list):
-                start, end, score = times_list[idx]
-                entry = {"word": word_text, "start": round(start, 3), "end": round(end, 3)}
-                if score is not None:
-                    entry["score"] = round(score, 3)
-                used_counts[key] = idx + 1
+            if matched >= 0:
+                a = aligned[matched]
+                ai = matched + 1
+                if a["start"] is not None and a["end"] is not None:
+                    entry = {
+                        "word": word_text,
+                        "start": round(a["start"], 3),
+                        "end": round(a["end"], 3),
+                    }
+                    if a["score"] is not None:
+                        entry["score"] = round(a["score"], 3)
+                else:
+                    entry = {"word": word_text, "start": None, "end": None, "estimated": True}
+                    interpolated_drops += 1
             else:
                 entry = {"word": word_text, "start": None, "end": None, "estimated": True}
+                missed_lyric_words += 1
             word_entries.append(entry)
 
         _interpolate_missing(word_entries)
@@ -133,14 +171,33 @@ def _map_words_to_lines(align_result: dict, clean_lines: list[str]) -> list[dict
         if not valid_words:
             continue
 
+        seg_start = valid_words[0]["start"]
+        seg_end = valid_words[-1]["end"]
+        if seg_end < seg_start:
+            seg_end = seg_start
+
         segments.append({
             "text": line_text,
-            "start": valid_words[0]["start"],
-            "end": valid_words[-1]["end"],
+            "start": seg_start,
+            "end": seg_end,
             "words": valid_words,
         })
 
-    print(f"[nightingale:LOG] Lyrics alignment: {len(segments)} lines preserved, {sum(len(s['words']) for s in segments)} words", flush=True)
+    for i in range(1, len(segments)):
+        prev = segments[i - 1]
+        cur = segments[i]
+        if cur["start"] < prev["end"]:
+            cur["start"] = prev["end"]
+            if cur["end"] < cur["start"]:
+                cur["end"] = cur["start"]
+
+    total_words = sum(len(s["words"]) for s in segments)
+    print(
+        f"[nightingale:LOG] Lyrics alignment: {len(segments)} lines preserved, "
+        f"{total_words} words ({interpolated_drops} interpolated from NaN, "
+        f"{missed_lyric_words} unmatched lyric words)",
+        flush=True,
+    )
 
     MAX_WORDS_PER_LINE = 10
     split_segments = []
