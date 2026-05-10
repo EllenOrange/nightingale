@@ -33,6 +33,7 @@ pub use library_menu::{LibraryMenuItem, LibraryMenuItems, load_library_menu_item
 pub use scanner::start_scan;
 pub use library_db::{init_library, library_db_path};
 pub use vendor::{
-    clear_vendor_dir, is_ready, mark_ready, step_create_venv, step_download_ffmpeg,
-    step_download_uv, step_extract_scripts, step_install_packages, step_install_python,
+    clear_vendor_dir, is_ready, mark_ready, refresh_analyzer_scripts_if_ready, step_create_venv,
+    step_download_ffmpeg, step_download_uv, step_extract_scripts, step_install_packages,
+    step_install_python,
 };

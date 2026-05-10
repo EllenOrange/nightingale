@@ -1,19 +1,29 @@
 #!/usr/bin/env python3
 """Persistent analyzer server for Nightingale.
 
-Reads JSON commands from stdin, processes songs, writes progress to stdout.
-Whisper model is cached between songs for faster batch analysis.
+Binds a TCP loopback socket and exchanges newline-delimited JSON with the
+Rust client. Stdout/stderr are reserved for plain logs aside from one
+handshake line emitted on startup.
 
-Protocol:
-  Stdin  (JSON per line): {"command": "analyze", ...} or {"command": "quit"}
-  Stdout (line per msg):  [nightingale:PROGRESS:N] msg
-                          [nightingale:DONE]
-                          [nightingale:ERROR] msg
-                          [nightingale:OOM] msg
+Handshake (stdout, single line):
+  {"event":"ready","port":N,"token":"...","device":"..."}
+
+Wire protocol (NDJSON over TCP, one JSON object per line):
+  Client -> server:
+    {"type":"hello","token":"..."}
+    {"type":"analyze","hash":"...","audio_path":"...","cache_path":"...", ...}
+    {"type":"quit"}
+  Server -> client:
+    {"type":"hello_ack"}
+    {"type":"progress","pct":N,"msg":"..."}
+    {"type":"done","hash":"..."}
+    {"type":"error","kind":"oom"|"generic","msg":"..."}
 """
 
 import json
 import os
+import secrets
+import socket
 import sys
 
 if os.name == "nt":
@@ -22,7 +32,7 @@ if os.name == "nt":
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from whisper_compat import progress, detect_device, compute_type_for, is_oom, free_gpu
+from whisper_compat import detect_device, compute_type_for, is_oom, free_gpu, set_progress_sink
 from pipeline import run_pipeline
 
 _whisper_model = None
@@ -83,37 +93,98 @@ def process_song(cmd, device):
     )
 
 
+def _send(wfile, payload):
+    try:
+        wfile.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        wfile.flush()
+    except (BrokenPipeError, OSError) as e:
+        print(f"[nightingale:LOG] Failed to send message: {e}", file=sys.stderr, flush=True)
+
+
 def main():
     device = detect_device()
-    print(f"[nightingale:SERVER] ready device={device}", flush=True)
+    token = secrets.token_hex(16)
 
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            cmd = json.loads(line)
-        except json.JSONDecodeError as e:
-            print(f"[nightingale:ERROR] Invalid JSON: {e}", flush=True)
-            continue
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
 
-        if cmd.get("command") == "quit":
-            break
+    print(
+        json.dumps({"event": "ready", "port": port, "token": token, "device": device}),
+        flush=True,
+    )
 
-        if cmd.get("command") == "analyze":
-            progress(0, "Starting analysis...")
+    srv.settimeout(60.0)
+    try:
+        conn, _addr = srv.accept()
+    except socket.timeout:
+        print("[nightingale:LOG] Timed out waiting for client connection", file=sys.stderr, flush=True)
+        return
+    finally:
+        srv.close()
+
+    conn.settimeout(None)
+    rfile = conn.makefile("r", encoding="utf-8", newline="\n")
+    wfile = conn.makefile("w", encoding="utf-8", newline="\n")
+
+    hello_line = rfile.readline()
+    if not hello_line:
+        return
+    try:
+        hello = json.loads(hello_line)
+    except json.JSONDecodeError:
+        return
+    if hello.get("type") != "hello" or hello.get("token") != token:
+        print("[nightingale:LOG] Auth failed, closing connection", file=sys.stderr, flush=True)
+        return
+    _send(wfile, {"type": "hello_ack"})
+
+    set_progress_sink(lambda pct, msg: _send(wfile, {"type": "progress", "pct": int(pct), "msg": str(msg)}))
+
+    try:
+        for line in rfile:
+            line = line.strip()
+            if not line:
+                continue
             try:
-                process_song(cmd, device)
-                print("[nightingale:DONE]", flush=True)
-            except Exception as e:
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-                err_str = str(e)
-                if is_oom(err_str):
-                    _clear_models()
-                    print(f"[nightingale:OOM] {err_str}", flush=True)
-                else:
-                    print(f"[nightingale:ERROR] {err_str}", flush=True)
+                cmd = json.loads(line)
+            except json.JSONDecodeError as e:
+                _send(wfile, {"type": "error", "kind": "generic", "msg": f"Invalid JSON: {e}"})
+                continue
+
+            ctype = cmd.get("type")
+            if ctype == "quit":
+                break
+            if ctype == "analyze":
+                try:
+                    process_song(cmd, device)
+                    _send(wfile, {"type": "done", "hash": cmd.get("hash", "")})
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc(file=sys.stderr)
+                    err_str = str(e)
+                    if is_oom(err_str):
+                        _clear_models()
+                        _send(wfile, {"type": "error", "kind": "oom", "msg": err_str})
+                    else:
+                        _send(wfile, {"type": "error", "kind": "generic", "msg": err_str})
+            else:
+                _send(wfile, {"type": "error", "kind": "generic", "msg": f"Unknown command: {ctype!r}"})
+    finally:
+        try:
+            wfile.close()
+        except Exception:
+            pass
+        try:
+            rfile.close()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

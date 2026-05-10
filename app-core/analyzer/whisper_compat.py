@@ -13,8 +13,20 @@ def _patched_torch_load(*args, **kwargs):
 torch.load = _patched_torch_load
 
 
-def progress(pct: int, msg: str):
+def _default_progress_sink(pct: int, msg: str):
     print(f"[nightingale:PROGRESS:{pct}] {msg}", flush=True)
+
+
+_progress_sink = _default_progress_sink
+
+
+def set_progress_sink(fn):
+    global _progress_sink
+    _progress_sink = fn or _default_progress_sink
+
+
+def progress(pct: int, msg: str):
+    _progress_sink(pct, msg)
 
 
 def detect_device() -> str:

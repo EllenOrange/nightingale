@@ -1,9 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::path::PathBuf;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -75,10 +77,12 @@ use crate::vendor::{analyzer_dir, ffmpeg_path, python_path, silent_command};
 
 static SERVER_PID: AtomicU32 = AtomicU32::new(0);
 
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(60);
+
 struct ServerProcess {
     child: Child,
-    stdin: BufWriter<ChildStdin>,
-    stdout: BufReader<ChildStdout>,
+    reader: BufReader<TcpStream>,
+    writer: BufWriter<TcpStream>,
 }
 
 impl Drop for ServerProcess {
@@ -86,6 +90,9 @@ impl Drop for ServerProcess {
         let pid = self.child.id();
         info!("[analyzer] Killing server process (pid={pid})");
         SERVER_PID.store(0, Ordering::SeqCst);
+        if let Ok(stream) = self.writer.get_ref().try_clone() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -93,6 +100,103 @@ impl Drop for ServerProcess {
 
 static ANALYZER_SERVER: LazyLock<Mutex<Option<ServerProcess>>> =
     LazyLock::new(|| Mutex::new(None));
+
+#[derive(Debug, Deserialize)]
+struct ReadyHandshake {
+    port: u16,
+    token: String,
+    #[serde(default)]
+    device: Option<String>,
+}
+
+fn drain_lines_to_log<R: BufRead + Send + 'static>(mut reader: R, label: &'static str) {
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => return,
+                Ok(_) => {
+                    let trimmed = line.trim_end();
+                    if !trimmed.is_empty() {
+                        info!("[analyzer {label}] {trimmed}");
+                    }
+                }
+            }
+        }
+    });
+}
+
+fn read_ready_handshake<R: BufRead>(reader: &mut R) -> Result<ReadyHandshake, NightingaleError> {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let bytes = reader.read_line(&mut line)?;
+        if bytes == 0 {
+            return Err(NightingaleError::Other(
+                "Analyzer server exited before handshake".into(),
+            ));
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<serde_json::Value>(trimmed) {
+            Ok(value) if value.get("event").and_then(|v| v.as_str()) == Some("ready") => {
+                return serde_json::from_value::<ReadyHandshake>(value).map_err(|e| {
+                    NightingaleError::Other(format!("Malformed ready handshake: {e}"))
+                });
+            }
+            _ => {
+                info!("[analyzer stdout] {trimmed}");
+            }
+        }
+    }
+}
+
+fn connect_and_authenticate(
+    port: u16,
+    token: &str,
+) -> Result<(BufReader<TcpStream>, BufWriter<TcpStream>), NightingaleError> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let stream = TcpStream::connect_timeout(&addr, HANDSHAKE_TIMEOUT).map_err(|e| {
+        NightingaleError::Other(format!("Failed to connect to analyzer server: {e}"))
+    })?;
+    stream.set_nodelay(true).ok();
+    stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
+    stream.set_write_timeout(Some(HANDSHAKE_TIMEOUT))?;
+
+    let writer_stream = stream.try_clone().map_err(|e| {
+        NightingaleError::Other(format!("Failed to clone analyzer socket: {e}"))
+    })?;
+    let mut reader = BufReader::new(stream);
+    let mut writer = BufWriter::new(writer_stream);
+
+    let hello = serde_json::json!({"type": "hello", "token": token});
+    writer.write_all(serde_json::to_string(&hello).unwrap().as_bytes())?;
+    writer.write_all(b"\n")?;
+    writer.flush()?;
+
+    let mut line = String::new();
+    let bytes = reader.read_line(&mut line)?;
+    if bytes == 0 {
+        return Err(NightingaleError::Other(
+            "Analyzer server closed connection during handshake".into(),
+        ));
+    }
+    let value: serde_json::Value = serde_json::from_str(line.trim())?;
+    if value.get("type").and_then(|v| v.as_str()) != Some("hello_ack") {
+        return Err(NightingaleError::Other(format!(
+            "Analyzer auth failed: {}",
+            line.trim()
+        )));
+    }
+
+    reader.get_ref().set_read_timeout(None)?;
+    reader.get_ref().set_write_timeout(None)?;
+
+    Ok((reader, writer))
+}
 
 fn spawn_server() -> Result<ServerProcess, NightingaleError> {
     let python = python_path();
@@ -120,7 +224,7 @@ fn spawn_server() -> Result<ServerProcess, NightingaleError> {
         .env("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
         .env("NLTK_DATA", models.join("nltk_data"))
         .arg(&script)
-        .stdin(Stdio::piped())
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -131,32 +235,56 @@ fn spawn_server() -> Result<ServerProcess, NightingaleError> {
     SERVER_PID.store(pid, Ordering::SeqCst);
     info!("[analyzer] Server process spawned (pid={pid})");
 
-    let stdin = BufWriter::new(
-        child
-            .stdin
-            .take()
-            .ok_or(NightingaleError::Other("Failed to capture server stdin".into()))?,
-    );
-    let stdout = BufReader::new(
-        child
-            .stdout
-            .take()
-            .ok_or(NightingaleError::Other("Failed to capture server stdout".into()))?,
-    );
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            SERVER_PID.store(0, Ordering::SeqCst);
+            return Err(NightingaleError::Other(
+                "Failed to capture server stdout".into(),
+            ));
+        }
+    };
+    let mut stdout_reader = BufReader::new(stdout);
 
+    let handshake = match read_ready_handshake(&mut stdout_reader) {
+        Ok(h) => h,
+        Err(e) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            SERVER_PID.store(0, Ordering::SeqCst);
+            return Err(e);
+        }
+    };
+    if let Some(device) = handshake.device.as_deref() {
+        info!(
+            "[analyzer] Handshake ok: device={device} port={}",
+            handshake.port
+        );
+    } else {
+        info!("[analyzer] Handshake ok: port={}", handshake.port);
+    }
+
+    let (reader, writer) = match connect_and_authenticate(handshake.port, &handshake.token) {
+        Ok(pair) => pair,
+        Err(e) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            SERVER_PID.store(0, Ordering::SeqCst);
+            return Err(e);
+        }
+    };
+
+    drain_lines_to_log(stdout_reader, "stdout");
     if let Some(stderr) = child.stderr.take() {
-        std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines().flatten() {
-                info!("[analyzer stderr] {line}");
-            }
-        });
+        drain_lines_to_log(BufReader::new(stderr), "stderr");
     }
 
     Ok(ServerProcess {
         child,
-        stdin,
-        stdout,
+        reader,
+        writer,
     })
 }
 
@@ -288,6 +416,12 @@ pub fn shutdown_server() {
     let pid = SERVER_PID.swap(0, Ordering::SeqCst);
     if pid != 0 {
         info!("[analyzer] Graceful shutdown of server (pid={pid})");
+        if let Ok(mut guard) = ANALYZER_SERVER.try_lock() {
+            if let Some(server) = guard.as_mut() {
+                let _ = server.writer.write_all(b"{\"type\":\"quit\"}\n");
+                let _ = server.writer.flush();
+            }
+        }
         std::thread::spawn(move || {
             let _ = Command::new("kill").args([&pid.to_string()]).status();
             std::thread::sleep(std::time::Duration::from_secs(3));
@@ -378,7 +512,7 @@ fn process_song(file_hash: &str, cache: &CacheDir) {
     let lyrics_path = fetch_lrclib_lyrics(&song, cache);
 
     let mut cmd_json = serde_json::json!({
-        "command": "analyze",
+        "type": "analyze",
         "audio_path": song.path.to_string_lossy(),
         "cache_path": cache.path.to_string_lossy(),
         "hash": file_hash,
@@ -485,58 +619,81 @@ enum SongResult {
     Error(String),
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ServerEvent {
+    Progress {
+        pct: u32,
+        #[serde(default)]
+        msg: String,
+    },
+    Done,
+    Error {
+        #[serde(default)]
+        kind: Option<String>,
+        #[serde(default)]
+        msg: String,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
 fn send_and_monitor(
     server: &mut ServerProcess,
     json_cmd: &str,
     file_hash: &str,
 ) -> Result<SongResult, NightingaleError> {
-    server.stdin.write_all(json_cmd.as_bytes())?;
-    server.stdin.write_all(b"\n")?;
-    server.stdin.flush()?;
+    server.writer.write_all(json_cmd.as_bytes())?;
+    server.writer.write_all(b"\n")?;
+    server.writer.flush()?;
 
     let mut line_buf = String::new();
     loop {
         line_buf.clear();
-        let bytes = server.stdout.read_line(&mut line_buf)?;
+        let bytes = server.reader.read_line(&mut line_buf)?;
 
         if bytes == 0 {
-            return Err("Server process closed stdout unexpectedly".into());
+            return Err("Server closed connection unexpectedly".into());
         }
 
-        let line = line_buf.trim_end();
-        info!("[analyzer] {line}");
-
-        if line.contains("[nightingale:DONE]") {
-            return Ok(SongResult::Done);
-        }
-        if line.contains("[nightingale:OOM]") {
-            return Ok(SongResult::Oom);
-        }
-        if line.contains("[nightingale:ERROR]") {
-            let msg = line
-                .split("[nightingale:ERROR]")
-                .nth(1)
-                .unwrap_or("Unknown error")
-                .trim()
-                .to_string();
-            return Ok(SongResult::Error(msg));
+        let line = line_buf.trim();
+        if line.is_empty() {
+            continue;
         }
 
-        if let Some((pct, _msg)) = parse_progress_line(line) {
-            update_queue_status(file_hash, QueuedStatus::Analyzing(pct as usize));
+        let event: ServerEvent = match serde_json::from_str(line) {
+            Ok(ev) => ev,
+            Err(e) => {
+                warn!("[analyzer] Skipping unparseable event: {e}; line={line:?}");
+                continue;
+            }
+        };
+
+        match event {
+            ServerEvent::Progress { pct, msg } => {
+                if !msg.is_empty() {
+                    info!("[analyzer] progress {pct}% {msg}");
+                }
+                update_queue_status(file_hash, QueuedStatus::Analyzing(pct as usize));
+            }
+            ServerEvent::Done { .. } => return Ok(SongResult::Done),
+            ServerEvent::Error { kind, msg } => {
+                let kind_s = kind.as_deref().unwrap_or("generic");
+                if kind_s == "oom" {
+                    return Ok(SongResult::Oom);
+                }
+                let msg = if msg.is_empty() {
+                    "Unknown error".to_string()
+                } else {
+                    msg
+                };
+                return Ok(SongResult::Error(msg));
+            }
+            ServerEvent::Unknown => {
+                warn!("[analyzer] Ignoring unknown event: {line}");
+            }
         }
     }
-}
-
-fn parse_progress_line(line: &str) -> Option<(u32, String)> {
-    let prefix = "[nightingale:PROGRESS:";
-    let start = line.find(prefix)?;
-    let after_prefix = &line[start + prefix.len()..];
-    let end_bracket = after_prefix.find(']')?;
-    let pct_str = &after_prefix[..end_bracket];
-    let pct: u32 = pct_str.parse().ok()?;
-    let msg = after_prefix[end_bracket + 1..].trim().to_string();
-    Some((pct, msg))
 }
 
 // ─── Lyrics fetching ─────────────────────────────────────────────────

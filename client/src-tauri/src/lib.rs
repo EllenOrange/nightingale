@@ -129,6 +129,9 @@ pub fn run() {
             let _ = dotenvy::dotenv();
             app_core::init_library().map_err(|e| e.to_string())?;
             app_core::AnalysisQueue::clear();
+            if let Err(e) = app_core::refresh_analyzer_scripts_if_ready() {
+                tracing::warn!("Failed to refresh analyzer scripts: {e}");
+            }
             app_core::media_server::start();
 
             let config = AppConfig::load();

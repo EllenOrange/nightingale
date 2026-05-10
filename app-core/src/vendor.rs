@@ -543,6 +543,18 @@ pub fn step_extract_scripts() -> Result<(), String> {
     Ok(())
 }
 
+/// Refresh the embedded analyzer scripts on top of an already-set-up vendor dir.
+/// No-op when setup hasn't completed yet — initial extraction is handled by
+/// `step_extract_scripts` during the setup flow.
+pub fn refresh_analyzer_scripts_if_ready() -> Result<(), String> {
+    if !is_ready() {
+        return Ok(());
+    }
+    
+    vendor_scripts::write_scripts(&analyzer_dir())
+        .map_err(|e| format!("Failed to refresh analyzer scripts: {e}"))
+}
+
 pub fn mark_ready() -> Result<(), String> {
     std::fs::write(ready_marker(), "ok").map_err(|e| format!("Failed to mark ready: {e}"))
 }
