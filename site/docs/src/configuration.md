@@ -41,3 +41,20 @@ PIXABAY_API_KEY=your_key_here
 Toggle between dark and light themes from the sidebar. The theme preference is saved in the config.
 
 ![White theme](images/white-theme.png)
+
+## Notable Settings
+
+`config.json` is written by the app — you'll usually change these from **Settings** rather than by editing the file directly. A few keys worth knowing:
+
+| Key | Purpose |
+|---|---|
+| `asr_engine` | Selects the transcription engine. `whisper` (default) or `parakeet`. See [Lyrics & Transcription](./lyrics.md#choosing-the-asr-engine). |
+| `separator` | Stem separation model: `karaoke` (UVR, default) or `demucs`. |
+| `whisper_model` | Whisper model size: `large-v3` (default), `large-v3-turbo`, `medium`, `small`, `base`, `tiny`. Ignored when `asr_engine` is `parakeet`. |
+| `beam_size` / `batch_size` | Decoder beam width and batch size for Whisper. Higher values are more accurate but slower and use more VRAM. |
+| `mic_mirror_gain` | Live monitor gain when mic mirroring is on. Range `0.0`–`2.0` (slider shown as 0–200%). |
+| `mic_active` / `mic_mirroring` / `preferred_mic` | Microphone state and the device chosen for scoring + mirroring. |
+| `last_video_flavor` | Index of the last-used Pixabay video flavor (Nature, Underwater, Space, City, Countryside). |
+| `last_theme` | Index of the last-used playback background (shaders → video → source). |
+| `language_overrides` | Per-song forced ASR language, keyed by song hash. Set this from the song-list controls. |
+| `data_path` | Selected data folder root. Set during first-run setup. |

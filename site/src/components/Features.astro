@@ -13,6 +13,24 @@ const features = [
       "WhisperX transcribes and aligns every word to the audio. Existing lyrics from LRCLIB are used when available.",
   },
   {
+    icon: "🈯",
+    title: "CJK lyrics",
+    description:
+      "Japanese, Chinese, and Korean songs get per-character forced alignment with romanized readings (Hepburn, pinyin, Revised Romanization) shown above each token.",
+  },
+  {
+    icon: "🗣️",
+    title: "Pluggable ASR",
+    description:
+      "Choose Whisper (default, broad coverage) or Parakeet v3 (experimental) for ~25 European languages. NeMo on CUDA, ONNX everywhere else.",
+  },
+  {
+    icon: "🎼",
+    title: "UltraStar songs",
+    description:
+      "Drop USDX song folders into your library — pitch and lyrics come straight from the file, no analyzer pass needed. Experimental.",
+  },
+  {
     icon: "🎯",
     title: "Pitch scoring",
     description:
@@ -38,9 +56,9 @@ const features = [
   },
   {
     icon: "🌌",
-    title: "Dynamic backgrounds",
+    title: "Audio-reactive backgrounds",
     description:
-      "GPU shader effects (plasma, aurora, nebula...), Pixabay video loops, or the source video for video files.",
+      "10 GPU shaders that react to your mic input in real time, 5 Pixabay video flavors, plus the source video for video files.",
   },
   {
     icon: "🧭",
@@ -52,7 +70,7 @@ const features = [
     icon: "🎙️",
     title: "Mic mirroring",
     description:
-      "Optional live mic monitor during playback for practice sessions and quick vocal checks.",
+      "Optional live mic monitor during playback for practice sessions, with an adjustable monitor gain.",
   },
   {
     icon: "🎮",
@@ -132,12 +150,14 @@ const features = [
     font-weight: 600;
     margin-bottom: 6px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
   }
 
   .icon {
     font-size: 1.1rem;
+    line-height: 1.45;
+    flex-shrink: 0;
   }
 
   .feature-card p {

@@ -7,11 +7,18 @@ Nightingale's pipeline transforms any audio or video file into a karaoke experie
 <pre class="mermaid">
 flowchart TD
     A["🎵 Audio or video file"] --> B["UVR Karaoke / Demucs"]
-    B --> |"vocals.mp3 + instrumental.mp3"| C["LRCLIB"]
-    C --> |"Fetches synced lyrics if available"| D["WhisperX (large-v3)"]
-    D --> |"Transcription + word-level alignment"| E["Tauri App (Rust + React)"]
-    E --> F["🎤 Plays instrumental + synced lyrics\nwith pitch scoring, key/tempo controls,\nmic mirroring, and backgrounds"]
+    A2["🎼 USDX bundle (.txt / .usdx)"] --> E["Tauri App (Rust + React)"]
+    B --> |"vocals + instrumental"| C["LRCLIB"]
+    C --> |"synced lyrics if available"| D["WhisperX (large-v3) or Parakeet v3 (exp.)"]
+    D --> |"word-level alignment, CJK readings"| E
+    E --> F["🎤 Plays instrumental + synced lyrics\nwith pitch scoring, key/tempo controls,\nmic mirroring, and audio-reactive backgrounds"]
 </pre>
+
+USDX bundles bypass stem separation and transcription entirely — the `.txt` is parsed into a transcript JSON shaped exactly like the analyzer cache, so playback reuses the existing pipeline. See [UltraStar Deluxe](./usdx.md).
+
+## Analyzer Server
+
+The analyzer is a long-lived Python process that Nightingale spawns once on startup and talks to over a token-authenticated loopback TCP socket using newline-delimited JSON (NDJSON). Per-song startup costs (model load, CUDA init, Python imports) are paid once at boot, after which `analyze` requests stream `progress` events and complete with `done` or `error` messages. This makes back-to-back analyses noticeably faster than the previous per-song subprocess model.
 
 ## Caching
 

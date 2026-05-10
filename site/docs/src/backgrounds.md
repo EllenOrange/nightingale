@@ -1,21 +1,28 @@
 # Backgrounds
 
-Nightingale offers 7 background themes during playback, cycled with the `T` key.
+Nightingale offers a deep selection of background themes during playback, cycled with the `T` key.
 
-## GPU Shader Backgrounds
+## 10 GPU Shader Backgrounds
 
-Five backgrounds are rendered in real-time using GPU shaders (GLSL):
+Ten backgrounds are rendered in real-time using GPU shaders (GLSL):
 
 1. **Plasma** — flowing colorful plasma effect
-2. **Aurora** — northern lights animation
-3. **Waves** — undulating wave patterns
-4. **Nebula** — cosmic nebula clouds
-5. **Starfield** — deep space star field
+2. **Waves** — undulating wave patterns
+3. **Nebula** — cosmic nebula clouds
+4. **Starfield** — deep space star field
+5. **Sonar** — radial pulse sweeps
+6. **Voronoi** — animated cellular tessellation
+7. **Vortex** — swirling color tunnels
+8. **Metaballs** — fluid blob morphs
+9. **Spectrum** — frequency-bar visualizer
+10. **Oscilloscope** — waveform line trace
 
 These run at full frame rate and adapt to your display resolution.
 
-<!-- TODO: 2-3 screenshots showing different shader backgrounds (e.g. Aurora and Nebula) during playback -->
-![Aurora background](images/bg-aurora.png)
+Shaders are **audio-reactive** when the microphone is enabled: a real-time analyzer drives shared uniforms (level, low/mid/high band energy, beat impulses) so louder vocals push the visuals harder. With the mic off, the shaders animate on their own time-based clock.
+
+<!-- TODO: 2-3 screenshots showing different shader backgrounds (e.g. Nebula and Spectrum) during playback -->
+![Nebula background](images/bg-aurora.png)
 ![Waves background](images/bg-waves.png)
 
 ## Pixabay Video Backgrounds

@@ -16,6 +16,8 @@ Supported audio formats: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`
 
 Supported video formats: `.mp4`, `.mkv`, `.avi`, `.webm`, `.mov`, `.m4v`.
 
+UltraStar Deluxe songs (`.usdx`, plus `.txt` files whose contents look like USDX) are also picked up automatically and bypass the analyzer pipeline entirely. See [UltraStar Deluxe](./usdx.md) for the supported tags and folder layout.
+
 ## macOS: Removing the Quarantine Flag
 
 macOS automatically adds a quarantine attribute to files downloaded from the internet. Since Nightingale is not signed with an Apple Developer ID, Gatekeeper will block it with a message like _"app is damaged and can't be opened"_ or _"Apple cannot check it for malicious software"_.
