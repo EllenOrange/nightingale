@@ -1,17 +1,16 @@
 import { joinMediaUrl } from "@/adapters/playback";
-import type { TimeSubscriber } from "@/hooks/use-audio-player";
+import {
+  usePlaybackThemeState,
+  usePlaybackTransportActions,
+  usePlaybackTransportState,
+} from "@/contexts/playback";
 import { useSourceVideoSync } from "@/hooks/use-source-video-sync";
 import { getMediaPort } from "@/tauri-bridge/playback";
 import { useEffect, useRef, useState } from "react";
-import { VIDEO_CLASS_NAME } from "./video-styles";
+import { VIDEO_CLASS_NAME } from "@/lib/playback/video-styles";
 
 interface SourceVideoProps {
-  filePath: string;
-  tempoRatio: number;
-  isPlaying: boolean;
   isActive: boolean;
-  subscribe: (fn: TimeSubscriber) => () => void;
-  getCurrentTime: () => number;
 }
 
 function useMediaUrl(filePath: string): string | null {
@@ -34,26 +33,26 @@ function useMediaUrl(filePath: string): string | null {
   return src;
 }
 
-export const SourceVideo = ({
-  filePath,
-  tempoRatio,
-  isPlaying,
-  isActive,
-  subscribe,
-  getCurrentTime,
-}: SourceVideoProps) => {
+export const SourceVideo = ({ isActive }: SourceVideoProps) => {
+  const { sourceVideoPath, sourceVideoTempoRatio } = usePlaybackThemeState();
+  const { isReady, isPlaying } = usePlaybackTransportState();
+  const { subscribe, getCurrentTime } = usePlaybackTransportActions();
+
   const videoRef = useRef<HTMLVideoElement>(null);
-  const src = useMediaUrl(filePath);
+  const src = useMediaUrl(sourceVideoPath ?? "");
+
+  const playWhenActive = isReady && isPlaying && isActive;
+
   const { ready } = useSourceVideoSync({
     videoRef,
-    src,
-    isPlaying,
-    tempoRatio,
+    src: sourceVideoPath ? src : null,
+    isPlaying: playWhenActive,
+    tempoRatio: sourceVideoTempoRatio,
     subscribe,
     getCurrentTime,
   });
 
-  if (!src) return null;
+  if (!sourceVideoPath || !src) return null;
 
   return (
     <video

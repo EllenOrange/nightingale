@@ -6,7 +6,7 @@ import { TauriAppShell } from "./components/window/title-bar";
 import { NavInputProvider } from "./contexts/nav-input-context";
 import { Menu } from "./pages/menu/menu";
 import { Playback } from "./pages/playback/playback";
-import { ThemeProvider } from "./providers/theme/ThemeProvider";
+import { ThemeProvider } from "./contexts/theme-context";
 import { useConfig } from "./queries/use-config";
 import { Setup } from "./components/menu/dialogs/setup";
 import { TooltipProvider } from "./components/ui/tooltip";

@@ -1,3 +1,4 @@
+import { usePlaybackTransportActions, usePlaybackTransportState } from "@/contexts/playback";
 import type { Segment, Word } from "@/types/Transcript";
 import { memo, useEffect, useRef, useState } from "react";
 
@@ -126,12 +127,13 @@ function updateCountdown(el: HTMLSpanElement | null, showCountdown: boolean, tim
 
 interface LyricsDisplayProps {
   segments: Segment[];
-  subscribe: (fn: (time: number) => void) => () => void;
-  getCurrentTime: () => number;
-  animate: boolean;
 }
 
-function LyricsDisplayImpl({ segments, subscribe, getCurrentTime, animate }: LyricsDisplayProps) {
+function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
+  const { isPlaying, paused } = usePlaybackTransportState();
+  const { subscribe, getCurrentTime } = usePlaybackTransportActions();
+  const animate = isPlaying && !paused;
+
   const [segIdx, setSegIdx] = useState(() =>
     segments.length === 0 ? 0 : findCurrentSegment(segments, getCurrentTime(), 0),
   );

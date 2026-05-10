@@ -1,4 +1,4 @@
-import type { AudioPlayer } from "@/hooks/use-audio-player";
+import type { TimeSubscriber } from "@/hooks/use-audio-player";
 import { PITCH_WINDOW_SAMPLES } from "@/lib/pitch/constants";
 import { createPitchDetector, detectPitchFromSamplesRef } from "@/lib/pitch/detect";
 import {
@@ -11,7 +11,17 @@ import {
 } from "@/lib/pitch/state";
 import { useEffect, useRef, useState } from "react";
 
-export function usePitchScoring(audio: AudioPlayer, micPitch: number | null) {
+export interface PitchScoringSource {
+  isReady: boolean;
+  duration: number;
+  getVocalsBuffer: () => AudioBuffer | null;
+  subscribe: (fn: TimeSubscriber) => () => void;
+}
+
+export function usePitchScoring(
+  { isReady, duration, getVocalsBuffer, subscribe }: PitchScoringSource,
+  micPitch: number | null,
+) {
   const refDetector = useRef(createPitchDetector());
   const scratchRef = useRef(new Float32Array(PITCH_WINDOW_SAMPLES));
   const bufferRef = useRef(new PitchStateBuffer());
@@ -28,22 +38,22 @@ export function usePitchScoring(audio: AudioPlayer, micPitch: number | null) {
   micPitchRef.current = micPitch;
 
   useEffect(() => {
-    if (!audio.isReady || audio.duration <= 0) {
+    if (!isReady || duration <= 0) {
       return;
     }
     bufferRef.current.reset();
 
-    const vocals = audio.getVocalsBuffer();
-    const singable = vocals ? computeSingableTime(vocals) : audio.duration;
+    const vocals = getVocalsBuffer();
+    const singable = vocals ? computeSingableTime(vocals) : duration;
     singableRef.current = singable;
     scoringRef.current = new PitchScoring(singable);
 
     setSeries(bufferRef.current.snapshot());
     setScore(0);
-  }, [audio.isReady, audio.duration]);
+  }, [isReady, duration, getVocalsBuffer]);
 
   useEffect(() => {
-    if (!audio.isReady) {
+    if (!isReady) {
       return;
     }
 
@@ -52,7 +62,7 @@ export function usePitchScoring(audio: AudioPlayer, micPitch: number | null) {
         return;
       }
 
-      const vocals = audio.getVocalsBuffer();
+      const vocals = getVocalsBuffer();
       const mp = micPitchRef.current;
 
       if (!vocals || !sampleVocalsWindow(vocals, t, scratchRef.current)) {
@@ -72,8 +82,8 @@ export function usePitchScoring(audio: AudioPlayer, micPitch: number | null) {
       setScore(scoringRef.current.score());
     };
 
-    return audio.subscribe(run);
-  }, [audio, audio.isReady]);
+    return subscribe(run);
+  }, [isReady, subscribe, getVocalsBuffer]);
 
   return { series, score };
 }

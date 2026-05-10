@@ -1,6 +1,6 @@
 import { usePixabaySlots } from "@/hooks/use-pixabay-slots";
 import type { VideoFlavor } from "@/lib/playback/video-flavor";
-import { VIDEO_CLASS_NAME } from "./video-styles";
+import { VIDEO_CLASS_NAME } from "@/lib/playback/video-styles";
 
 interface PixabayVideoProps {
   flavor: VideoFlavor;

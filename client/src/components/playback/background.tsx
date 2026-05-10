@@ -1,24 +1,16 @@
-import type { TimeSubscriber } from "@/hooks/use-audio-player";
-import type { MicReactiveRef } from "@/hooks/use-mic-reactive";
-import { loadingFragment, shaders } from "./shaders";
-import { ShaderVisualizer } from "./shader-visualizer";
-import { PixabayVideo } from "./pixabay-video";
-import { SourceVideo } from "./source-video";
+import {
+  usePlaybackMicActions,
+  usePlaybackThemeState,
+  usePlaybackTransportState,
+} from "@/contexts/playback";
 import { FLAVORS, type VideoFlavor } from "@/lib/playback/video-flavor";
+import { memo } from "react";
+import { PixabayVideo } from "./pixabay-video";
+import { ShaderVisualizer } from "./shader-visualizer";
+import { loadingFragment, shaders } from "./shaders";
+import { SourceVideo } from "./source-video";
 
 export type ThemeMode = "shader" | "pixabay" | "source";
-
-export interface BackgroundProps {
-  themeIndex: number;
-  videoFlavor: VideoFlavor;
-  sourceVideoPath?: string;
-  sourceVideoTempoRatio?: number;
-  isReady: boolean;
-  isPlaying: boolean;
-  subscribe: (fn: TimeSubscriber) => () => void;
-  getCurrentTime: () => number;
-  reactiveRef?: MicReactiveRef;
-}
 
 const SHADER_COUNT = shaders.length;
 const PIXABAY_INDEX = SHADER_COUNT;
@@ -68,50 +60,20 @@ export function isPixabayTheme(index: number): boolean {
   return index === PIXABAY_INDEX;
 }
 
-function backgroundContent(
-  mode: ThemeMode,
-  props: {
-    themeIndex: number;
-    videoFlavor: VideoFlavor;
-    sourceVideoPath?: string;
-    sourceVideoTempoRatio?: number;
-    isPlaying: boolean;
-    subscribe: BackgroundProps["subscribe"];
-    getCurrentTime: BackgroundProps["getCurrentTime"];
-    reactiveRef?: MicReactiveRef;
-  },
-) {
-  const { themeIndex, videoFlavor, isPlaying, reactiveRef } = props;
-
-  switch (mode) {
-    case "shader":
-      return (
-        <ShaderVisualizer
-          shaderIndex={themeIndex % SHADER_COUNT}
-          isPlaying={isPlaying}
-          reactiveRef={reactiveRef}
-        />
-      );
-    case "pixabay":
-      return <PixabayVideo flavor={videoFlavor} isPlaying={isPlaying} />;
-    case "source":
-      return null;
-  }
+function ShaderBranch({ themeIndex, isPlaying }: { themeIndex: number; isPlaying: boolean }) {
+  const { reactiveRef } = usePlaybackMicActions();
+  return (
+    <ShaderVisualizer
+      shaderIndex={themeIndex % SHADER_COUNT}
+      isPlaying={isPlaying}
+      reactiveRef={reactiveRef}
+    />
+  );
 }
 
-export const Background = ({
-  themeIndex,
-  videoFlavor,
-  sourceVideoPath,
-  sourceVideoTempoRatio,
-  isReady,
-  isPlaying,
-  subscribe,
-  getCurrentTime,
-  reactiveRef,
-}: BackgroundProps) => {
-  const mode = themeMode(themeIndex);
-  const showSourceVideo = mode === "source";
+function BackgroundImpl() {
+  const { isReady, isPlaying } = usePlaybackTransportState();
+  const { themeIndex, videoFlavor, sourceVideoPath } = usePlaybackThemeState();
 
   if (!isReady) {
     return (
@@ -121,28 +83,17 @@ export const Background = ({
     );
   }
 
+  const mode = themeMode(themeIndex);
+  const showSourceVideo = mode === "source";
+  const playing = isReady && isPlaying;
+
   return (
     <div className="fixed inset-0">
-      {sourceVideoPath && (
-        <SourceVideo
-          filePath={sourceVideoPath}
-          tempoRatio={sourceVideoTempoRatio ?? 1}
-          isPlaying={isReady && isPlaying && showSourceVideo}
-          isActive={showSourceVideo}
-          subscribe={subscribe}
-          getCurrentTime={getCurrentTime}
-        />
-      )}
-      {backgroundContent(mode, {
-        themeIndex,
-        videoFlavor,
-        sourceVideoPath,
-        sourceVideoTempoRatio,
-        isPlaying: isReady && isPlaying,
-        subscribe,
-        getCurrentTime,
-        reactiveRef,
-      })}
+      {sourceVideoPath && <SourceVideo isActive={showSourceVideo} />}
+      {mode === "shader" && <ShaderBranch themeIndex={themeIndex} isPlaying={playing} />}
+      {mode === "pixabay" && <PixabayVideo flavor={videoFlavor} isPlaying={playing} />}
     </div>
   );
-};
+}
+
+export const Background = memo(BackgroundImpl);

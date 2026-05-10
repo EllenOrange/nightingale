@@ -1,7 +1,15 @@
-import type { TimeSubscriber } from "@/hooks/use-audio-player";
-import { forwardRef, memo, useEffect, useRef } from "react";
+import {
+  usePlaybackMicState,
+  usePlaybackThemeState,
+  usePlaybackTranscriptActions,
+  usePlaybackTranscriptState,
+  usePlaybackTransportActions,
+  usePlaybackTransportState,
+} from "@/contexts/playback";
 import type { VideoFlavor } from "@/lib/playback/video-flavor";
+import { forwardRef, memo, useEffect, useRef } from "react";
 import { isPixabayTheme, themeName } from "./background";
+
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds) % 60;
@@ -16,8 +24,6 @@ function formatGuideText(volume: number): string {
 function formatThemeText(themeIndex: number, videoFlavor: VideoFlavor): string {
   return `Theme: ${themeName(themeIndex, videoFlavor)} [T${isPixabayTheme(themeIndex) ? "/F" : ""}]`;
 }
-
-// --- Shared sub-components ---
 
 const SkipButton = forwardRef<HTMLButtonElement, { label: string; onClick: () => void }>(
   ({ label, onClick }, ref) => (
@@ -51,49 +57,20 @@ function Disclaimer({ source }: { source: string }) {
   );
 }
 
-// --- Main component ---
-
 interface PlaybackHudProps {
   title: string;
   artist: string;
-  duration: number;
-  guideVolume: number;
-  themeIndex: number;
-  videoFlavor: VideoFlavor;
-  firstSegmentStart: number;
-  introSkipLeadSec: number;
-  lastSegmentEnd: number;
-  onSkipIntro: () => void;
-  onSkipOutro: () => void;
-  subscribe: (fn: TimeSubscriber) => () => void;
-  getCurrentTime: () => number;
-  transcriptSource: string;
-  pitchScore: number | null;
-  micOn: boolean;
-  micName: string;
-  micMirrorOn: boolean;
 }
 
-function PlaybackHudImpl({
-  title,
-  artist,
-  duration,
-  guideVolume,
-  themeIndex,
-  videoFlavor,
-  firstSegmentStart,
-  introSkipLeadSec,
-  lastSegmentEnd,
-  onSkipIntro,
-  onSkipOutro,
-  subscribe,
-  getCurrentTime,
-  transcriptSource,
-  pitchScore,
-  micOn,
-  micName,
-  micMirrorOn,
-}: PlaybackHudProps) {
+function PlaybackHudImpl({ title, artist }: PlaybackHudProps) {
+  const { duration, guideVolume } = usePlaybackTransportState();
+  const { subscribe, getCurrentTime } = usePlaybackTransportActions();
+  const { themeIndex, videoFlavor } = usePlaybackThemeState();
+  const { firstSegmentStart, lastSegmentEnd, introSkipLeadSec, transcriptSource } =
+    usePlaybackTranscriptState();
+  const { handleSkipIntro, handleSkipOutro } = usePlaybackTranscriptActions();
+  const { pitchScore, micUserEnabled, micName, micMirrorUserEnabled } = usePlaybackMicState();
+
   const lastSecondRef = useRef(-1);
   const timerRef = useRef<HTMLParagraphElement>(null);
   const skipIntroRef = useRef<HTMLButtonElement>(null);
@@ -137,8 +114,8 @@ function PlaybackHudImpl({
             0:00 / {formatTime(duration)}
           </p>
           <div className="mt-2 flex gap-2">
-            <SkipButton ref={skipIntroRef} label="Skip Intro" onClick={onSkipIntro} />
-            <SkipButton ref={skipOutroRef} label="Skip Outro" onClick={onSkipOutro} />
+            <SkipButton ref={skipIntroRef} label="Skip Intro" onClick={handleSkipIntro} />
+            <SkipButton ref={skipOutroRef} label="Skip Outro" onClick={handleSkipOutro} />
           </div>
         </div>
 
@@ -147,8 +124,8 @@ function PlaybackHudImpl({
             Score: {pitchScore ?? "--"}
           </div>
           <HintText>{formatGuideText(guideVolume)}</HintText>
-          <HintText>Mic: {micOn ? micName : "OFF"} [M/N]</HintText>
-          <HintText>Mirror: {micMirrorOn ? "ON" : "OFF"} [R]</HintText>
+          <HintText>Mic: {micUserEnabled ? micName : "OFF"} [M/N]</HintText>
+          <HintText>Mirror: {micMirrorUserEnabled ? "ON" : "OFF"} [R]</HintText>
           <HintText>{formatThemeText(themeIndex, videoFlavor)}</HintText>
           <HintText>[ESC] Back</HintText>
         </div>

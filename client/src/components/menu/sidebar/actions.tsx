@@ -15,7 +15,7 @@ import { useCurrentProfile } from "@/hooks/use-current-profile";
 import { useDialog } from "@/hooks/use-dialog";
 import { useShouldRunSetup } from "@/hooks/use-should-run-setup";
 import { useConfigMutation } from "@/mutations/use-config-mutation";
-import { useTheme } from "@/providers/theme/ThemeProvider";
+import { useTheme } from "@/contexts/theme-context";
 import {
   BoxIcon,
   ChevronsUpDownIcon,

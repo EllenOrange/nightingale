@@ -1,3 +1,4 @@
+import { usePlaybackMicState } from "@/contexts/playback";
 import { PITCH_BUFFER_SIZE } from "@/lib/pitch/constants";
 import type { PitchSeries } from "@/lib/pitch/state";
 import { freqToSemitone, snapToRefOctave } from "@/lib/pitch/state";
@@ -286,10 +287,10 @@ function useWindowHeight(): number {
 
 interface PitchGraphProps {
   series: PitchSeries;
-  visible: boolean;
 }
 
-export function PitchGraph({ series, visible }: PitchGraphProps) {
+export function PitchGraph({ series }: PitchGraphProps) {
+  const { micReady: visible } = usePlaybackMicState();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const windowHeight = useWindowHeight();
 

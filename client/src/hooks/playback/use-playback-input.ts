@@ -1,56 +1,32 @@
 import {
-  SOURCE_VIDEO_INDEX,
-  nextFlavorIndex,
-  nextThemeIndex,
-} from "@/components/playback/background";
+  usePlaybackMicActions,
+  usePlaybackThemeActions,
+  usePlaybackTranscriptActions,
+  usePlaybackTranscriptState,
+  usePlaybackTransportActions,
+  usePlaybackTransportState,
+} from "@/contexts/playback";
 import { useNavInput } from "@/hooks/navigation/use-nav-input";
+import { usePlaybackConfigPersist } from "@/hooks/playback/use-playback-config-persist";
 import type { AppConfig } from "@/types/AppConfig";
-import type { Song } from "@/types/Song";
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
-export interface UsePlaybackInputParams {
-  paused: boolean;
-  song: Song;
-  firstSegmentStart: number;
-  lastSegmentEnd: number;
-  introSkipLeadSec: number;
-  guideVolume: number;
-  isReady: boolean;
-  getCurrentTime: () => number;
-  setGuideVolume: (v: number) => void;
-  setThemeIndex: Dispatch<SetStateAction<number>>;
-  setFlavorIndex: Dispatch<SetStateAction<number>>;
-  persistConfig: (patch: Partial<AppConfig>) => void;
-  onSkipIntro: () => void;
-  onSkipOutro: () => void;
-  handlePause: () => void;
-  handleContinue: () => void;
-  onToggleMic: () => void;
-  onCycleMic: () => void;
-  onToggleMicMirror: () => void;
-}
+/**
+ * Wires keyboard + gamepad input for the playback session. Reads everything it
+ * needs from the playback contexts; only the app config is passed in so we can
+ * persist guide-volume changes without coupling this hook to the config query.
+ */
+export function usePlaybackInput(config: AppConfig | null) {
+  const { paused, isReady, guideVolume } = usePlaybackTransportState();
+  const { getCurrentTime, setGuideVolume, handlePause, handleContinue } =
+    usePlaybackTransportActions();
+  const { cycleTheme, cycleFlavor } = usePlaybackThemeActions();
+  const { firstSegmentStart, lastSegmentEnd, introSkipLeadSec } = usePlaybackTranscriptState();
+  const { handleSkipIntro, handleSkipOutro } = usePlaybackTranscriptActions();
+  const { handleToggleMic, handleCycleMic, handleToggleMicMirror } = usePlaybackMicActions();
 
-export function usePlaybackInput({
-  paused,
-  song,
-  firstSegmentStart,
-  lastSegmentEnd,
-  introSkipLeadSec,
-  guideVolume,
-  isReady,
-  getCurrentTime,
-  setGuideVolume,
-  setThemeIndex,
-  setFlavorIndex,
-  persistConfig,
-  onSkipIntro,
-  onSkipOutro,
-  handlePause,
-  handleContinue,
-  onToggleMic,
-  onCycleMic,
-  onToggleMicMirror,
-}: UsePlaybackInputParams) {
+  const persistConfig = usePlaybackConfigPersist(config);
+
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
@@ -73,9 +49,9 @@ export function usePlaybackInput({
           if (!isReady) return;
           const t = getCurrentTime();
           if (t < firstSegmentStart - introSkipLeadSec) {
-            onSkipIntro();
+            handleSkipIntro();
           } else if (t > lastSegmentEnd + 1) {
-            onSkipOutro();
+            handleSkipOutro();
           }
         }
       },
@@ -87,8 +63,8 @@ export function usePlaybackInput({
         firstSegmentStart,
         lastSegmentEnd,
         introSkipLeadSec,
-        onSkipIntro,
-        onSkipOutro,
+        handleSkipIntro,
+        handleSkipOutro,
       ],
     ),
   );
@@ -111,22 +87,12 @@ export function usePlaybackInput({
       switch (e.key) {
         case "t":
         case "T":
-          setThemeIndex((prev) => {
-            const next = nextThemeIndex(prev, song.is_video);
-            if (next !== SOURCE_VIDEO_INDEX) {
-              persistConfig({ last_theme: next });
-            }
-            return next;
-          });
+          cycleTheme();
           break;
 
         case "f":
         case "F":
-          setFlavorIndex((prev) => {
-            const next = nextFlavorIndex(prev);
-            persistConfig({ last_video_flavor: next });
-            return next;
-          });
+          cycleFlavor();
           break;
 
         case "g":
@@ -154,17 +120,17 @@ export function usePlaybackInput({
 
         case "m":
         case "M":
-          onToggleMic();
+          handleToggleMic();
           break;
 
         case "n":
         case "N":
-          onCycleMic();
+          handleCycleMic();
           break;
 
         case "r":
         case "R":
-          onToggleMicMirror();
+          handleToggleMicMirror();
           break;
       }
     };
@@ -173,16 +139,15 @@ export function usePlaybackInput({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     paused,
-    song.is_video,
     guideVolume,
     setGuideVolume,
-    setThemeIndex,
-    setFlavorIndex,
+    cycleTheme,
+    cycleFlavor,
     persistConfig,
     handlePause,
     handleContinue,
-    onToggleMic,
-    onCycleMic,
-    onToggleMicMirror,
+    handleToggleMic,
+    handleCycleMic,
+    handleToggleMicMirror,
   ]);
 }
