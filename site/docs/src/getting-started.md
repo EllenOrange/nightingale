@@ -66,6 +66,22 @@ You can also batch analysis with **Analyze All** from the song list toolbar.
 
 ![Song library](images/library.png)
 
+## Updating
+
+Nightingale checks for new releases once at launch. When one is available:
+
+1. The sidebar avatar grows a small green dot.
+2. The **Update** entry in the sidebar dropdown menu also shows the badge and opens a dialog with the version, release date, and notes.
+3. Click **Install & Restart**. The signed bundle downloads (with a progress bar), installs, and the app relaunches.
+
+Platform notes:
+
+- **Linux**: only the **AppImage** can update itself. If you installed from `.deb` or `.rpm`, download the new release from the [Releases](https://github.com/rzru/nightingale/releases) page manually.
+- **macOS**: the bundle is replaced in place and the app relaunches.
+- **Windows**: the installer runs in `passive` mode — a small progress window appears, the app exits, and it comes back automatically once the install finishes.
+
+If the dialog reports an error, see [Troubleshooting → Updates](./troubleshooting.md#updates).
+
 ## Force Re-setup
 
 If something goes wrong with setup or dependencies, open the sidebar actions menu and select **Re-run Setup**.

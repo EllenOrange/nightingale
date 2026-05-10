@@ -42,9 +42,17 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 📦 **Self-Contained** — ffmpeg, uv, Python, PyTorch, and ML packages are downloaded automatically during setup. Video backgrounds are pre-downloaded so the first session is ready to go
 
+⬆️ **In-App Updates** — auto-checks for new releases at launch, badges the sidebar avatar when one is available, and downloads and installs signed updates with one click on Linux, macOS, and Windows
+
 ## Quick start
 
 Download the latest release for your platform from the [Releases](../../releases) page and run it. On first launch, Nightingale shows setup steps, lets you pick a data folder, then installs the Python environment and ML models automatically.
+
+## Updates
+
+Nightingale checks for new releases once at launch. When one is available, the sidebar avatar grows a small green dot and the **Update** entry in the dropdown menu opens a dialog with the release notes. Click **Install & Restart** and the app downloads the signed bundle, installs it, and relaunches.
+
+The in-app updater works for the Linux **AppImage**, the macOS bundle, and the Windows installer (NSIS / MSI, run in `passive` mode so the installer flashes a small progress window and the app comes back automatically). Linux `.deb` / `.rpm` users have to download the new release manually — the underlying plugin doesn't support those formats.
 
 ### macOS
 
