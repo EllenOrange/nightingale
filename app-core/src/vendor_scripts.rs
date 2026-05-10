@@ -13,6 +13,7 @@ const LANGUAGE_PY: &str = include_str!("../analyzer/language.py");
 const WHISPER_COMPAT_PY: &str = include_str!("../analyzer/whisper_compat.py");
 const PARAKEET_PY: &str = include_str!("../analyzer/parakeet.py");
 const GPU_PY: &str = include_str!("../analyzer/gpu.py");
+const CJK_PY: &str = include_str!("../analyzer/cjk.py");
 
 const FILES: &[(&str, &str)] = &[
     ("analyze.py", ANALYZE_PY),
@@ -28,6 +29,7 @@ const FILES: &[(&str, &str)] = &[
     ("whisper_compat.py", WHISPER_COMPAT_PY),
     ("parakeet.py", PARAKEET_PY),
     ("gpu.py", GPU_PY),
+    ("cjk.py", CJK_PY),
 ];
 
 pub fn write_scripts(dir: &Path) -> std::io::Result<()> {

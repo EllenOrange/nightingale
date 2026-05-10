@@ -2,6 +2,7 @@
 
 import re
 
+import cjk
 from audio import detect_vocal_region, highpass_filter, normalize_rms
 from gpu import gpu_model, hard_free_gpu
 from hallucination import is_hallucination, remove_hallucinated_words
@@ -146,7 +147,7 @@ def _whisper_asr_options(beam_size: int) -> tuple[dict, dict]:
     asr_options = {
         "beam_size": beam_size,
         "initial_prompt": (
-            "Everything before GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT. "
+            "Everything before and including GO is INSTRUCTIONS. DON'T INCLUDE IN TRANSCRIPT. "
             "Song Lyrics transcript. Split lines with punctuation. "
             "No annotations or descriptions. "
             "GO"
@@ -307,6 +308,24 @@ def _filter_hallucinations(raw_segments: list[dict], duration_secs: float) -> li
 def _align_and_build(raw_segments: list[dict], audio, language: str, device: str, pre_align_cleanup=None) -> dict:
     """Run WhisperX forced alignment, interpolate unaligned words, and build final segments."""
     align_device = "cpu" if device == "mps" else device
+    is_cjk = cjk.is_cjk(language)
+
+    if is_cjk:
+        cleaned: list[dict] = []
+        for seg in raw_segments:
+            orig = seg.get("text", "")
+            stripped = cjk.clean_for_alignment(orig)
+            if not stripped:
+                continue
+            seg = dict(seg)
+            seg["_orig_text"] = orig
+            seg["text"] = stripped
+            cleaned.append(seg)
+        raw_segments = cleaned
+        print(
+            f"[nightingale:LOG] CJK pre-clean: {len(raw_segments)} segments after dropping punct-only",
+            flush=True,
+        )
 
     total_input_words = sum(len(s.get("text", "").split()) for s in raw_segments)
     print(f"[nightingale:LOG] Pre-alignment: {len(raw_segments)} segments, {total_input_words} words total", flush=True)
@@ -318,11 +337,16 @@ def _align_and_build(raw_segments: list[dict], audio, language: str, device: str
     total_output_words = sum(len(s.get("words", [])) for s in output_segments)
     print(f"[nightingale:LOG] Post-alignment: {len(output_segments)} segments, {total_output_words} words total", flush=True)
 
-    _recover_dropped_words(raw_segments, output_segments)
+    if is_cjk:
+        all_words = _retokenize_cjk(raw_segments, output_segments, language)
+    else:
+        _recover_dropped_words(raw_segments, output_segments)
+        all_words = _interpolate_words(output_segments)
+        all_words = remove_hallucinated_words(all_words)
+        if cjk.is_korean(language):
+            cjk.attach_reading(all_words, language)
 
-    all_words = _interpolate_words(output_segments)
-    all_words = remove_hallucinated_words(all_words)
-    segments = _build_segments(all_words)
+    segments = _build_segments(all_words, is_cjk=is_cjk)
 
     progress(90, f"Transcription complete: {len(segments)} segments, lang={language}")
     if segments:
@@ -332,6 +356,82 @@ def _align_and_build(raw_segments: list[dict], audio, language: str, device: str
         print(f"[nightingale:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
 
     return {"language": language, "segments": segments}
+
+
+def _retokenize_cjk(raw_segments: list[dict], aligned_segments: list[dict], language: str) -> list[dict]:
+    """Replace per-character CJK alignment output with fugashi/jieba tokens.
+
+    Each raw segment's original (punctuated) text is re-tokenized into words,
+    and the aligned char stream for that segment is mapped onto the tokens.
+    Punctuation is folded into adjacent tokens via ``cjk.merge_punct`` and a
+    romaji/pinyin reading is attached to each displayable token.
+    """
+    if len(raw_segments) != len(aligned_segments):
+        print(
+            f"[nightingale:LOG] CJK retokenize: segment count mismatch "
+            f"(raw={len(raw_segments)}, aligned={len(aligned_segments)})",
+            flush=True,
+        )
+
+    pairs = list(zip(raw_segments, aligned_segments))
+    all_words: list[dict] = []
+    total_chars = 0
+    total_tokens = 0
+
+    for raw_seg, aligned_seg in pairs:
+        original = raw_seg.get("_orig_text", raw_seg.get("text", ""))
+        if not original:
+            continue
+
+        char_entries: list[dict] = []
+        for w in aligned_seg.get("words", []):
+            word_text = w.get("word", "").strip()
+            if not word_text:
+                continue
+            char_entries.append({
+                "word": word_text,
+                "start": w.get("start"),
+                "end": w.get("end"),
+                "score": w.get("score"),
+            })
+
+        tokens = cjk.tokenize(original, language)
+        if not tokens:
+            continue
+
+        seg_start = aligned_seg.get("start", raw_seg.get("start", 0.0))
+        seg_end = aligned_seg.get("end", raw_seg.get("end", seg_start + 0.1))
+
+        entries = cjk.attribute_chars_to_tokens(
+            tokens, char_entries,
+            fallback_start=seg_start,
+            fallback_end=seg_end,
+        )
+        entries = cjk.merge_punct(entries)
+
+        valid = [e for e in entries if e.get("start") is not None and e.get("end") is not None]
+        if not valid:
+            continue
+
+        for e in valid:
+            e["start"] = round(e["start"], 3)
+            e["end"] = round(e["end"], 3)
+            if e["end"] < e["start"]:
+                e["end"] = e["start"]
+            if "score" in e and e["score"] is not None:
+                e["score"] = round(e["score"], 3)
+
+        cjk.attach_reading(valid, language)
+
+        total_chars += len(char_entries)
+        total_tokens += len(valid)
+        all_words.extend(valid)
+
+    print(
+        f"[nightingale:LOG] CJK retokenize: {total_chars} aligned chars -> {total_tokens} tokens",
+        flush=True,
+    )
+    return all_words
 
 
 def _normalize(word: str) -> str:
@@ -506,19 +606,25 @@ def _fill_range(entries, start_idx, end_idx, gap_start, gap_end):
             entries[start_idx + j]["end"] = gap_start + 0.1
 
 
-def _build_segments(all_words: list[dict]) -> list[dict]:
+_CJK_SENTENCE_ENDERS = ("。", "！", "？", "、", "．", "，")
+
+
+def _build_segments(all_words: list[dict], is_cjk: bool = False) -> list[dict]:
     """Group words into display segments based on time gaps and punctuation."""
     MAX_WORD_GAP = 3.0
     MIN_SENTENCE_GAP = 0.05
     MIN_WORDS_PER_LINE = 3
+    joiner = "" if is_cjk else " "
 
     def _flush(words):
         return {
-            "text": " ".join(wd["word"] for wd in words),
+            "text": joiner.join(wd["word"] for wd in words),
             "start": words[0]["start"],
             "end": words[-1]["end"],
             "words": words,
         }
+
+    sentence_enders = _CJK_SENTENCE_ENDERS if is_cjk else (".", "!", "?", ",")
 
     segments = []
     current_words = []
@@ -527,8 +633,8 @@ def _build_segments(all_words: list[dict]) -> list[dict]:
             gap = w["start"] - current_words[-1]["end"]
             last_text = current_words[-1]["word"]
             next_text = w["word"]
-            punctuation_end = last_text.rstrip().endswith((".", "!", "?", ","))
-            capital_start = next_text[:1].isupper()
+            punctuation_end = last_text.rstrip().endswith(sentence_enders)
+            capital_start = True if is_cjk else next_text[:1].isupper()
             long_enough = len(current_words) >= MIN_WORDS_PER_LINE
 
             if gap > MAX_WORD_GAP:

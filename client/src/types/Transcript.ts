@@ -4,6 +4,7 @@ export type Word = {
   end: number;
   score?: number;
   estimated?: boolean;
+  reading?: string;
 };
 
 export type Segment = {

@@ -3,6 +3,8 @@
 import os
 import subprocess
 
+import numpy as np
+import soundfile as sf
 import torch
 
 from gpu import gpu_model
@@ -12,7 +14,14 @@ KARAOKE_MODEL = "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"
 
 
 def _ensure_wav(audio_path: str, work_dir: str) -> str:
-    """Convert input audio to WAV if needed so torchaudio can load it."""
+    """Convert input audio to WAV so plain `soundfile` can decode it.
+
+    We deliberately avoid `torchaudio.load`/`torchaudio.save` here: in
+    torchaudio >= 2.9 those go through `torchcodec`, which `dlopen`s the
+    FFmpeg shared libraries (`libavcodec.so.X`, ...). Our vendor dir only
+    ships a static `ffmpeg` binary, and target machines aren't guaranteed to
+    have the FFmpeg shared libs installed, so torchcodec fails to load.
+    """
     if audio_path.lower().endswith(".wav"):
         return audio_path
     wav_path = os.path.join(work_dir, "input.wav")
@@ -24,15 +33,29 @@ def _ensure_wav(audio_path: str, work_dir: str) -> str:
     return wav_path
 
 
+def _load_wav_as_tensor(path: str) -> tuple[torch.Tensor, int]:
+    """Load a WAV file as a (channels, frames) float32 tensor via soundfile."""
+    data, sr = sf.read(path, dtype="float32", always_2d=True)
+    tensor = torch.from_numpy(np.ascontiguousarray(data.T))
+    return tensor, sr
+
+
+def _save_wav_pcm16(wav: torch.Tensor, path: str, samplerate: int) -> None:
+    """Save a (channels, frames) tensor as 16-bit PCM WAV with rescale clipping."""
+    wav = wav.detach().cpu().to(torch.float32)
+    peak = float(wav.abs().max().item())
+    if peak > 1.0:
+        wav = wav / (1.01 * peak)
+    sf.write(path, wav.numpy().T, samplerate, subtype="PCM_16")
+
+
 def separate_stems(audio_path: str, work_dir: str, device: str) -> tuple[str, str]:
     """Run Demucs to separate vocals and instrumental stems.
 
     Returns (vocals_path, instrumental_path).
     """
     from demucs.apply import apply_model
-    from demucs.audio import save_audio
     from demucs.pretrained import get_model
-    import torchaudio
 
     vocals_path = os.path.join(work_dir, "vocals.wav")
     instrumental_path = os.path.join(work_dir, "instrumental.wav")
@@ -46,7 +69,7 @@ def separate_stems(audio_path: str, work_dir: str, device: str) -> tuple[str, st
 
         progress(10, "Loading audio file...")
         load_path = _ensure_wav(audio_path, work_dir)
-        wav, sr = torchaudio.load(load_path)
+        wav, sr = _load_wav_as_tensor(load_path)
         wav = wav.to(actual_device)
 
         ref = wav.mean(0)
@@ -70,8 +93,8 @@ def separate_stems(audio_path: str, work_dir: str, device: str) -> tuple[str, st
 
         del wav, sources, wav_centered, wav_scaled, ref, vocals, instrumental
 
-        save_audio(vocals_cpu, vocals_path, sr)
-        save_audio(instrumental_cpu, instrumental_path, sr)
+        _save_wav_pcm16(vocals_cpu, vocals_path, sr)
+        _save_wav_pcm16(instrumental_cpu, instrumental_path, sr)
         del vocals_cpu, instrumental_cpu
 
     progress(50, "Stem separation complete")

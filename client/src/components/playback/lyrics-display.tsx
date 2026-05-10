@@ -123,6 +123,38 @@ function updateCountdown(el: HTMLSpanElement | null, showCountdown: boolean, tim
   }
 }
 
+// --- Word rendering ---
+
+interface WordTokenProps {
+  word: Word;
+  hasReading: boolean;
+  isLast: boolean;
+  readingClass: string;
+  refSetter?: (el: HTMLSpanElement | null) => void;
+  style: WordStyle;
+}
+
+function WordToken({ word, hasReading, isLast, readingClass, refSetter, style }: WordTokenProps) {
+  return (
+    <span
+      ref={refSetter}
+      className={hasReading ? "inline-flex flex-col items-center leading-tight" : undefined}
+      style={{ color: style.rgb, opacity: style.opacity }}
+    >
+      {hasReading && (
+        <span className={`block leading-tight font-medium opacity-80 ${readingClass}`}>
+          {word.reading ?? "\u00A0"}
+        </span>
+      )}
+      <span>{word.word}</span>
+      {!hasReading && !isLast ? " " : ""}
+    </span>
+  );
+}
+
+const lineClass = (hasReading: boolean, base: string, gap: string) =>
+  hasReading ? `flex flex-wrap items-end justify-center ${gap} ${base}` : `text-center ${base}`;
+
 // --- Component ---
 
 interface LyricsDisplayProps {
@@ -202,6 +234,9 @@ function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
 
   wordRefs.current = [];
 
+  const segHasReading = seg.words.some((w) => w.reading);
+  const nextHasReading = nextSeg?.words.some((w) => w.reading) ?? false;
+
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-[60px] z-10 flex flex-col items-center gap-2 px-10">
       <div
@@ -215,21 +250,25 @@ function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
           style={{ display: "none" }}
         />
         {seg.words.length > 0 && (
-          <p className="text-center text-[2.5rem] leading-tight font-bold">
+          <p
+            className={lineClass(
+              segHasReading,
+              "text-[2.5rem] leading-tight font-bold",
+              "gap-x-3 gap-y-1",
+            )}
+          >
             {seg.words.map((word, wi) => (
-              <span
+              <WordToken
                 key={`${segIdx}-${wi}`}
-                ref={(el) => {
+                word={word}
+                hasReading={segHasReading}
+                isLast={wi === seg.words.length - 1}
+                readingClass="text-[1rem]"
+                refSetter={(el) => {
                   wordRefs.current[wi] = el;
                 }}
-                style={{
-                  color: STYLES.unsung.rgb,
-                  opacity: STYLES.unsung.opacity,
-                }}
-              >
-                {word.word}
-                {wi < seg.words.length - 1 ? " " : ""}
-              </span>
+                style={STYLES.unsung}
+              />
             ))}
           </p>
         )}
@@ -241,16 +280,23 @@ function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
           className="max-w-full rounded-md bg-black/25 px-4 py-1.5"
           style={{ display: "none" }}
         >
-          <p className="text-center text-[1.5rem] leading-tight">
-            {nextSeg.words.map((word, wi) => {
-              const ns = nextLineStyle(word);
-              return (
-                <span key={wi} style={{ color: ns.rgb, opacity: ns.opacity }}>
-                  {word.word}
-                  {wi < nextSeg.words.length - 1 ? " " : ""}
-                </span>
-              );
-            })}
+          <p
+            className={lineClass(
+              nextHasReading,
+              "text-[1.5rem] leading-tight",
+              "gap-x-2 gap-y-0.5",
+            )}
+          >
+            {nextSeg.words.map((word, wi) => (
+              <WordToken
+                key={wi}
+                word={word}
+                hasReading={nextHasReading}
+                isLast={wi === nextSeg.words.length - 1}
+                readingClass="text-[0.7rem]"
+                style={nextLineStyle(word)}
+              />
+            ))}
           </p>
         </div>
       )}

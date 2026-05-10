@@ -3,6 +3,7 @@
 import json
 import re
 
+import cjk
 from audio import detect_vocal_region
 from gpu import gpu_model
 from language import detect_language_multiwindow
@@ -69,12 +70,30 @@ def align_lyrics(
         progress(59, f"Detected language: {language}")
 
     progress(80, f"Final alignment from {vocal_start:.1f}s...")
-    full_text = " ".join(clean_lines)
+
+    if cjk.is_cjk(language):
+        cleaned_lines = [cjk.clean_for_alignment(line) for line in clean_lines]
+        full_text = "".join(cleaned_lines)
+        print(
+            f"[nightingale:LOG] CJK alignment input: {len(full_text)} chars across "
+            f"{sum(1 for c in cleaned_lines if c)} non-empty lines (lang={language})",
+            flush=True,
+        )
+    else:
+        full_text = " ".join(clean_lines)
+        cleaned_lines = None
+
     raw_segments = [{"text": full_text, "start": vocal_start, "end": vocal_end}]
 
     align_result = align_with_fallback(raw_segments, audio, language, a_device, pre_align_cleanup)
 
-    segments = _map_words_to_lines(align_result, clean_lines)
+    if cjk.is_cjk(language):
+        segments = _map_chars_to_lines_cjk(align_result, clean_lines, cleaned_lines, language)
+    else:
+        segments = _map_words_to_lines(align_result, clean_lines)
+        if cjk.is_korean(language):
+            for seg in segments:
+                cjk.attach_reading(seg["words"], language)
 
     progress(90, f"Alignment complete: {len(segments)} segments, lang={language}")
     if segments:
@@ -109,6 +128,116 @@ def _collect_aligned(align_result: dict) -> list[dict]:
                 "start": w.get("start"),
                 "end": w.get("end"),
                 "score": w.get("score"),
+            })
+    return out
+
+
+def _map_chars_to_lines_cjk(
+    align_result: dict,
+    original_lines: list[str],
+    cleaned_lines: list[str],
+    language: str,
+) -> list[dict]:
+    """Map per-character whisperx timestamps onto fugashi/jieba tokens.
+
+    The aligner saw the concatenation of ``cleaned_lines`` and emitted one
+    timed entry per CJK character in input order. We slice that stream by
+    each line's cleaned-char count, retokenize the *original* (punctuated)
+    line for display, and reattribute the char timings onto tokens.
+    """
+    aligned = _collect_aligned(align_result)
+    timed_count = sum(1 for a in aligned if a["start"] is not None and a["end"] is not None)
+    print(
+        f"[nightingale:LOG] CJK alignment: {len(aligned)} chars emitted "
+        f"({timed_count} timed, {len(aligned) - timed_count} NaN)",
+        flush=True,
+    )
+
+    segments: list[dict] = []
+    cursor = 0
+    skipped_empty = 0
+
+    for original, cleaned in zip(original_lines, cleaned_lines):
+        n = len(cleaned)
+        if n == 0:
+            skipped_empty += 1
+            continue
+
+        slice_chars = aligned[cursor:cursor + n]
+        cursor += len(slice_chars)
+
+        tokens = cjk.tokenize(original, language)
+        if not tokens:
+            continue
+
+        fb_start = next((c["start"] for c in slice_chars if c["start"] is not None), None)
+        fb_end = next((c["end"] for c in reversed(slice_chars) if c["end"] is not None), None)
+
+        entries = cjk.attribute_chars_to_tokens(
+            tokens, slice_chars,
+            fallback_start=fb_start,
+            fallback_end=fb_end,
+        )
+        entries = cjk.merge_punct(entries)
+
+        valid = [e for e in entries if e.get("start") is not None and e.get("end") is not None]
+        if not valid:
+            continue
+
+        for e in valid:
+            e["start"] = round(e["start"], 3)
+            e["end"] = round(e["end"], 3)
+            if e["end"] < e["start"]:
+                e["end"] = e["start"]
+            if "score" in e and e["score"] is not None:
+                e["score"] = round(e["score"], 3)
+
+        cjk.attach_reading(valid, language)
+
+        seg_start = valid[0]["start"]
+        seg_end = valid[-1]["end"]
+        if seg_end < seg_start:
+            seg_end = seg_start
+
+        segments.append({
+            "text": original,
+            "start": seg_start,
+            "end": seg_end,
+            "words": valid,
+        })
+
+    for i in range(1, len(segments)):
+        prev = segments[i - 1]
+        cur = segments[i]
+        if cur["start"] < prev["end"]:
+            cur["start"] = prev["end"]
+            if cur["end"] < cur["start"]:
+                cur["end"] = cur["start"]
+
+    total_words = sum(len(s["words"]) for s in segments)
+    print(
+        f"[nightingale:LOG] CJK lyrics alignment: {len(segments)} lines, "
+        f"{total_words} tokens ({skipped_empty} empty lines skipped)",
+        flush=True,
+    )
+
+    return _split_long_segments(segments, joiner="")
+
+
+def _split_long_segments(segments: list[dict], joiner: str = " ") -> list[dict]:
+    MAX_WORDS_PER_LINE = 10
+    out: list[dict] = []
+    for seg in segments:
+        words = seg["words"]
+        if len(words) <= MAX_WORDS_PER_LINE:
+            out.append(seg)
+            continue
+        for chunk in [words[i:i+MAX_WORDS_PER_LINE] for i in range(0, len(words), MAX_WORDS_PER_LINE)]:
+            out.append({
+                "text": joiner.join(w["word"] for w in chunk),
+                "start": chunk[0]["start"],
+                "end": chunk[-1]["end"],
+                "words": chunk,
             })
     return out
 
@@ -199,22 +328,7 @@ def _map_words_to_lines(align_result: dict, clean_lines: list[str]) -> list[dict
         flush=True,
     )
 
-    MAX_WORDS_PER_LINE = 10
-    split_segments = []
-    for seg in segments:
-        words = seg["words"]
-        if len(words) <= MAX_WORDS_PER_LINE:
-            split_segments.append(seg)
-            continue
-        for chunk in [words[i:i+MAX_WORDS_PER_LINE] for i in range(0, len(words), MAX_WORDS_PER_LINE)]:
-            split_segments.append({
-                "text": " ".join(w["word"] for w in chunk),
-                "start": chunk[0]["start"],
-                "end": chunk[-1]["end"],
-                "words": chunk,
-            })
-
-    return split_segments
+    return _split_long_segments(segments, joiner=" ")
 
 
 def _interpolate_missing(word_entries: list[dict]):

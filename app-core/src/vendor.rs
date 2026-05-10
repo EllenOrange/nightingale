@@ -484,6 +484,11 @@ pub fn step_install_packages() -> Result<(), String> {
         audio_sep_pkg,
         "onnx-asr>=0.5.0",
         "onnxruntime>=1.17",
+        "fugashi[unidic-lite]>=1.3",
+        "pykakasi>=2.3",
+        "jieba>=0.42",
+        "pypinyin>=0.50",
+        "hangul-romanize>=0.1.0",
     ];
 
     if gpu.legacy_torch {
