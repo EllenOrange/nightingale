@@ -314,7 +314,7 @@ def _align_and_build(raw_segments: list[dict], audio, language: str, device: str
         cleaned: list[dict] = []
         for seg in raw_segments:
             orig = seg.get("text", "")
-            stripped = cjk.clean_for_alignment(orig)
+            stripped = cjk.to_alignment_text(orig, language)
             if not stripped:
                 continue
             seg = dict(seg)
@@ -323,7 +323,8 @@ def _align_and_build(raw_segments: list[dict], audio, language: str, device: str
             cleaned.append(seg)
         raw_segments = cleaned
         print(
-            f"[nightingale:LOG] CJK pre-clean: {len(raw_segments)} segments after dropping punct-only",
+            f"[nightingale:LOG] CJK pre-clean: {len(raw_segments)} segments after dropping punct-only "
+            f"(lang={language}, model={cjk.align_model_for(language) or 'default'})",
             flush=True,
         )
 
@@ -331,7 +332,10 @@ def _align_and_build(raw_segments: list[dict], audio, language: str, device: str
     print(f"[nightingale:LOG] Pre-alignment: {len(raw_segments)} segments, {total_input_words} words total", flush=True)
 
     progress(80, f"Aligning word timestamps (lang={language})...")
-    result = align_with_fallback(raw_segments, audio, language, align_device, pre_align_cleanup)
+    result = align_with_fallback(
+        raw_segments, audio, language, align_device, pre_align_cleanup,
+        model_name=cjk.align_model_for(language),
+    )
 
     output_segments = result.get("segments", [])
     total_output_words = sum(len(s.get("words", [])) for s in output_segments)
@@ -395,17 +399,20 @@ def _retokenize_cjk(raw_segments: list[dict], aligned_segments: list[dict], lang
                 "score": w.get("score"),
             })
 
-        tokens = cjk.tokenize(original, language)
-        if not tokens:
+        token_pairs = cjk.tokenize_for_alignment(original, language)
+        if not token_pairs:
             continue
+        surfaces = [s for s, _ in token_pairs]
+        lengths = [len(r) for _, r in token_pairs]
 
         seg_start = aligned_seg.get("start", raw_seg.get("start", 0.0))
         seg_end = aligned_seg.get("end", raw_seg.get("end", seg_start + 0.1))
 
         entries = cjk.attribute_chars_to_tokens(
-            tokens, char_entries,
+            surfaces, char_entries,
             fallback_start=seg_start,
             fallback_end=seg_end,
+            cleaned_lengths=lengths,
         )
         entries = cjk.merge_punct(entries)
 

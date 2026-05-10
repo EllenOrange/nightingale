@@ -62,24 +62,36 @@ def free_gpu():
     hard_free_gpu()
 
 
-def _run_align(raw_segments, audio, language, device):
+def _run_align(raw_segments, audio, language, device, model_name=None):
     import whisperx
-    with gpu_model(f"wav2vec2:{device}") as held:
-        print(
-            f"[nightingale:LOG] Loading align model for language='{language}' on device='{device}'",
-            flush=True,
-        )
+    key_suffix = model_name or language
+    with gpu_model(f"wav2vec2:{key_suffix}:{device}") as held:
+        if model_name:
+            print(
+                f"[nightingale:LOG] Loading align model '{model_name}' for "
+                f"language='{language}' on device='{device}'",
+                flush=True,
+            )
+        else:
+            print(
+                f"[nightingale:LOG] Loading align model for language='{language}' on device='{device}'",
+                flush=True,
+            )
         align_model, metadata = whisperx.load_align_model(
-            language_code=language, device=device,
+            language_code=language, device=device, model_name=model_name,
         )
         held.append(align_model)
         return whisperx.align(raw_segments, align_model, metadata, audio, device)
 
 
-def align_with_fallback(raw_segments, audio, language, device, pre_align_cleanup=None):
-    """Run whisperx.align with OOM fallback: retry after cleanup, then CPU."""
+def align_with_fallback(raw_segments, audio, language, device, pre_align_cleanup=None, model_name=None):
+    """Run whisperx.align with OOM fallback: retry after cleanup, then CPU.
+
+    ``model_name`` overrides the default WhisperX align model for the given
+    language (e.g. swap in slplab's hiragana CTC for ``ja``).
+    """
     try:
-        return _run_align(raw_segments, audio, language, device)
+        return _run_align(raw_segments, audio, language, device, model_name=model_name)
     except Exception as e:
         if not is_oom(e):
             raise
@@ -95,11 +107,11 @@ def align_with_fallback(raw_segments, audio, language, device, pre_align_cleanup
         except Exception:
             pass
         try:
-            return _run_align(raw_segments, audio, language, device)
+            return _run_align(raw_segments, audio, language, device, model_name=model_name)
         except Exception as e2:
             if not is_oom(e2):
                 raise
             log_vram("oom:align_attempt2")
 
     print("[nightingale:LOG] Alignment OOM, falling back to CPU", flush=True)
-    return _run_align(raw_segments, audio, language, "cpu")
+    return _run_align(raw_segments, audio, language, "cpu", model_name=model_name)

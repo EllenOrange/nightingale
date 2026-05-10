@@ -30,6 +30,12 @@ _NOISE_CHARS = (
 )
 _NOISE_CHARS_SET = set(_NOISE_CHARS) | {" ", "\t", "\n", "\r", "\u3000"}
 
+# Hiragana-output wav2vec2 CTC model (vocab is ~80 hiragana chars + specials).
+# We feed it fugashi-derived hiragana readings, which sidesteps the dense
+# kanji vocabulary of the default jonatasgrosman checkpoint and matches the
+# acoustic prior of natural Japanese speech much better.
+JA_ALIGN_MODEL = "vumichien/wav2vec2-large-xlsr-japanese-hiragana"
+
 _fugashi_tagger = None
 _pykakasi_instance = None
 _jieba_inited = False
@@ -112,6 +118,64 @@ def tokenize_japanese(text: str) -> list[str]:
     return out
 
 
+def _katakana_to_hiragana(text: str) -> str:
+    """Lossless katakana→hiragana conversion. Long-mark ー and non-kana chars
+    pass through unchanged."""
+    out_chars: list[str] = []
+    for ch in text:
+        c = ord(ch)
+        if 0x30A1 <= c <= 0x30F6:
+            out_chars.append(chr(c - 0x60))
+        else:
+            out_chars.append(ch)
+    return "".join(out_chars)
+
+
+def _morpheme_kana(t) -> str:
+    """Best-effort UniDic kana reading for a fugashi morpheme (or empty)."""
+    feature = getattr(t, "feature", None)
+    if feature is None:
+        return ""
+    for attr in ("kana", "pron", "kanaBase", "pronBase"):
+        v = getattr(feature, attr, None)
+        if v and v != "*":
+            return v
+    return ""
+
+
+def tokenize_japanese_with_reading(text: str) -> list[tuple[str, str]]:
+    """Return ``[(surface, hiragana_reading), ...]`` per fugashi morpheme.
+
+    The hiragana reading is the chars to feed the slplab hiragana CTC model;
+    concatenating it across all tokens yields the alignment-text for the
+    whole input. Tokens with no kana representation (ASCII, numerals,
+    symbols) get an empty reading and are subsequently treated as punct by
+    :func:`attribute_chars_to_tokens` / :func:`merge_punct`.
+    """
+    if not text:
+        return []
+    tagger = _get_fugashi()
+    out: list[tuple[str, str]] = []
+    for t in tagger(text):
+        surface = getattr(t, "surface", None) or str(t)
+        if not surface:
+            continue
+        kana = _morpheme_kana(t)
+        if not kana:
+            out.append((surface, ""))
+            continue
+        hira = _katakana_to_hiragana(kana)
+        # Keep hiragana + long-mark only; slplab vocab is hiragana-based and
+        # anything else (kanji that slipped through, latin, digits) would be
+        # a wildcard that destabilises CTC alignment.
+        hira_only = "".join(
+            ch for ch in hira
+            if 0x3040 <= ord(ch) <= 0x309F or ch == "ー"
+        )
+        out.append((surface, hira_only))
+    return out
+
+
 def tokenize_chinese(text: str) -> list[str]:
     _ensure_jieba()
     import jieba
@@ -135,6 +199,45 @@ def tokenize(text: str, lang: str) -> list[str]:
     if lang == "ko":
         return tokenize_korean(text)
     return [text]
+
+
+def tokenize_for_alignment(text: str, lang: str) -> list[tuple[str, str]]:
+    """Per-token ``(display_surface, alignment_chars)`` pairs.
+
+    Concatenating the second element of every pair yields the full string
+    fed to the wav2vec2 aligner. The first element is what we want to show
+    on screen and what :func:`reading` consumes for romanization.
+
+    For ``ja`` the alignment chars are the hiragana reading of the morpheme
+    (matches the slplab hiragana CTC vocab). For ``zh`` they are the token
+    with ja/zh-vocab punctuation stripped (matches the kanji/hanzi CTC
+    vocab). For other languages we fall back to a single (text, cleaned)
+    pair so callers stay uniform.
+    """
+    if not text:
+        return []
+    if lang == "ja":
+        return tokenize_japanese_with_reading(text)
+    if lang == "zh":
+        return [(t, clean_for_alignment(t)) for t in tokenize_chinese(text)]
+    return [(text, clean_for_alignment(text))]
+
+
+def to_alignment_text(text: str, lang: str) -> str:
+    """Concatenate :func:`tokenize_for_alignment` outputs into a single
+    string suitable for the wav2vec2 aligner. For ``ja`` this is the all-
+    hiragana version of ``text``; for ``zh`` it strips out-of-vocab punct."""
+    if lang == "ja":
+        return "".join(r for _, r in tokenize_japanese_with_reading(text))
+    return clean_for_alignment(text)
+
+
+def align_model_for(lang: str):
+    """Override wav2vec2 align model for languages where the WhisperX
+    default is poorly suited. Returns ``None`` to mean 'use default'."""
+    if lang == "ja":
+        return JA_ALIGN_MODEL
+    return None
 
 
 def reading(text: str, lang: str):
@@ -176,17 +279,21 @@ def attribute_chars_to_tokens(
     chars_with_ts: list[dict],
     fallback_start=None,
     fallback_end=None,
+    cleaned_lengths: list[int] | None = None,
 ) -> list[dict]:
     """Map per-character timestamps onto tokens.
 
     ``chars_with_ts`` is the WhisperX char-level alignment output for the
-    text obtained by ``clean_for_alignment("".join(tokens))``. Each token's
-    timing window is taken from the first/last char it contains; tokens that
-    consist purely of punctuation are emitted with ``_punct: True`` and no
-    timestamps so the caller can fold them into a neighbour via
-    :func:`merge_punct`.
+    text obtained by ``clean_for_alignment("".join(tokens))`` — or, when
+    ``cleaned_lengths`` is supplied, by some caller-provided transformation
+    (e.g. fugashi's hiragana reading per morpheme) whose per-token char
+    counts are passed explicitly. Each token's timing window is taken from
+    the first/last char it contains; tokens with zero alignment-chars are
+    emitted with ``_punct: True`` and no timestamps so the caller can fold
+    them into a neighbour via :func:`merge_punct`.
     """
-    cleaned_lengths = [len(clean_for_alignment(t)) for t in tokens]
+    if cleaned_lengths is None:
+        cleaned_lengths = [len(clean_for_alignment(t)) for t in tokens]
     expected = sum(cleaned_lengths)
     actual = len(chars_with_ts)
 

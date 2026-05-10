@@ -71,24 +71,29 @@ def align_lyrics(
 
     progress(80, f"Final alignment from {vocal_start:.1f}s...")
 
+    line_token_pairs: list[list[tuple[str, str]]] | None = None
     if cjk.is_cjk(language):
-        cleaned_lines = [cjk.clean_for_alignment(line) for line in clean_lines]
+        line_token_pairs = [cjk.tokenize_for_alignment(line, language) for line in clean_lines]
+        cleaned_lines = ["".join(r for _, r in toks) for toks in line_token_pairs]
         full_text = "".join(cleaned_lines)
         print(
             f"[nightingale:LOG] CJK alignment input: {len(full_text)} chars across "
-            f"{sum(1 for c in cleaned_lines if c)} non-empty lines (lang={language})",
+            f"{sum(1 for c in cleaned_lines if c)} non-empty lines (lang={language}, "
+            f"model={cjk.align_model_for(language) or 'default'})",
             flush=True,
         )
     else:
         full_text = " ".join(clean_lines)
-        cleaned_lines = None
 
     raw_segments = [{"text": full_text, "start": vocal_start, "end": vocal_end}]
 
-    align_result = align_with_fallback(raw_segments, audio, language, a_device, pre_align_cleanup)
+    align_result = align_with_fallback(
+        raw_segments, audio, language, a_device, pre_align_cleanup,
+        model_name=cjk.align_model_for(language),
+    )
 
     if cjk.is_cjk(language):
-        segments = _map_chars_to_lines_cjk(align_result, clean_lines, cleaned_lines, language)
+        segments = _map_chars_to_lines_cjk(align_result, clean_lines, line_token_pairs, language)
     else:
         segments = _map_words_to_lines(align_result, clean_lines)
         if cjk.is_korean(language):
@@ -135,15 +140,18 @@ def _collect_aligned(align_result: dict) -> list[dict]:
 def _map_chars_to_lines_cjk(
     align_result: dict,
     original_lines: list[str],
-    cleaned_lines: list[str],
+    line_token_pairs: list[list[tuple[str, str]]],
     language: str,
 ) -> list[dict]:
     """Map per-character whisperx timestamps onto fugashi/jieba tokens.
 
-    The aligner saw the concatenation of ``cleaned_lines`` and emitted one
-    timed entry per CJK character in input order. We slice that stream by
-    each line's cleaned-char count, retokenize the *original* (punctuated)
-    line for display, and reattribute the char timings onto tokens.
+    ``line_token_pairs[i]`` is the per-token (display_surface,
+    alignment_text) decomposition of ``original_lines[i]``. The aligner saw
+    the concatenation of every alignment_text and emitted one timed entry
+    per char in input order; we slice that stream per line by the line's
+    total alignment-char count, then reattribute char timings onto tokens
+    using each token's alignment-text length (which may differ from the
+    surface length, e.g. when surface=kanji and alignment=hiragana).
     """
     aligned = _collect_aligned(align_result)
     timed_count = sum(1 for a in aligned if a["start"] is not None and a["end"] is not None)
@@ -157,8 +165,8 @@ def _map_chars_to_lines_cjk(
     cursor = 0
     skipped_empty = 0
 
-    for original, cleaned in zip(original_lines, cleaned_lines):
-        n = len(cleaned)
+    for original, token_pairs in zip(original_lines, line_token_pairs):
+        n = sum(len(r) for _, r in token_pairs)
         if n == 0:
             skipped_empty += 1
             continue
@@ -166,17 +174,19 @@ def _map_chars_to_lines_cjk(
         slice_chars = aligned[cursor:cursor + n]
         cursor += len(slice_chars)
 
-        tokens = cjk.tokenize(original, language)
-        if not tokens:
+        if not token_pairs:
             continue
+        surfaces = [s for s, _ in token_pairs]
+        lengths = [len(r) for _, r in token_pairs]
 
         fb_start = next((c["start"] for c in slice_chars if c["start"] is not None), None)
         fb_end = next((c["end"] for c in reversed(slice_chars) if c["end"] is not None), None)
 
         entries = cjk.attribute_chars_to_tokens(
-            tokens, slice_chars,
+            surfaces, slice_chars,
             fallback_start=fb_start,
             fallback_end=fb_end,
+            cleaned_lengths=lengths,
         )
         entries = cjk.merge_punct(entries)
 
