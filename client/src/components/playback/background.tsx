@@ -2,7 +2,9 @@ import type { TimeSubscriber } from "@/hooks/use-audio-player";
 import type { MicReactiveRef } from "@/hooks/use-mic-reactive";
 import { loadingFragment, shaders } from "./shaders";
 import { ShaderVisualizer } from "./shader-visualizer";
-import { FLAVORS, PixabayVideo, SourceVideo, type VideoFlavor } from "./video-background";
+import { PixabayVideo } from "./pixabay-video";
+import { SourceVideo } from "./source-video";
+import { FLAVORS, type VideoFlavor } from "@/lib/playback/video-flavor";
 
 export type ThemeMode = "shader" | "pixabay" | "source";
 

@@ -1,6 +1,6 @@
 import type { TimeSubscriber } from "@/hooks/use-audio-player";
 import { forwardRef, memo, useEffect, useRef } from "react";
-import type { VideoFlavor } from "./video-background";
+import type { VideoFlavor } from "@/lib/playback/video-flavor";
 import { isPixabayTheme, themeName } from "./background";
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);

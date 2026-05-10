@@ -18,7 +18,3 @@ export const PITCH_BUFFER_SIZE = 200;
 export const SEMITONE_TOLERANCE = 6;
 
 export const MIC_LATENCY_COMPENSATION_SEC = 0.08;
-
-export const BASE_DISPLAY_WIDTH = 400;
-export const BASE_DISPLAY_HEIGHT = 44;
-export const REFERENCE_HEIGHT = 1080;

@@ -8,7 +8,7 @@ import { LyricsDisplay } from "@/components/playback/lyrics-display";
 import { PauseOverlay } from "@/components/playback/pause-overlay";
 import { PitchGraph } from "@/components/playback/pitch-graph";
 import { PlaybackHud } from "@/components/playback/playback-hud";
-import { FLAVORS, type VideoFlavor } from "@/components/playback/video-background";
+import { FLAVORS, type VideoFlavor } from "@/lib/playback/video-flavor";
 import {
   usePlaybackConfigPersist,
   usePlaybackInput,
