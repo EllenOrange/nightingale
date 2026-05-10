@@ -369,7 +369,18 @@ fn ensure_worker_running(state: &mut AnalyzerState) {
 
 // ─── Public API ──────────────────────────────────────────────────────
 
+fn is_usdx_song(file_hash: &str) -> bool {
+    library_db::load_song_by_hash(file_hash)
+        .ok()
+        .flatten()
+        .map(|s| s.usdx.is_some())
+        .unwrap_or(false)
+}
+
 pub fn enqueue_one(file_hash: &str) {
+    if is_usdx_song(file_hash) {
+        return;
+    }
     let mut state = ANALYZER.lock().unwrap();
     if state.active_hash.as_deref() == Some(file_hash) {
         return;
@@ -433,12 +444,18 @@ pub fn shutdown_server() {
 }
 
 pub fn delete_cache(file_hash: &str) {
+    if is_usdx_song(file_hash) {
+        return;
+    }
     let cache = CacheDir::new();
     cache.delete_song_cache(file_hash);
     update_song_analyzed(file_hash, false, None, None, None, None);
 }
 
 pub fn reanalyze_transcript(file_hash: &str, language: Option<String>) {
+    if is_usdx_song(file_hash) {
+        return;
+    }
     if let Some(lang) = language {
         if !lang.is_empty() {
             let mut config = AppConfig::load();
@@ -450,6 +467,9 @@ pub fn reanalyze_transcript(file_hash: &str, language: Option<String>) {
 }
 
 pub fn reanalyze_full(file_hash: &str) {
+    if is_usdx_song(file_hash) {
+        return;
+    }
     reanalyze(file_hash, true);
 }
 

@@ -39,6 +39,17 @@ function formatSeconds(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
 }
 
+function formatTranscriptSource(source: Song["transcript_source"]): string {
+  switch (source) {
+    case "Lyrics":
+      return "Lyrics";
+    case "Usdx":
+      return "USDX";
+    default:
+      return "Generated";
+  }
+}
+
 type StatusInfo = {
   label: string;
   variant: "default" | "secondary" | "destructive" | "outline";
@@ -105,9 +116,8 @@ export const SongCard = memo(
       queueStatus,
     );
 
-    const displaySource = isReady
-      ? ` (${song.transcript_source === "Lyrics" ? "Lyrics" : "Generated"})`
-      : "";
+    const isUsdx = song.transcript_source === "Usdx";
+    const displaySource = isReady ? ` (${formatTranscriptSource(song.transcript_source)})` : "";
 
     const disabled = shifting.tempo || shifting.key;
 
@@ -179,52 +189,54 @@ export const SongCard = memo(
               {displaySource}
             </Badge>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="xs" disabled={!isReady || disabled}>
-                <MenuIcon /> Actions
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="bottom" align="start" className="min-w-56">
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  onClick={withMenuAction(async () => {
-                    await deleteSongCache(song.file_hash);
-                    toast.info(`Cache deleted for "${song.title}"`);
-                  })}
-                >
-                  <Trash2Icon />
-                  Delete cache
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={withMenuAction(async () => {
-                    reanalyzeTranscript(song.file_hash);
-                    toast.info(`Reanalyzing transcript for "${song.title}"`);
-                  })}
-                >
-                  <FileTextIcon />
-                  Reanalyze transcript
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={withMenuAction(async () => {
-                    reanalyzeFull(song.file_hash);
-                    toast.info(`Reanalyzing full (with stems) for "${song.title}"`);
-                  })}
-                >
-                  <AudioLinesIcon />
-                  Reanalyze full (with stems)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={withMenuAction(async () => {
-                    setMode({ mode: "language", song });
-                  })}
-                >
-                  <LanguagesIcon />
-                  Change language
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {!isUsdx && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="xs" disabled={!isReady || disabled}>
+                  <MenuIcon /> Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="bottom" align="start" className="min-w-56">
+                <DropdownMenuGroup>
+                  <DropdownMenuItem
+                    onClick={withMenuAction(async () => {
+                      await deleteSongCache(song.file_hash);
+                      toast.info(`Cache deleted for "${song.title}"`);
+                    })}
+                  >
+                    <Trash2Icon />
+                    Delete cache
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={withMenuAction(async () => {
+                      reanalyzeTranscript(song.file_hash);
+                      toast.info(`Reanalyzing transcript for "${song.title}"`);
+                    })}
+                  >
+                    <FileTextIcon />
+                    Reanalyze transcript
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={withMenuAction(async () => {
+                      reanalyzeFull(song.file_hash);
+                      toast.info(`Reanalyzing full (with stems) for "${song.title}"`);
+                    })}
+                  >
+                    <AudioLinesIcon />
+                    Reanalyze full (with stems)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={withMenuAction(async () => {
+                      setMode({ mode: "language", song });
+                    })}
+                  >
+                    <LanguagesIcon />
+                    Change language
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </ItemContent>
         <Shifts
           song={song}

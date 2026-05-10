@@ -90,7 +90,7 @@ export const Shifts = ({ song, status, onSuccess, onError, onStart }: Props) => 
     };
   }, [song.file_hash]);
 
-  if (!song.is_analyzed) {
+  if (!song.is_analyzed || song.transcript_source === "Usdx") {
     return null;
   }
 

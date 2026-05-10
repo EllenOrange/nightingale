@@ -30,10 +30,12 @@ export const useSongsMeta = () => {
       if (count !== processed_count) {
         setPrevMatched(false);
         queryClient.invalidateQueries({ queryKey: SONGS });
+        queryClient.invalidateQueries({ queryKey: MENU });
       } else {
         if (prevMatched === false) {
           setPrevMatched(true);
           queryClient.invalidateQueries({ queryKey: SONGS });
+          queryClient.invalidateQueries({ queryKey: MENU });
         }
       }
     },

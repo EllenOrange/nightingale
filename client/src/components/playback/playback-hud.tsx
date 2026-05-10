@@ -45,6 +45,10 @@ function HintText({ children, fontSize = "sm" }: { children: React.ReactNode; fo
 const FOOTER_NOTE_CLASS = `pointer-events-none absolute bottom-2 z-20 text-[0.6rem] text-white/30`;
 
 function Disclaimer({ source }: { source: string }) {
+  if (source === "usdx") {
+    return null;
+  }
+
   const text =
     source === "lyrics"
       ? "Timing is AI-generated and may not be perfectly accurate"

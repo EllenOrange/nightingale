@@ -13,6 +13,7 @@ const HOT_FILTERS: Record<string, LibraryMenuFilters> = {
   all: { ...EMPTY_LIBRARY_FILTER },
   analysed: { ...EMPTY_LIBRARY_FILTER, query: "analysed" },
   videos: { ...EMPTY_LIBRARY_FILTER, query: "videos" },
+  usdx: { ...EMPTY_LIBRARY_FILTER, query: "usdx" },
 };
 
 const NO_METADATA_FILTERS: Record<string, LibraryMenuFilters> = {

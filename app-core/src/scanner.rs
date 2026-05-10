@@ -9,12 +9,20 @@ use crate::{
     library_db,
     library_model::{LoadSongsParams, SongsMeta, SongsStore},
     song::{Song, build_song},
+    usdx,
 };
 
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "ogg", "wav", "m4a", "aac", "wma"];
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "avi", "webm", "mov", "m4v"];
 
 const SCAN_SAVE_BATCH_SIZE: usize = 25;
+
+#[derive(Debug, Clone, Copy)]
+enum MediaKind {
+    Audio,
+    Video,
+    Usdx,
+}
 
 impl SongsStore {
     pub fn load_all() -> Self {
@@ -43,7 +51,7 @@ impl SongsStore {
     }
 }
 
-fn is_media_file(path: &Path) -> Option<bool> {
+fn classify_media_file(path: &Path) -> Option<MediaKind> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -52,25 +60,43 @@ fn is_media_file(path: &Path) -> Option<bool> {
     let ext_str = ext.as_deref()?;
 
     if AUDIO_EXTENSIONS.contains(&ext_str) {
-        Some(false)
+        Some(MediaKind::Audio)
     } else if VIDEO_EXTENSIONS.contains(&ext_str) {
-        Some(true)
+        Some(MediaKind::Video)
+    } else if ext_str == "usdx" {
+        Some(MediaKind::Usdx)
+    } else if ext_str == "txt" && usdx::looks_like_usdx(path) {
+        Some(MediaKind::Usdx)
     } else {
         None
     }
 }
 
-fn collect_media_paths(folder: &Path) -> Vec<(PathBuf, bool)> {
-    WalkDir::new(folder)
+fn collect_media_paths(folder: &Path) -> Vec<(PathBuf, MediaKind)> {
+    let mut paths: Vec<(PathBuf, MediaKind)> = WalkDir::new(folder)
         .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.path().is_file())
         .filter_map(|e| {
-            let is_video = is_media_file(e.path())?;
-            Some((e.path().to_path_buf(), is_video))
+            let kind = classify_media_file(e.path())?;
+            Some((e.path().to_path_buf(), kind))
         })
-        .collect()
+        .collect();
+
+    let claimed: HashSet<PathBuf> = paths
+        .iter()
+        .filter_map(|(p, kind)| matches!(kind, MediaKind::Usdx).then(|| p.clone()))
+        .filter_map(|usdx_path| usdx::read_siblings(&usdx_path))
+        .flat_map(|s| {
+            [Some(s.audio), s.vocals, s.instrumental, s.video]
+                .into_iter()
+                .flatten()
+        })
+        .collect();
+
+    paths.retain(|(p, kind)| matches!(kind, MediaKind::Usdx) || !claimed.contains(p));
+    paths
 }
 
 fn flush_batch(batch: &mut Vec<Song>, generation: u64) {
@@ -110,11 +136,16 @@ pub fn start_scan(folder: &Path) {
 
         let mut batch: Vec<Song> = Vec::new();
 
-        for (i, (path, is_video)) in pending.iter().enumerate() {
+        for (i, (path, kind)) in pending.iter().enumerate() {
             if !library_db::scan_generation_is_current(scan_generation) {
                 return;
             }
-            match build_song(path, &cache, *is_video) {
+            let result = match kind {
+                MediaKind::Audio => build_song(path, &cache, false),
+                MediaKind::Video => build_song(path, &cache, true),
+                MediaKind::Usdx => usdx::build_usdx_song(path, &cache),
+            };
+            match result {
                 Ok(song) => batch.push(song),
                 Err(e) => {
                     warn!("Failed to process {}: {e}", path.display());

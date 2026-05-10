@@ -325,6 +325,7 @@ fn transcript_source_to_db(t: Option<TranscriptSource>) -> Option<String> {
     t.map(|s| match s {
         TranscriptSource::Lyrics => "lyrics".to_string(),
         TranscriptSource::Generated => "generated".to_string(),
+        TranscriptSource::Usdx => "usdx".to_string(),
     })
 }
 
@@ -657,6 +658,7 @@ fn append_structural_filters(
         match q {
             "analysed" => where_parts.push("s.is_analyzed = 1".to_string()),
             "videos" => where_parts.push("s.is_video = 1".to_string()),
+            "usdx" => where_parts.push("s.transcript_source = 'usdx'".to_string()),
             _ => {}
         }
     }
@@ -858,16 +860,33 @@ where
 
 pub fn query_library_menu_items() -> rusqlite::Result<LibraryMenuItems> {
     with_conn(|c| {
-        let (total, analysed_total, video_total, video_analysed): (i64, i64, i64, i64) = c
-            .query_row(
-                "SELECT
-                    (SELECT COUNT(*) FROM songs),
-                    (SELECT COUNT(*) FROM songs WHERE is_analyzed = 1),
-                    (SELECT COUNT(*) FROM songs WHERE is_video = 1),
-                    (SELECT COUNT(*) FROM songs WHERE is_video = 1 AND is_analyzed = 1)",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
-            )?;
+        let (total, analysed_total, video_total, video_analysed, usdx_total, usdx_analysed): (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = c.query_row(
+            "SELECT
+                (SELECT COUNT(*) FROM songs),
+                (SELECT COUNT(*) FROM songs WHERE is_analyzed = 1),
+                (SELECT COUNT(*) FROM songs WHERE is_video = 1),
+                (SELECT COUNT(*) FROM songs WHERE is_video = 1 AND is_analyzed = 1),
+                (SELECT COUNT(*) FROM songs WHERE transcript_source = 'usdx'),
+                (SELECT COUNT(*) FROM songs WHERE transcript_source = 'usdx' AND is_analyzed = 1)",
+            [],
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
+        )?;
 
         let hot = vec![
             LibraryMenuItem {
@@ -887,6 +906,12 @@ pub fn query_library_menu_items() -> rusqlite::Result<LibraryMenuItems> {
                 label: "Videos".into(),
                 analysed_count: video_analysed as u64,
                 count: video_total as u64,
+            },
+            LibraryMenuItem {
+                value: "usdx".into(),
+                label: "USDX".into(),
+                analysed_count: usdx_analysed as u64,
+                count: usdx_total as u64,
             },
         ];
 

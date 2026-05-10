@@ -10,6 +10,7 @@ mod profile;
 mod scanner;
 mod song;
 mod library_db;
+mod usdx;
 mod vendor;
 mod vendor_scripts;
 

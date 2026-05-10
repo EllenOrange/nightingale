@@ -13,13 +13,14 @@ use ts_rs::TS;
 use blake3::Hasher;
 use std::{fs::File, io::Read};
 
-use crate::{cache::CacheDir, error::NightingaleError};
+use crate::{cache::CacheDir, error::NightingaleError, usdx::UsdxBundle};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub enum TranscriptSource {
     Lyrics,
     Generated,
+    Usdx,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -45,6 +46,8 @@ pub struct Song {
     #[serde(default)]
     pub key_offset: i32,
     pub is_video: bool,
+    #[serde(default)]
+    pub usdx: Option<UsdxBundle>,
 }
 
 fn default_tempo() -> f64 {
@@ -72,6 +75,7 @@ impl Song {
         tempo: f64,
         key_offset: i32,
         is_video: bool,
+        usdx: Option<UsdxBundle>,
     ) -> Self {
         let (mut title, mut artist, mut album, duration_secs, cover_bytes) = if is_video {
             read_video_metadata(path)
@@ -118,11 +122,12 @@ impl Song {
             tempo,
             key_offset,
             is_video,
+            usdx,
         }
     }
 }
 
-fn compute_file_hash(path: &Path) -> Result<String, std::io::Error> {
+pub(crate) fn compute_file_hash(path: &Path) -> Result<String, std::io::Error> {
     let mut file = File::open(path)?;
     let mut hasher = Hasher::new();
     let mut buf = [0u8; 8192];
@@ -163,6 +168,7 @@ pub fn build_song(path: &Path, cache: &CacheDir, is_video: bool) -> Result<Song,
         tempo,
         0,
         is_video,
+        None,
     ))
 }
 
@@ -181,10 +187,10 @@ pub fn read_transcript_meta(cache: &CacheDir, hash: &str) -> TranscriptMetaInfo 
     let path = cache.transcript_path(hash);
     if let Ok(data) = std::fs::read_to_string(&path) {
         if let Ok(parsed) = serde_json::from_str::<TranscriptMeta>(&data) {
-            let src = if parsed.source.as_deref() == Some("lyrics") {
-                TranscriptSource::Lyrics
-            } else {
-                TranscriptSource::Generated
+            let src = match parsed.source.as_deref() {
+                Some("lyrics") => TranscriptSource::Lyrics,
+                Some("usdx") => TranscriptSource::Usdx,
+                _ => TranscriptSource::Generated,
             };
             return TranscriptMetaInfo {
                 source: src,

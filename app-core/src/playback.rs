@@ -71,6 +71,15 @@ fn resolve_transcript_path(cache: &CacheDir, file_hash: &str) -> PathBuf {
 pub fn get_audio_paths(file_hash: &str) -> AudioPaths {
     let cache = CacheDir::new();
     if let Some(song) = library_db::load_song_by_hash(file_hash).ok().flatten() {
+        if let Some(bundle) = song.usdx.as_ref() {
+            let voc = bundle.vocals.as_ref().unwrap_or(&bundle.audio);
+            let inst = bundle.instrumental.as_ref().unwrap_or(&bundle.audio);
+            return AudioPaths {
+                instrumental: inst.to_string_lossy().into_owned(),
+                vocals: voc.to_string_lossy().into_owned(),
+            };
+        }
+
         let effective_key = song.override_key.as_ref().or(song.key.as_ref());
         let tempo = normalize_tempo(song.tempo);
 
@@ -177,12 +186,16 @@ pub fn ensure_playable_source_video(file_hash: &str) -> Result<Option<String>, N
         return Err(NightingaleError::Other("Song not found".into()));
     };
 
-    if !song.is_video {
+    let source_path = if song.is_video {
+        song.path.clone()
+    } else if let Some(video) = song.usdx.as_ref().and_then(|b| b.video.clone()) {
+        video
+    } else {
         return Ok(None);
-    }
+    };
 
-    if is_mp4_compatible_source(&song.path) {
-        return Ok(Some(song.path.to_string_lossy().into_owned()));
+    if is_mp4_compatible_source(&source_path) {
+        return Ok(Some(source_path.to_string_lossy().into_owned()));
     }
 
     let cache = CacheDir::new();
@@ -209,9 +222,11 @@ pub fn ensure_playable_source_video(file_hash: &str) -> Result<Option<String>, N
             return Err(NightingaleError::Other("Invalid playable video path".into()));
         };
         std::fs::create_dir_all(parent)?;
-
+,
+                
+            
         let tmp = parent.join(format!("{file_hash}.{}.tmp.mp4", std::process::id()));
-        convert_video_to_mp4(&song.path, &target, &tmp)?;
+        convert_video_to_mp4(&source_path, &target, &tmp)?;
         Ok::<(), NightingaleError>(())
     })();
 
@@ -344,11 +359,7 @@ fn resolve_canonical_stems_for_key(
 fn resolve_source_transcript_path(
     cache: &CacheDir,
     file_hash: &str,
-    tempo: f64,
-) -> PathBuf {
-    if normalize_tempo(tempo) == 1.0 {
-        return cache.transcript_path(file_hash);
-    }
+    tempo: f64, PathBuf { if normalize_tem     return    }
     let variant = cache.variant_transcript_path(file_hash, tempo);
     if variant.is_file() {
         return variant;
@@ -390,6 +401,12 @@ fn scale_transcript_timestamps(transcript: &mut Value, factor: f64) {
 
 pub fn ensure_mp3_stems(file_hash: &str) -> Result<(), NightingaleError> {
     let cache = CacheDir::new();
+
+    if let Some(song) = library_db::load_song_by_hash(file_hash).ok().flatten() {
+        if song.usdx.is_some() {
+            return Ok(());
+        }
+    }
 
     let mp3_inst = cache.instrumental_path(file_hash);
     let mp3_voc = cache.vocals_path(file_hash);
@@ -446,6 +463,9 @@ pub fn shift_key(
     let Some(mut song) = library_db::load_song_by_hash(file_hash).ok().flatten() else {
         return Err("Song not found".into());
     };
+    if song.usdx.is_some() {
+        return Err("Key shift is not supported for USDX songs".into());
+    }
     let cache = CacheDir::new();
     let target_key = key.trim().to_string();
     if target_key.is_empty() {
@@ -539,6 +559,9 @@ pub fn shift_tempo(file_hash: &str, tempo: f64) -> Result<ShiftResult, Nightinga
     let Some(mut song) = library_db::load_song_by_hash(file_hash).ok().flatten() else {
         return Err("Song not found".into());
     };
+    if song.usdx.is_some() {
+        return Err("Tempo shift is not supported for USDX songs".into());
+    }
     let cache = CacheDir::new();
     let key = song
         .override_key
