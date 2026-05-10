@@ -52,7 +52,7 @@ Download the latest release for your platform from the [Releases](../../releases
 
 Nightingale checks for new releases once at launch. When one is available, the sidebar avatar grows a small green dot and the **Update** entry in the dropdown menu opens a dialog with the release notes. Click **Install & Restart** and the app downloads the signed bundle, installs it, and relaunches.
 
-The in-app updater works for the Linux **AppImage**, the macOS bundle, and the Windows installer (NSIS / MSI, run in `passive` mode so the installer flashes a small progress window and the app comes back automatically). Linux `.deb` / `.rpm` users have to download the new release manually — the underlying plugin doesn't support those formats.
+The in-app updater works for Linux, macOS, and Windows. On Windows the installer runs in `passive` mode — a small progress window flashes and the app comes back automatically once the install finishes.
 
 ### macOS
 

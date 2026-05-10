@@ -43,7 +43,6 @@ If the **Update** dialog reports a problem:
 - **Stuck on "Checking for updates…"** — the update server couldn't be reached. Confirm you have a working internet connection and that GitHub is reachable; the manifest is fetched from `github.com/rzru/nightingale/releases/latest`. If the dialog shows a Wi-Fi-off icon, you're offline.
 - **"Couldn't reach the update server" / network error** — same cause as above. Click **Retry** once your connection is back, or download the new build manually from the [Releases](https://github.com/rzru/nightingale/releases) page.
 - **"Signature error"** — the downloaded bundle didn't match the public key baked into the app. This usually means you're running an unofficial build. Re-download Nightingale from the [Releases](https://github.com/rzru/nightingale/releases) page and try again.
-- **Linux `.deb` / `.rpm` install** — the in-app updater only handles the AppImage. Grab the new `.deb` / `.rpm` from the Releases page and reinstall.
 
 ## Reset Everything
 

@@ -76,7 +76,7 @@ Nightingale checks for new releases once at launch. When one is available:
 
 Platform notes:
 
-- **Linux**: only the **AppImage** can update itself. If you installed from `.deb` or `.rpm`, download the new release from the [Releases](https://github.com/rzru/nightingale/releases) page manually.
+- **Linux**: the AppImage is replaced in place and the app relaunches.
 - **macOS**: the bundle is replaced in place and the app relaunches.
 - **Windows**: the installer runs in `passive` mode — a small progress window appears, the app exits, and it comes back automatically once the install finishes.
 
