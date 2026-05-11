@@ -125,13 +125,3 @@ jobs:
           releaseId: ${{ needs.prepare.outputs.release_id }}
           args: ${{ matrix.args }}
           includeUpdaterJson: ${{ matrix.updater }}
-
-      - name: Upload bare Windows binary
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "$GITHUB_REF_NAME" \
-            "client/src-tauri/target/${{ matrix.target }}/release/Nightingale.exe#Nightingale_${{ needs.prepare.outputs.version }}_x64.exe" \
-            --clobber
