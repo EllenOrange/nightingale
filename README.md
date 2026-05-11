@@ -56,7 +56,7 @@ On macOS and Windows, Nightingale checks for new releases once at launch. When o
 
 ### Linux
 
-Auto-update is **not supported on Linux** — the app ships without the updater plugin. The **Update** entry still appears in the sidebar menu, but it just opens a dialog explaining this with a one-click button to the [Releases](../../releases) page so you can grab the new `.deb`, `.rpm`, or `.tar.xz` and install it the usual way for your distro.
+Auto-update is **not supported on Linux** — the app ships without the updater plugin. The **Update** entry still appears in the sidebar menu, but it just opens a dialog explaining this with a one-click button to the [Releases](../../releases) page so you can grab the new `.deb` or `.rpm` and install it the usual way for your distro.
 
 ### macOS
 

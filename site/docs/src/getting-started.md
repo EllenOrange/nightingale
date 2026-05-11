@@ -4,9 +4,9 @@
 
 | Platform | Format                    | Architectures      |
 | -------- | ------------------------- | ------------------- |
-| Linux    | `.deb`, `.rpm`, `.tar.xz` | x86_64, ARM (arm64) |
+| Linux    | `.deb`, `.rpm` | x86_64, ARM (arm64) |
 | macOS    | `.dmg`                    | Apple Silicon, Intel |
-| Windows  | Installer `.exe`, Portable `.exe`, `.msi` | x86_64 |
+| Windows  | Installer `.exe`, `.msi` | x86_64 |
 
 <br />
 
@@ -81,7 +81,7 @@ Platform notes:
 
 ### Linux
 
-The Linux build ships **without** the in-app updater. The **Update** entry is still in the sidebar menu, but instead of fetching a bundle it opens a dialog that explains this and gives you an **Open GitHub Releases** button. Pick the `.deb`, `.rpm`, or `.tar.xz` for your distro from the [Releases](https://github.com/rzru/nightingale/releases) page and install it the usual way.
+The Linux build ships **without** the in-app updater. The **Update** entry is still in the sidebar menu, but instead of fetching a bundle it opens a dialog that explains this and gives you an **Open GitHub Releases** button. Pick the `.deb` or `.rpm` for your distro from the [Releases](https://github.com/rzru/nightingale/releases) page and install it the usual way.
 
 There is no update badge on the sidebar avatar on Linux.
 

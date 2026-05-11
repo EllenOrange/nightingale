@@ -10,7 +10,6 @@ const platforms = [
     options: [
       { label: ".deb", file: `Nightingale_${version}_amd64.deb`, armFile: `Nightingale_${version}_arm64.deb` },
       { label: ".rpm", file: `Nightingale-${version}-1.x86_64.rpm`, armFile: `Nightingale-${version}-1.aarch64.rpm` },
-      { label: ".tar.xz", file: `Nightingale_${version}_x86_64.tar.xz`, armFile: `Nightingale_${version}_arm64.tar.xz` },
     ],
   },
   {
@@ -21,7 +20,6 @@ const platforms = [
     os: "windows", label: "Windows",
     options: [
       { label: "Installer (.exe)", file: `Nightingale_${version}_x64-setup.exe` },
-      { label: "Portable (.exe)", file: `Nightingale_${version}_x64.exe` },
       { label: "MSI Installer", file: `Nightingale_${version}_x64_en-US.msi` },
     ],
   },

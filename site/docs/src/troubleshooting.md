@@ -38,7 +38,7 @@ Check the setup progress screen for which backend was detected.
 
 ## Updates
 
-The auto-updater runs on **macOS and Windows only** — Linux ships without it. If you're on Linux and the **Update** dialog says "Auto-update isn't supported on Linux", that's expected. Click **Open GitHub Releases** to grab the new `.deb`, `.rpm`, or `.tar.xz` and install it the normal way for your distro.
+The auto-updater runs on **macOS and Windows only** — Linux ships without it. If you're on Linux and the **Update** dialog says "Auto-update isn't supported on Linux", that's expected. Click **Open GitHub Releases** to grab the new `.deb` or `.rpm` and install it the normal way for your distro.
 
 If the **Update** dialog reports a problem on macOS or Windows:
 
