@@ -11,7 +11,7 @@ GitHub Release body. If a section is missing the release is still created
 with a fallback body, but ideally every tagged version has its own entry
 below.
 
-## [0.6.0] - 2026-05-10
+## [0.6.0-rc1] - 2026-05-10
 
 ### Highlights
 
