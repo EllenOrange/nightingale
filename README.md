@@ -199,6 +199,37 @@ cargo desktop build
 | macOS Intel    | `x86_64-apple-darwin`       |
 | Windows x86_64 | `x86_64-pc-windows-msvc`    |
 
+## Releasing
+
+Releases are cut by [`.github/workflows/release.yml`](.github/workflows/release.yml) on any `v*` tag push. The workflow:
+
+1. Verifies the tag matches the `version` in [`client/src-tauri/tauri.conf.json`](client/src-tauri/tauri.conf.json), [`client/src-tauri/Cargo.toml`](client/src-tauri/Cargo.toml), and [`client/package.json`](client/package.json).
+2. Extracts the matching `## [<version>]` section from [`CHANGELOG.md`](CHANGELOG.md) as the release body.
+3. Creates a draft release and, in parallel, builds and uploads:
+   - Linux x86_64: `.deb`, `.rpm` (on `ubuntu-22.04`)
+   - Linux aarch64: `.deb`, `.rpm` (on `ubuntu-24.04-arm`)
+   - macOS ARM / Intel: `.dmg` + `.app.tar.gz` (+ `.sig`) for the in-app updater
+   - Windows x86_64: `*-setup.exe` (NSIS, + `.sig`), `*_en-US.msi` (+ `.sig`), and the bare `Nightingale_<v>_x64.exe`
+   - `latest.json` covering `darwin-aarch64`, `darwin-x86_64`, and `windows-x86_64` — Linux is intentionally absent since the updater plugin isn't compiled in for Linux.
+4. Leaves the release as a draft. Smoke-test the artifacts from the draft, then flip it to **Published** with the "Set as the latest release" checkbox in the GitHub Releases UI to make `https://github.com/rzru/nightingale/releases/latest/download/latest.json` (the URL hard-coded in [`tauri.conf.json`](client/src-tauri/tauri.conf.json)) resolve to it and start rolling out the in-app update.
+
+Cutting a release:
+
+```bash
+# bump versions in client/src-tauri/tauri.conf.json, client/src-tauri/Cargo.toml, client/package.json
+# add a `## [<version>] - YYYY-MM-DD` section to CHANGELOG.md
+git tag v<version>
+git push origin v<version>
+```
+
+Required repository secrets:
+
+| Secret                                | Purpose                                                                                                                            |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `TAURI_SIGNING_PRIVATE_KEY`           | Minisign private key whose public counterpart is the `pubkey` in [`tauri.conf.json`](client/src-tauri/tauri.conf.json). Generate once with `pnpm tauri signer generate`. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`  | Password for the signing key. Omit the secret entirely if the key was generated passwordless — GitHub rejects empty-string secrets, and a missing one resolves to empty at workflow runtime, which is what `minisign` expects. |
+| `PIXABAY_API_KEY`                     | Embedded at compile time so release builds can fetch video backgrounds.                                                            |
+
 ## License
 
 GPL-3.0-or-later — see [LICENSE](LICENSE).
