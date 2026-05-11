@@ -77,6 +77,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             // Init
@@ -127,7 +128,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let _ = dotenvy::dotenv();
-            #[cfg(desktop)]
+            #[cfg(any(target_os = "macos", windows))]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
             app_core::init_library().map_err(|e| e.to_string())?;

@@ -38,7 +38,9 @@ Check the setup progress screen for which backend was detected.
 
 ## Updates
 
-If the **Update** dialog reports a problem:
+The auto-updater runs on **macOS and Windows only** — Linux ships without it. If you're on Linux and the **Update** dialog says "Auto-update isn't supported on Linux", that's expected. Click **Open GitHub Releases** to grab the new `.deb`, `.rpm`, or `.tar.xz` and install it the normal way for your distro.
+
+If the **Update** dialog reports a problem on macOS or Windows:
 
 - **Stuck on "Checking for updates…"** — the update server couldn't be reached. Confirm you have a working internet connection and that GitHub is reachable; the manifest is fetched from `github.com/rzru/nightingale/releases/latest`. If the dialog shows a Wi-Fi-off icon, you're offline.
 - **"Couldn't reach the update server" / network error** — same cause as above. Click **Retry** once your connection is back, or download the new build manually from the [Releases](https://github.com/rzru/nightingale/releases) page.

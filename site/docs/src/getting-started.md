@@ -68,7 +68,7 @@ You can also batch analysis with **Analyze All** from the song list toolbar.
 
 ## Updating
 
-Nightingale checks for new releases once at launch. When one is available:
+On **macOS** and **Windows**, Nightingale checks for new releases once at launch. When one is available:
 
 1. The sidebar avatar grows a small green dot.
 2. The **Update** entry in the sidebar dropdown menu also shows the badge and opens a dialog with the version, release date, and notes.
@@ -76,11 +76,16 @@ Nightingale checks for new releases once at launch. When one is available:
 
 Platform notes:
 
-- **Linux**: the AppImage is replaced in place and the app relaunches.
 - **macOS**: the bundle is replaced in place and the app relaunches.
 - **Windows**: the installer runs in `passive` mode — a small progress window appears, the app exits, and it comes back automatically once the install finishes.
 
-If the dialog reports an error, see [Troubleshooting → Updates](./troubleshooting.md#updates).
+### Linux
+
+The Linux build ships **without** the in-app updater. The **Update** entry is still in the sidebar menu, but instead of fetching a bundle it opens a dialog that explains this and gives you an **Open GitHub Releases** button. Pick the `.deb`, `.rpm`, or `.tar.xz` for your distro from the [Releases](https://github.com/rzru/nightingale/releases) page and install it the usual way.
+
+There is no update badge on the sidebar avatar on Linux.
+
+If the macOS or Windows dialog reports an error, see [Troubleshooting → Updates](./troubleshooting.md#updates).
 
 ## Force Re-setup
 

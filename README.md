@@ -16,7 +16,9 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 🎤 **Stem Separation** — isolates lead vocals from instrumentals using the UVR Karaoke model (default) or Demucs, with adjustable guide vocal volume. The karaoke model preserves backing vocals in the instrumental for a more natural sound
 
-📝 **Word-Level Lyrics** — automatic transcription with alignment, or fetched from [LRCLIB](https://lrclib.net) when available. CJK songs (Japanese / Chinese / Korean) get per-character forced alignment and romanized readings (Hepburn / pinyin / Revised Romanization) shown above each token
+📝 **Word-Level Lyrics** — automatic transcription with alignment, or fetched from [LRCLIB](https://lrclib.net) when available
+
+🈯 **CJK Lyric Support** — Japanese, Chinese, and Korean songs get per-character forced alignment and romanized readings (Hepburn / pinyin / Revised Romanization) shown above each token
 
 🗣️ **Pluggable ASR Engines** — choose Whisper (default, broad language coverage) or **Parakeet v3 (experimental)** for ~25 European languages, with NeMo on CUDA and ONNX Runtime everywhere else
 
@@ -42,7 +44,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 📦 **Self-Contained** — ffmpeg, uv, Python, PyTorch, and ML packages are downloaded automatically during setup. Video backgrounds are pre-downloaded so the first session is ready to go
 
-⬆️ **In-App Updates** — auto-checks for new releases at launch, badges the sidebar avatar when one is available, and downloads and installs signed updates with one click on Linux, macOS, and Windows
+⬆️ **In-App Updates** — on macOS and Windows, auto-checks for new releases at launch, badges the sidebar avatar when one is available, and downloads and installs signed updates with one click. Linux is manual: the **Update** entry opens GitHub Releases for you to grab the new build
 
 ## Quick start
 
@@ -50,9 +52,11 @@ Download the latest release for your platform from the [Releases](../../releases
 
 ## Updates
 
-Nightingale checks for new releases once at launch. When one is available, the sidebar avatar grows a small green dot and the **Update** entry in the dropdown menu opens a dialog with the release notes. Click **Install & Restart** and the app downloads the signed bundle, installs it, and relaunches.
+On macOS and Windows, Nightingale checks for new releases once at launch. When one is available, the sidebar avatar grows a small green dot and the **Update** entry in the dropdown menu opens a dialog with the release notes. Click **Install & Restart** and the app downloads the signed bundle, installs it, and relaunches. On Windows the installer runs in `passive` mode — a small progress window flashes and the app comes back automatically once the install finishes.
 
-The in-app updater works for Linux, macOS, and Windows. On Windows the installer runs in `passive` mode — a small progress window flashes and the app comes back automatically once the install finishes.
+### Linux
+
+Auto-update is **not supported on Linux** — the app ships without the updater plugin. The **Update** entry still appears in the sidebar menu, but it just opens a dialog explaining this with a one-click button to the [Releases](../../releases) page so you can grab the new `.deb`, `.rpm`, or `.tar.xz` and install it the usual way for your distro.
 
 ### macOS
 

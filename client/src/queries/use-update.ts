@@ -2,14 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { type Update } from "@tauri-apps/plugin-updater";
 import { UPDATER } from "./keys";
 import { checkForUpdate } from "@/tauri-bridge/updater";
+import { UPDATES_SUPPORTED } from "@/tauri-bridge/platform";
 
-export type UpdateStatus = "checking" | "available" | "up-to-date" | "error";
+export type UpdateState =
+  | { status: "unsupported" }
+  | { status: "checking" }
+  | { status: "error"; error: Error; isOffline: boolean }
+  | { status: "up-to-date" }
+  | { status: "available"; update: Update };
 
-export interface UpdateState {
-  status: UpdateStatus;
-  update: Update | null;
-  error: Error | null;
-}
+export type UpdateStatus = UpdateState["status"];
 
 const isOfflineError = (error: Error): boolean => {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -27,6 +29,34 @@ const isOfflineError = (error: Error): boolean => {
   );
 };
 
+const buildState = (query: {
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  data: Update | null | undefined;
+  error: unknown;
+}): UpdateState => {
+  if (!UPDATES_SUPPORTED) {
+    return { status: "unsupported" };
+  }
+
+  if (query.isLoading || query.isFetching) {
+    return { status: "checking" };
+  }
+
+  if (query.isError) {
+    const error = query.error instanceof Error ? query.error : new Error("Unknown error");
+
+    return { status: "error", error, isOffline: isOfflineError(error) };
+  }
+
+  if (query.data) {
+    return { status: "available", update: query.data };
+  }
+
+  return { status: "up-to-date" };
+};
+
 export const useUpdate = () => {
   const query = useQuery({
     queryKey: UPDATER,
@@ -36,30 +66,8 @@ export const useUpdate = () => {
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
+    enabled: UPDATES_SUPPORTED,
   });
 
-  let status: UpdateStatus;
-  if (query.isLoading || query.isFetching) {
-    status = "checking";
-  } else if (query.isError) {
-    status = "error";
-  } else if (query.data) {
-    status = "available";
-  } else {
-    status = "up-to-date";
-  }
-
-  const error = query.error instanceof Error ? query.error : null;
-
-  const state: UpdateState = {
-    status,
-    update: query.data ?? null,
-    error,
-  };
-
-  return {
-    ...state,
-    isOffline: error ? isOfflineError(error) : false,
-    refetch: query.refetch,
-  };
+  return { ...buildState(query), refetch: query.refetch };
 };
