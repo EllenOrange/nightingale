@@ -1,6 +1,6 @@
 {
   "name": "Nightingale",
-  "version": "0.6.0",
+  "version": "0.6.0-rc1",
   "private": true,
   "description": "Nightingale — Karaoke from your music library.",
   "type": "module",
