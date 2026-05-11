@@ -38,6 +38,14 @@ jobs:
         shell: bash
         run: bash .github/scripts/extract-changelog-notes.sh "${{ steps.meta.outputs.version }}" release_notes.md
 
+      - name: Upload release notes for downstream jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release_notes.md
+          retention-days: 1
+          if-no-files-found: error
+
       - id: draft
         name: Create draft release
         uses: softprops/action-gh-release@v2
@@ -113,6 +121,23 @@ jobs:
         working-directory: client
         run: pnpm install --frozen-lockfile
 
+      - name: Download release notes
+        if: matrix.updater
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+
+      - id: notes
+        if: matrix.updater
+        name: Load release notes for updater JSON
+        shell: bash
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            cat release_notes.md
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build, bundle, and upload artifacts
         uses: tauri-apps/tauri-action@v0
         env:
@@ -123,5 +148,6 @@ jobs:
         with:
           projectPath: ./client
           releaseId: ${{ needs.prepare.outputs.release_id }}
+          releaseBody: ${{ steps.notes.outputs.body }}
           args: ${{ matrix.args }}
           includeUpdaterJson: ${{ matrix.updater }}

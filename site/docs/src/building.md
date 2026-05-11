@@ -4,7 +4,7 @@
 
 | Tool | Version |
 |---|---|
-| Rust | 1.85+ (edition 2024) |
+| Rust | 1.85+ (workspace uses edition 2024) |
 | Node.js | 20+ |
 | pnpm | latest |
 | Linux only | `libwebkit2gtk-4.1-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`, `libasound2-dev` |

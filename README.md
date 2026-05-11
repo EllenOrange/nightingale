@@ -170,7 +170,7 @@ PIXABAY_API_KEY=your_key_here
 
 | Tool       | Version                                                                                                               |
 | ---------- | --------------------------------------------------------------------------------------------------------------------- |
-| Rust       | 1.85+ (edition 2024)                                                                                                  |
+| Rust       | 1.85+ (workspace uses edition 2024)                                                                                   |
 | Node.js    | 20+                                                                                                                   |
 | pnpm       | latest                                                                                                                |
 | Linux only | `libwebkit2gtk-4.1-dev`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev`, `libasound2-dev` |
@@ -209,7 +209,7 @@ Releases are cut by [`.github/workflows/release.yml`](.github/workflows/release.
    - Linux x86_64: `.deb`, `.rpm` (on `ubuntu-22.04`)
    - Linux aarch64: `.deb`, `.rpm` (on `ubuntu-24.04-arm`)
    - macOS ARM / Intel: `.dmg` + `.app.tar.gz` (+ `.sig`) for the in-app updater
-   - Windows x86_64: `*-setup.exe` (NSIS, + `.sig`), `*_en-US.msi` (+ `.sig`), and the bare `Nightingale_<v>_x64.exe`
+   - Windows x86_64: `*-setup.exe` (NSIS, + `.sig`), `*_en-US.msi` (+ `.sig`)
    - `latest.json` covering `darwin-aarch64`, `darwin-x86_64`, and `windows-x86_64` — Linux is intentionally absent since the updater plugin isn't compiled in for Linux.
 4. Leaves the release as a draft. Smoke-test the artifacts from the draft, then flip it to **Published** with the "Set as the latest release" checkbox in the GitHub Releases UI to make `https://github.com/rzru/nightingale/releases/latest/download/latest.json` (the URL hard-coded in [`tauri.conf.json`](client/src-tauri/tauri.conf.json)) resolve to it and start rolling out the in-app update.
 

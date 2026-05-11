@@ -22,7 +22,7 @@ These run at full frame rate and adapt to your display resolution.
 Shaders are **audio-reactive** when the microphone is enabled: a real-time analyzer drives shared uniforms (level, low/mid/high band energy, beat impulses) so louder vocals push the visuals harder. With the mic off, the shaders animate on their own time-based clock.
 
 <!-- TODO: 2-3 screenshots showing different shader backgrounds (e.g. Nebula and Spectrum) during playback -->
-![Nebula background](images/bg-aurora.png)
+![Nebula background](images/bg-nebula.png)
 ![Waves background](images/bg-waves.png)
 
 ## Pixabay Video Backgrounds

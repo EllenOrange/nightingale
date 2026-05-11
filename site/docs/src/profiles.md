@@ -16,4 +16,4 @@ Switch between profiles from the sidebar. The active profile is shown in the UI 
 
 ## Score Tracking
 
-Scores are stored in `~/.nightingale/profiles.json`. Each profile maintains separate scoreboards for every song, so multiple singers can compete on the same library.
+Scores are stored in `profiles.json` inside your selected data folder (default `~/.nightingale/profiles.json`, or `<your-data-folder>/profiles.json` if you picked a custom location during setup). Each profile maintains separate scoreboards for every song, so multiple singers can compete on the same library.
