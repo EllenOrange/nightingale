@@ -162,7 +162,7 @@ fn ffmpeg_download_url() -> Result<&'static str, String> {
         ("macos", "aarch64") => Ok("https://evermeet.cx/ffmpeg/ffmpeg-8.1.zip"),
         ("macos", "x86_64") => Ok("https://evermeet.cx/ffmpeg/ffmpeg-8.1.zip"),
         ("windows", "x86_64") => {
-            Ok("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip")
+            Ok("https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip")
         }
         (os, arch) => Err(format!("Unsupported platform for ffmpeg: {os}-{arch}")),
     }
