@@ -2,6 +2,7 @@ import { Separator } from "@/components/ui/separator";
 import type { Update } from "@tauri-apps/plugin-updater";
 import { DownloadIcon } from "lucide-react";
 import { CURRENT_VERSION, PairFooter, type FocusCtx, type ViewParts } from "../parts";
+import { ReleaseNotes } from "../release-notes";
 
 interface Args {
   ctx: FocusCtx;
@@ -54,9 +55,7 @@ export const availableView = ({ ctx, update, onClose, onInstall }: Args): ViewPa
               <h4 className="text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
                 Release notes
               </h4>
-              <p className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-48 overflow-y-auto scrollbar-hide">
-                {notes}
-              </p>
+              <ReleaseNotes body={notes} />
             </div>
           </>
         )}
