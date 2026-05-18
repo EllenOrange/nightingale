@@ -6,7 +6,7 @@ import {
   enqueueOne,
   reanalyzeFull,
   reanalyzeTranscript,
-} from "@/tauri-bridge/analysis";
+} from "@/bridge/analysis";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { toast } from "sonner";

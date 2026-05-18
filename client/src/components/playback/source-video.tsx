@@ -1,11 +1,10 @@
-import { joinMediaUrl } from "@/adapters/playback";
+import { playbackAdapter } from "@/bridge/playback";
 import {
   usePlaybackThemeState,
   usePlaybackTransportActions,
   usePlaybackTransportState,
 } from "@/contexts/playback";
 import { useSourceVideoSync } from "@/hooks/use-source-video-sync";
-import { getMediaPort } from "@/tauri-bridge/playback";
 import { useEffect, useRef, useState } from "react";
 import { VIDEO_CLASS_NAME } from "@/lib/playback/video-styles";
 
@@ -20,9 +19,9 @@ function useMediaUrl(filePath: string): string | null {
     let cancelled = false;
     setSrc(null);
 
-    void getMediaPort().then((port) => {
+    void playbackAdapter.init().then(() => {
       if (cancelled) return;
-      setSrc(joinMediaUrl(`http://127.0.0.1:${port}`, filePath));
+      setSrc(playbackAdapter.toMediaUrl(filePath));
     });
 
     return () => {

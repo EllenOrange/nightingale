@@ -3,7 +3,7 @@
  * without listing `config` in callback dependency arrays.
  */
 
-import { saveConfig } from "@/tauri-bridge/config";
+import { saveConfig } from "@/bridge/config";
 import { CONFIG } from "@/queries/keys";
 import { useQueryClient } from "@tanstack/react-query";
 import type { AppConfig } from "@/types/AppConfig";

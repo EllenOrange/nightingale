@@ -1,5 +1,5 @@
 import { ProfileStore } from "@/types/ProfileStore";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./runtime";
 
 export const loadProfiles = async (): Promise<ProfileStore> => {
   return await invoke<ProfileStore>("load_profiles");

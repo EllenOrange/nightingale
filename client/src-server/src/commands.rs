@@ -1,0 +1,375 @@
+use std::path::Path;
+
+use app_core::{
+    AnalysisQueue, AppConfig, CacheStats, LibraryMenuFilters, LibraryMenuItems, LoadSongsParams,
+    ProfileStore, SongsStore,
+};
+use axum::{
+    extract::{Path as AxumPath, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+use crate::events::EventBus;
+use crate::state::AppState;
+
+/// HTTP error wrapper. JSON body matches what `webInvoke` reads on non-2xx.
+pub struct ApiError(pub StatusCode, pub String);
+
+impl ApiError {
+    fn bad_request(msg: impl Into<String>) -> Self {
+        Self(StatusCode::BAD_REQUEST, msg.into())
+    }
+
+    fn internal(msg: impl Into<String>) -> Self {
+        Self(StatusCode::INTERNAL_SERVER_ERROR, msg.into())
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        (self.0, self.1).into_response()
+    }
+}
+
+pub type CmdResult = Result<Value, ApiError>;
+
+/// Generic dispatcher that mirrors Tauri's `generate_handler!` table.
+pub async fn handle_cmd(
+    State(state): State<AppState>,
+    AxumPath(name): AxumPath<String>,
+    body: Option<Json<Value>>,
+) -> Result<Json<Value>, ApiError> {
+    let payload = body.map(|Json(v)| v).unwrap_or(Value::Null);
+    let value = dispatch(state.events.clone(), &name, payload).await?;
+    Ok(Json(value))
+}
+
+async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) -> CmdResult {
+    match name {
+        // ── Init/window stubs ────────────────────────────────────────────
+        "frontend_ready" | "window_immersive" | "minimize_window" => Ok(Value::Null),
+
+        // ── Config ───────────────────────────────────────────────────────
+        "load_config" => Ok(serde_json::to_value(AppConfig::load()).map_err(serde_err)?),
+        "save_config" => save_config_cmd(payload),
+
+        // ── Cache ────────────────────────────────────────────────────────
+        "calculate_cache_stats" => {
+            Ok(serde_json::to_value(CacheStats::calculate()).map_err(serde_err)?)
+        }
+        "clear_videos_command" => {
+            app_core::clear_videos();
+            Ok(Value::Null)
+        }
+        "clear_models_command" => {
+            app_core::clear_models();
+            Ok(Value::Null)
+        }
+        "clear_all" => {
+            app_core::clear_models();
+            app_core::clear_videos();
+            Ok(Value::Null)
+        }
+
+        // ── Profile ──────────────────────────────────────────────────────
+        "load_profiles" => Ok(serde_json::to_value(ProfileStore::load()).map_err(serde_err)?),
+        "create_profile" => {
+            let args: NameArgs = deserialize(payload)?;
+            let mut store = ProfileStore::load();
+            store.create_profile(args.name);
+            Ok(Value::Null)
+        }
+        "switch_profile" => {
+            let args: NameArgs = deserialize(payload)?;
+            let mut store = ProfileStore::load();
+            store.switch_profile(&args.name);
+            Ok(Value::Null)
+        }
+        "delete_profile" => {
+            let args: NameArgs = deserialize(payload)?;
+            let mut store = ProfileStore::load();
+            store.delete_profile(&args.name);
+            Ok(Value::Null)
+        }
+        "add_score" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                song_hash: String,
+                score: u32,
+            }
+            let args: Args = deserialize(payload)?;
+            let mut store = ProfileStore::load();
+            store.add_score(&args.song_hash, args.score);
+            Ok(Value::Null)
+        }
+
+        // ── Scanner ──────────────────────────────────────────────────────
+        "trigger_scan" => {
+            #[derive(Deserialize)]
+            struct Args {
+                folder: String,
+            }
+            let args: Args = deserialize(payload)?;
+            app_core::start_scan(Path::new(&args.folder));
+            Ok(Value::Null)
+        }
+        "load_songs" => {
+            #[derive(Deserialize)]
+            struct Args {
+                params: LoadSongsParams,
+            }
+            let args: Args = deserialize(payload)?;
+            Ok(serde_json::to_value(SongsStore::load(&args.params)).map_err(serde_err)?)
+        }
+        "load_songs_meta" => Ok(serde_json::to_value(SongsStore::load_meta()).map_err(serde_err)?),
+        "load_analysis_queue" => {
+            Ok(serde_json::to_value(AnalysisQueue::load()).map_err(serde_err)?)
+        }
+        "load_library_menu_items" => {
+            let items: LibraryMenuItems =
+                app_core::load_library_menu_items().map_err(|e| ApiError::internal(e.to_string()))?;
+            Ok(serde_json::to_value(items).map_err(serde_err)?)
+        }
+
+        // ── Analyzer ─────────────────────────────────────────────────────
+        "enqueue_one" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            app_core::enqueue_one(&args.file_hash);
+            Ok(Value::Null)
+        }
+        "enqueue_all" => {
+            #[derive(Deserialize)]
+            struct Args {
+                filters: LibraryMenuFilters,
+            }
+            let args: Args = deserialize(payload)?;
+            app_core::enqueue_all(&args.filters);
+            Ok(Value::Null)
+        }
+        "delete_song_cache" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            app_core::delete_cache(&args.file_hash);
+            Ok(Value::Null)
+        }
+        "reanalyze_transcript" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                file_hash: String,
+                #[serde(default)]
+                language: Option<String>,
+            }
+            let args: Args = deserialize(payload)?;
+            app_core::reanalyze_transcript(&args.file_hash, args.language);
+            Ok(Value::Null)
+        }
+        "reanalyze_full" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            app_core::reanalyze_full(&args.file_hash);
+            Ok(Value::Null)
+        }
+        "shift_key" => shift_key_cmd(events, payload),
+        "shift_tempo" => shift_tempo_cmd(events, payload),
+
+        // ── Playback ─────────────────────────────────────────────────────
+        "load_transcript" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            app_core::load_transcript(&args.file_hash)
+                .map_err(|e| ApiError::internal(e.to_string()))
+        }
+        "get_audio_paths" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            Ok(serde_json::to_value(app_core::get_audio_paths(&args.file_hash))
+                .map_err(serde_err)?)
+        }
+        "ensure_mp3_stems" => ensure_mp3_stems_cmd(events, payload),
+        "ensure_playable_source_video" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            let path = app_core::ensure_playable_source_video(&args.file_hash)
+                .ok()
+                .flatten();
+            Ok(serde_json::to_value(path).map_err(serde_err)?)
+        }
+        "fetch_pixabay_videos" => fetch_pixabay_videos_cmd(events, payload),
+
+        // ── Vendor ───────────────────────────────────────────────────────
+        "is_ready" => Ok(Value::Bool(app_core::is_ready())),
+        "trigger_setup" => crate::commands::vendor::trigger_setup(events, payload),
+
+        // ── Mic (browser-side; no server-side state) ────────────────────
+        "list_microphones" => Ok(Value::Array(vec![])),
+        "start_mic_capture" | "stop_mic_capture" => Ok(Value::Null),
+
+        // ── Tauri-only no-ops ────────────────────────────────────────────
+        "get_media_port" => Ok(Value::from(0u16)),
+
+        _ => Err(ApiError(
+            StatusCode::NOT_FOUND,
+            format!("unknown command {name}"),
+        )),
+    }
+}
+
+fn serde_err(e: serde_json::Error) -> ApiError {
+    ApiError::internal(format!("serialise: {e}"))
+}
+
+fn deserialize<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ApiError> {
+    serde_json::from_value(value).map_err(|e| ApiError::bad_request(format!("invalid args: {e}")))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NameArgs {
+    name: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileHashArgs {
+    file_hash: String,
+}
+
+#[derive(Deserialize)]
+struct SaveConfigArgs {
+    config: AppConfig,
+}
+
+fn save_config_cmd(payload: Value) -> CmdResult {
+    let SaveConfigArgs { config } = deserialize(payload)?;
+    config.save();
+    // Web mode has no server-side cpal monitor stream, so `mic_mirror_gain`
+    // is consumed entirely by the browser's mirror GainNode.
+    serde_json::to_value(config).map_err(serde_err)
+}
+
+#[derive(Serialize)]
+struct ShiftDone {
+    file_hash: String,
+    key: Option<String>,
+    tempo: Option<f64>,
+    error: Option<String>,
+}
+
+fn shift_key_cmd(events: std::sync::Arc<EventBus>, payload: Value) -> CmdResult {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        file_hash: String,
+        key: String,
+        pitch_ratio: f64,
+        key_offset: i32,
+    }
+    let args: Args = deserialize(payload)?;
+    std::thread::spawn(move || {
+        let result =
+            app_core::shift_key(&args.file_hash, &args.key, args.pitch_ratio, args.key_offset);
+        let payload = match result {
+            Ok(done) => ShiftDone {
+                file_hash: args.file_hash,
+                key: Some(done.key),
+                tempo: Some(done.tempo),
+                error: None,
+            },
+            Err(err) => ShiftDone {
+                file_hash: args.file_hash,
+                key: Some(args.key),
+                tempo: None,
+                error: Some(err.to_string()),
+            },
+        };
+        events.emit("shift-key-done", &payload);
+    });
+    Ok(Value::Null)
+}
+
+fn shift_tempo_cmd(events: std::sync::Arc<EventBus>, payload: Value) -> CmdResult {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Args {
+        file_hash: String,
+        tempo: f64,
+    }
+    let args: Args = deserialize(payload)?;
+    std::thread::spawn(move || {
+        let result = app_core::shift_tempo(&args.file_hash, args.tempo);
+        let payload = match result {
+            Ok(done) => ShiftDone {
+                file_hash: args.file_hash,
+                key: Some(done.key),
+                tempo: Some(done.tempo),
+                error: None,
+            },
+            Err(err) => ShiftDone {
+                file_hash: args.file_hash,
+                key: None,
+                tempo: Some(args.tempo),
+                error: Some(err.to_string()),
+            },
+        };
+        events.emit("shift-tempo-done", &payload);
+    });
+    Ok(Value::Null)
+}
+
+#[derive(Serialize)]
+struct StemsReady {
+    file_hash: String,
+    error: Option<String>,
+}
+
+fn ensure_mp3_stems_cmd(events: std::sync::Arc<EventBus>, payload: Value) -> CmdResult {
+    let args: FileHashArgs = deserialize(payload)?;
+    std::thread::spawn(move || {
+        let result = app_core::ensure_mp3_stems(&args.file_hash);
+        events.emit(
+            "stems-ready",
+            &StemsReady {
+                file_hash: args.file_hash,
+                error: result.err().map(|e| e.to_string()),
+            },
+        );
+    });
+    Ok(Value::Null)
+}
+
+#[derive(Serialize)]
+struct PixabayVideoDownloaded {
+    flavor: String,
+    path: String,
+    evicted_path: Option<String>,
+}
+
+fn fetch_pixabay_videos_cmd(events: std::sync::Arc<EventBus>, payload: Value) -> CmdResult {
+    #[derive(Deserialize)]
+    struct Args {
+        flavor: String,
+    }
+    let args: Args = deserialize(payload)?;
+    let cached = app_core::get_cached_pixabay_videos(&args.flavor);
+
+    let flavor_for_thread = args.flavor.clone();
+    let events_clone = events.clone();
+    std::thread::spawn(move || {
+        let flavor_for_emit = flavor_for_thread.clone();
+        app_core::download_pixabay_videos(&flavor_for_thread, move |path, evicted_path| {
+            events_clone.emit(
+                "pixabay-video-downloaded",
+                &PixabayVideoDownloaded {
+                    flavor: flavor_for_emit.clone(),
+                    path,
+                    evicted_path,
+                },
+            );
+        });
+    });
+
+    Ok(json!(cached))
+}
+
+pub mod vendor;

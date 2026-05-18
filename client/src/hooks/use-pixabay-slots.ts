@@ -1,13 +1,12 @@
-import { joinMediaUrl } from "@/adapters/playback";
+import { playbackAdapter } from "@/bridge/playback";
 import { useLatestRef } from "@/hooks/use-latest-ref";
 import { PixabayFlavorLibrary } from "@/lib/playback/pixabay-flavor-library";
 import { getNextFlavor, type VideoFlavor } from "@/lib/playback/video-flavor";
 import {
   fetchPixabayVideos,
-  getMediaPort,
   onPixabayVideoDownloaded,
   type PixabayVideoDownloaded,
-} from "@/tauri-bridge/playback";
+} from "@/bridge/playback";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 const SLOT_COUNT = 3;
@@ -72,7 +71,7 @@ export function usePixabaySlots(flavor: VideoFlavor, isPlaying: boolean): UsePix
   const flavorRef = useLatestRef(flavor);
   const isPlayingRef = useLatestRef(isPlaying);
 
-  const portRef = useRef(0);
+  const adapterReadyRef = useRef(false);
   const inflightFetchesRef = useRef(new Set<VideoFlavor>());
   const lastRefreshAtRef = useRef(new Map<VideoFlavor, number>());
   const pendingDownloadsRef = useRef<PixabayVideoDownloaded[]>([]);
@@ -92,15 +91,14 @@ export function usePixabaySlots(flavor: VideoFlavor, isPlaying: boolean): UsePix
     [isPlayingRef, videoRefs],
   );
 
-  const ensurePort = useCallback(async () => {
-    if (portRef.current) return portRef.current;
-    const port = await getMediaPort();
-    portRef.current = port;
-    return port;
+  const ensureAdapter = useCallback(async () => {
+    if (adapterReadyRef.current) return;
+    await playbackAdapter.init();
+    adapterReadyRef.current = true;
   }, []);
 
   const toUrl = useCallback((path: string): string => {
-    return joinMediaUrl(`http://127.0.0.1:${portRef.current}`, path);
+    return playbackAdapter.toMediaUrl(path);
   }, []);
 
   const setSlotSrc = useCallback(
@@ -234,7 +232,7 @@ export function usePixabaySlots(flavor: VideoFlavor, isPlaying: boolean): UsePix
       inflightFetchesRef.current.add(slotFlavor);
 
       try {
-        await ensurePort();
+        await ensureAdapter();
         const paths = await fetchPixabayVideos(slotFlavor);
         const urls = paths.map((path) => toUrl(path));
         library.registerUrls(slotFlavor, urls);
@@ -244,12 +242,12 @@ export function usePixabaySlots(flavor: VideoFlavor, isPlaying: boolean): UsePix
         inflightFetchesRef.current.delete(slotFlavor);
       }
     },
-    [ensureFlavorPlayback, ensurePort, flavorRef, library, toUrl],
+    [ensureAdapter, ensureFlavorPlayback, flavorRef, library, toUrl],
   );
 
   const ingestDownload = useCallback(
     (event: PixabayVideoDownloaded) => {
-      if (!portRef.current) {
+      if (!adapterReadyRef.current) {
         pendingDownloadsRef.current.push(event);
         return;
       }
@@ -269,7 +267,7 @@ export function usePixabaySlots(flavor: VideoFlavor, isPlaying: boolean): UsePix
   );
 
   const flushPendingDownloads = useCallback(() => {
-    if (!portRef.current || pendingDownloadsRef.current.length === 0) return;
+    if (!adapterReadyRef.current || pendingDownloadsRef.current.length === 0) return;
 
     const queued = [...pendingDownloadsRef.current];
     pendingDownloadsRef.current = [];
@@ -373,7 +371,7 @@ export function usePixabaySlots(flavor: VideoFlavor, isPlaying: boolean): UsePix
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    void ensurePort().then(() => {
+    void ensureAdapter().then(() => {
       flushPendingDownloads();
       ensureFlavorPlayback(flavorRef.current);
     });
@@ -393,7 +391,7 @@ export function usePixabaySlots(flavor: VideoFlavor, isPlaying: boolean): UsePix
       if (!unlisten) return;
       void Promise.resolve(unlisten()).catch(() => {});
     };
-  }, [ensureFlavorPlayback, ensurePort, flavorRef, flushPendingDownloads, ingestDownload]);
+  }, [ensureAdapter, ensureFlavorPlayback, flavorRef, flushPendingDownloads, ingestDownload]);
 
   const slots: PixabaySlot[] = videoRefs.map((ref, slot) => ({
     ref,

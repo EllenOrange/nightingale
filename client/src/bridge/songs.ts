@@ -2,7 +2,7 @@ import type { AnalysisQueue } from "@/types/AnalysisQueue";
 import type { LoadSongsParams } from "@/types/LoadSongsParams";
 import type { SongsMeta } from "@/types/SongsMeta";
 import type { SongsStore } from "@/types/SongsStore";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./runtime";
 
 export function getPreloadedSongsMeta(): SongsMeta | undefined {
   if (typeof window === "undefined") {

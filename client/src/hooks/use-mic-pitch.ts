@@ -1,8 +1,8 @@
 import {
-  tauriMicrophoneAdapter,
+  microphoneAdapter,
   type MicCaptureOptions,
   type MicrophoneAdapter,
-} from "@/adapters/microphone";
+} from "@/bridge/microphone";
 import { useMicSamples } from "@/hooks/use-mic-samples";
 import { PITCH_WINDOW_SAMPLES } from "@/lib/pitch/constants";
 import { createMicPitchDetector, detectPitchFromSamplesMic } from "@/lib/pitch/detect";
@@ -19,7 +19,7 @@ export interface MicDevice {
   label: string;
 }
 
-const defaultAdapter = tauriMicrophoneAdapter;
+const defaultAdapter = microphoneAdapter;
 
 export function useMicDevices(adapter: MicrophoneAdapter = defaultAdapter) {
   const [devices, setDevices] = useState<MicDevice[]>([]);

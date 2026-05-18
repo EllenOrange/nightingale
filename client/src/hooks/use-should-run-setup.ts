@@ -1,4 +1,4 @@
-import { isAppReady } from "@/tauri-bridge/setup";
+import { isAppReady } from "@/bridge/setup";
 import { atom, useAtom } from "jotai";
 import { useEffect } from "react";
 

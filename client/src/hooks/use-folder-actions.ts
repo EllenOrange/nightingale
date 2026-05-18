@@ -1,6 +1,6 @@
 import { MENU, SONGS, SONGS_META } from "@/queries/keys";
 import { useSongsMeta } from "@/queries/use-songs";
-import { selectFolder, triggerScan } from "@/tauri-bridge/folder";
+import { selectFolder, triggerScan } from "@/bridge/folder";
 import { useQueryClient } from "@tanstack/react-query";
 
 export const useFolderActions = () => {

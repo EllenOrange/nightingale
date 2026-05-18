@@ -237,6 +237,14 @@ pub fn nightingale_dir() -> PathBuf {
 }
 
 pub fn default_nightingale_dir() -> PathBuf {
+    if let Some(path) = std::env::var_os("NIGHTINGALE_DATA_PATH") {
+        let p = PathBuf::from(path);
+        
+        if !p.as_os_str().is_empty() {
+            return p;
+        }
+    }
+
     dirs::home_dir()
         .expect("could not find home directory")
         .join(".nightingale")

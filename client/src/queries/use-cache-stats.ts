@@ -1,4 +1,4 @@
-import { calculateCacheStats } from "@/tauri-bridge/cache";
+import { calculateCacheStats } from "@/bridge/cache";
 import { useQuery } from "@tanstack/react-query";
 import { CACHE_STATS } from "./keys";
 

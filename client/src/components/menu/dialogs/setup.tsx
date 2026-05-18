@@ -1,4 +1,4 @@
-import { onSetupError, onSetupProgress, triggerSetup } from "@/tauri-bridge/setup";
+import { onSetupError, onSetupProgress, triggerSetup } from "@/bridge/setup";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavInput } from "@/hooks/navigation/use-nav-input";
 import {
@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { exit } from "@/tauri-bridge/exit";
+import { exit, EXIT_SUPPORTED } from "@/bridge/exit";
 import { Progress } from "@/components/ui/progress";
 import type { SetupProgress } from "@/types/SetupProgress";
 import type { SetupStep } from "@/types/SetupStep";
@@ -19,7 +19,7 @@ import logoSrc from "@/assets/images/logo_square.png";
 import { useShouldRunSetup } from "@/hooks/use-should-run-setup";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { selectFolderRaw } from "@/tauri-bridge/folder";
+import { selectFolderRaw } from "@/bridge/folder";
 import { useConfig } from "@/queries/use-config";
 import { ANALYSIS_QUEUE, CONFIG, MENU, SONGS, SONGS_META } from "@/queries/keys";
 import { useQueryClient } from "@tanstack/react-query";
@@ -43,12 +43,13 @@ const InitialStep = ({ toNextStep }: InitialStepProps) => {
           (NVIDIA GPUs only).
         </AlertDialogDescription>
         <AlertDialogDescription>
-          This may take a few minutes. You can exit at any time if you'd prefer not to continue.
+          This may take a few minutes.{" "}
+          {EXIT_SUPPORTED ? "You can exit at any time if you'd prefer not to continue." : ""}
         </AlertDialogDescription>
         <AlertDialogDescription>This only happens once.</AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel onClick={() => exit()}>Exit</AlertDialogCancel>
+        {EXIT_SUPPORTED && <AlertDialogCancel onClick={() => exit()}>Exit</AlertDialogCancel>}
         <AlertDialogAction onClick={toNextStep}>Continue</AlertDialogAction>
       </AlertDialogFooter>
     </>
@@ -91,7 +92,7 @@ const ChangeDataFolderStep = ({ onStart, folder, setFolder }: ChangeDataStepProp
       </>
     </AlertDialogHeader>
     <AlertDialogFooter>
-      <AlertDialogCancel onClick={() => exit()}>Exit</AlertDialogCancel>
+      {EXIT_SUPPORTED && <AlertDialogCancel onClick={() => exit()}>Exit</AlertDialogCancel>}
       <AlertDialogAction onClick={onStart}>Continue</AlertDialogAction>
     </AlertDialogFooter>
   </>
@@ -111,9 +112,11 @@ const LoadStep = ({ action, percent }: LoadStepProps) => (
         <Progress value={percent} />
       </div>
     </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel onClick={() => exit()}>Exit</AlertDialogCancel>
-    </AlertDialogFooter>
+    {EXIT_SUPPORTED && (
+      <AlertDialogFooter>
+        <AlertDialogCancel onClick={() => exit()}>Exit</AlertDialogCancel>
+      </AlertDialogFooter>
+    )}
   </>
 );
 
@@ -129,9 +132,11 @@ const ErrorStep = ({ error }: ErrorStepProps) => (
         <code>{error}</code>
       </AlertDialogDescription>
     </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogAction onClick={() => exit()}>Exit</AlertDialogAction>
-    </AlertDialogFooter>
+    {EXIT_SUPPORTED && (
+      <AlertDialogFooter>
+        <AlertDialogAction onClick={() => exit()}>Exit</AlertDialogAction>
+      </AlertDialogFooter>
+    )}
   </>
 );
 
@@ -222,7 +227,7 @@ export const Setup = () => {
         if (navAction.back) {
           if (step === "finish") {
             setShouldRunSetup(false);
-          } else {
+          } else if (EXIT_SUPPORTED) {
             exit();
           }
 
@@ -235,7 +240,7 @@ export const Setup = () => {
           } else if (step === "finish") {
             void invalidatePostSetupState();
             setShouldRunSetup(false);
-          } else if (step === "error") {
+          } else if (step === "error" && EXIT_SUPPORTED) {
             exit();
           }
         }

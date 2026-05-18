@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { PROFILES } from "./keys";
-import { loadProfiles } from "@/tauri-bridge/profile";
+import { loadProfiles } from "@/bridge/profile";
 import { ProfileStore } from "@/types/ProfileStore";
 
 export const useProfiles = () =>

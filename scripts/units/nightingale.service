@@ -1,0 +1,34 @@
+[Unit]
+Description=Nightingale karaoke server
+Documentation=https://github.com/rzru/nightingale
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+# Loopback only - Caddy fronts the public listener with TLS on :443.
+Environment=NIGHTINGALE_BIND=127.0.0.1:8080
+# Wizard-surfaced default; the user can repoint this from the in-app setup
+# flow and the new path is persisted in config.json (app_core::AppConfig).
+Environment=NIGHTINGALE_DATA_PATH=@DATA_DIR@
+Environment=RUST_LOG=info,tower_http=info,server=info
+ExecStart=/usr/local/bin/nightingale
+Restart=on-failure
+RestartSec=2s
+# Vendor downloads (python/uv/ffmpeg) and analyser child processes need
+# enough fds; the default 1024 trips on a busy library.
+LimitNOFILE=65536
+
+# Light sandboxing - keep the data dir writable but lock the rest of the
+# filesystem down to reads. Songs folders the user picks later in the app
+# must be readable by the service user.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths=@DATA_DIR@
+
+[Install]
+WantedBy=multi-user.target

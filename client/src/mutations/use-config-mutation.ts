@@ -1,6 +1,6 @@
 import { CONFIG } from "@/queries/keys";
 import { useConfig } from "@/queries/use-config";
-import { loadConfig, saveConfig } from "@/tauri-bridge/config";
+import { loadConfig, saveConfig } from "@/bridge/config";
 import { AppConfig } from "@/types/AppConfig";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";

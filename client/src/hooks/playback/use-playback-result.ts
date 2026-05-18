@@ -14,7 +14,7 @@ import {
 } from "@/contexts/playback";
 import { PROFILES } from "@/queries/keys";
 import { useProfiles } from "@/queries/use-profiles";
-import { addScore } from "@/tauri-bridge/profile";
+import { addScore } from "@/bridge/profile";
 import type { ScoreRecord } from "@/types/ScoreRecord";
 import type { Song } from "@/types/Song";
 import { useQueryClient } from "@tanstack/react-query";

@@ -8,11 +8,11 @@ import {
 import { useDialog } from "@/hooks/use-dialog";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
 import { useUpdate, type UpdateState } from "@/queries/use-update";
-import { openUrl } from "@/tauri-bridge/opener";
+import { openUrl } from "@/bridge/opener";
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useInstallFlow, type InstallFlow } from "@/hooks/update";
-import { RELEASES_URL, type FocusCtx, type ViewParts } from "./parts";
+import { RELEASES_URL, SELF_HOSTED_DOCS_URL, type FocusCtx, type ViewParts } from "./parts";
 import { availableView } from "./views/available";
 import { checkingView } from "./views/checking";
 import { downloadingView } from "./views/downloading";
@@ -29,6 +29,7 @@ interface Actions {
   close: () => void;
   refetch: () => void;
   openReleases: () => void;
+  openSelfHostedDocs: () => void;
 }
 
 const versionLabel = (state: UpdateState, fallback: string): string =>
@@ -88,8 +89,10 @@ const pickView = (
     case "unsupported":
       return unsupportedView({
         ctx,
+        channel: state.channel,
         onClose: actions.close,
         onOpenReleases: actions.openReleases,
+        onOpenSelfHostedDocs: actions.openSelfHostedDocs,
       });
     case "checking":
       return checkingView({ ctx, onClose: actions.close });
@@ -159,6 +162,15 @@ export const UpdateDialog = () => {
     }
   }, []);
 
+  const openSelfHostedDocs = useCallback(async () => {
+    try {
+      await openUrl(SELF_HOSTED_DOCS_URL);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Couldn't open docs: ${message}`);
+    }
+  }, []);
+
   const refetch = useCallback(() => {
     updateState.refetch();
   }, [updateState.refetch]);
@@ -174,7 +186,7 @@ export const UpdateDialog = () => {
     updateState,
     installFlow,
     { open, focusedIndex },
-    { close, refetch, openReleases },
+    { close, refetch, openReleases, openSelfHostedDocs },
   );
 
   const blockClose = (e: { preventDefault: () => void }) => {

@@ -1,5 +1,6 @@
 import { AppConfig } from "@/types/AppConfig";
-import { invoke } from "@tauri-apps/api/core";
+import { updateMicMirrorGain } from "./microphone";
+import { invoke } from "./runtime";
 
 export function getPreloadedConfig(): AppConfig | undefined {
   if (typeof window === "undefined") {
@@ -14,5 +15,11 @@ export const loadConfig = async (): Promise<AppConfig> => {
 };
 
 export const saveConfig = async (config: AppConfig): Promise<AppConfig> => {
-  return await invoke<AppConfig>("save_config", { config });
+  const saved = await invoke<AppConfig>("save_config", { config });
+
+  if (saved.mic_mirror_gain != null) {
+    updateMicMirrorGain(saved.mic_mirror_gain);
+  }
+
+  return saved;
 };

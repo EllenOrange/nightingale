@@ -1,4 +1,4 @@
-import { downloadAndInstallUpdate, relaunchApp } from "@/tauri-bridge/updater";
+import { downloadAndInstallUpdate, relaunchApp } from "@/bridge/updater";
 import type { Update } from "@tauri-apps/plugin-updater";
 import { useCallback, useReducer } from "react";
 import { toast } from "sonner";

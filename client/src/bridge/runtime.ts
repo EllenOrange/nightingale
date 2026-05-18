@@ -1,0 +1,155 @@
+/**
+ * Single source of truth for `invoke`/`listen`/`Channel` so the bridge layer
+ * works identically in two transports:
+ *  - Tauri: uses `@tauri-apps/api/core` + `/event` directly.
+ *  - Web: posts JSON to `/api/cmd/<name>` and multiplexes events over a single
+ *    `/ws` connection.
+ *
+ * Detection happens once at module-eval. Switching transports requires a full
+ * page reload, which matches Tauri's existing semantics (no IPC hot-swap).
+ */
+
+import { Channel as TauriChannel, invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
+
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+export type EventCallback<T> = (event: { payload: T }) => void;
+
+type InvokeArgs = Record<string, unknown> | undefined;
+
+// ─── Web transport ──────────────────────────────────────────────────────────
+
+/**
+ * Web-side `Channel` lookalike. The Tauri `Channel` is used by mic capture to
+ * stream high-rate PCM frames over IPC; the web build never crosses the
+ * bridge for that path (the browser owns the mic), so this class only needs
+ * to satisfy the type at construction time and not actually carry traffic.
+ */
+class WebChannel<T> {
+  onmessage: ((message: T) => void) | null = null;
+}
+
+const apiCall = async <T>(name: string, args: InvokeArgs): Promise<T> => {
+  const res = await fetch(`/api/cmd/${name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args ?? {}),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(body || `HTTP ${res.status}`);
+  }
+
+  if (res.status === 204) return undefined as T;
+
+  return (await res.json()) as T;
+};
+
+interface WsEnvelope {
+  type: string;
+  payload?: unknown;
+}
+
+type WsListener = (payload: unknown) => void;
+
+let socket: WebSocket | null = null;
+let connecting: Promise<WebSocket> | null = null;
+const wsListeners = new Map<string, Set<WsListener>>();
+
+const wsUrl = (): string => {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+
+  return `${proto}//${window.location.host}/ws`;
+};
+
+const ensureSocket = (): Promise<WebSocket> => {
+  if (socket && socket.readyState === WebSocket.OPEN) return Promise.resolve(socket);
+
+  if (connecting) return connecting;
+
+  connecting = new Promise((resolve, reject) => {
+    const next = new WebSocket(wsUrl());
+
+    next.onopen = () => {
+      socket = next;
+      connecting = null;
+      resolve(next);
+    };
+
+    next.onerror = (err) => {
+      connecting = null;
+      reject(err);
+    };
+
+    next.onclose = () => {
+      if (socket === next) socket = null;
+    };
+
+    next.onmessage = (msg) => {
+      let envelope: WsEnvelope;
+
+      try {
+        envelope = JSON.parse(msg.data) as WsEnvelope;
+      } catch {
+        return;
+      }
+
+      const subscribers = wsListeners.get(envelope.type);
+
+      if (!subscribers) return;
+
+      for (const fn of subscribers) {
+        try {
+          fn(envelope.payload);
+        } catch {
+          // Listeners must not break the fan-out loop.
+        }
+      }
+    };
+  });
+
+  return connecting;
+};
+
+const webInvoke = async <T>(name: string, args?: InvokeArgs): Promise<T> => apiCall<T>(name, args);
+
+const webListen = async <T>(event: string, cb: EventCallback<T>): Promise<UnlistenFn> => {
+  void ensureSocket().catch(() => {
+    // Server might be down momentarily; the next attempt re-opens.
+  });
+
+  let subscribers = wsListeners.get(event);
+
+  if (!subscribers) {
+    subscribers = new Set();
+    wsListeners.set(event, subscribers);
+  }
+
+  const wrapped: WsListener = (payload) => cb({ payload: payload as T });
+
+  subscribers.add(wrapped);
+
+  return () => {
+    const set = wsListeners.get(event);
+
+    set?.delete(wrapped);
+
+    if (set && set.size === 0) wsListeners.delete(event);
+  };
+};
+
+// ─── Exports ────────────────────────────────────────────────────────────────
+
+export const invoke: <T>(name: string, args?: InvokeArgs) => Promise<T> = isTauri
+  ? (tauriInvoke as <T>(name: string, args?: InvokeArgs) => Promise<T>)
+  : webInvoke;
+
+export const listen: <T>(event: string, cb: EventCallback<T>) => Promise<UnlistenFn> = isTauri
+  ? (tauriListen as <T>(event: string, cb: EventCallback<T>) => Promise<UnlistenFn>)
+  : webListen;
+
+export const Channel = isTauri ? TauriChannel : (WebChannel as unknown as typeof TauriChannel);
+
+export type { UnlistenFn };

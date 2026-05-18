@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
 import { useDialog } from "@/hooks/use-dialog";
-import { exit } from "@/tauri-bridge/exit";
+import { exit } from "@/bridge/exit";
 import { useCallback } from "react";
 import { cn } from "@/lib/utils";
 

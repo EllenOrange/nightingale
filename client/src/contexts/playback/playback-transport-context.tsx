@@ -9,7 +9,7 @@
  */
 
 import { type AudioPlayer, type TimeSubscriber, useAudioPlayer } from "@/hooks/use-audio-player";
-import { ensureMp3Stems, onStemsReady } from "@/tauri-bridge/playback";
+import { ensureMp3Stems, onStemsReady } from "@/bridge/playback";
 import {
   createContext,
   useCallback,

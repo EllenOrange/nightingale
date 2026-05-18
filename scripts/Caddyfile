@@ -1,0 +1,67 @@
+# managed-by: nightingale-installer
+#
+# Nightingale LAN front-door for self-hosted web mode.
+#
+# Both HTTP and HTTPS proxy to the same plain-HTTP nightingale.service on
+# 127.0.0.1:8080. HTTP is the default, working path for every device on the
+# LAN - including mic capture - because browsers (Chromium, Firefox, Safari)
+# treat `*.local` mDNS names as a "potentially trustworthy" origin, so the
+# secure-context check that gates `navigator.mediaDevices.getUserMedia`
+# passes without TLS. HTTPS is opt-in: it's wired up automatically with
+# Caddy's local CA so users that *want* a green padlock can install the
+# trust root on each device, but nothing in the product requires it.
+#
+# Because HTTPS is optional, we deliberately do NOT redirect HTTP -> HTTPS.
+# A redirect would force every visitor through the trust-root install flow
+# before they can use the app, which is the opposite of what we want.
+#
+# Intentionally no global options block (`{ ... }` at the top) so this
+# file can be imported into an operator's existing Caddyfile via
+# `import Caddyfile.d/*.caddy` from any position - global options must be
+# the first server block in the effective config, which can't be
+# guaranteed when we're added as an import. The `:443` block uses the
+# per-site `tls internal { on_demand }` shorthand instead of the global
+# `local_certs` directive; both end up using Caddy's local CA, and the
+# per-site form also waives the `ask` endpoint requirement that on-demand
+# TLS otherwise imposes (internal CA can't issue malicious certs).
+
+# ── HTTP listener (default working path) ────────────────────────────────
+#
+# Matches every hostname/IP on port 80 - `<host>.local`, the bare LAN IP,
+# and any other name resolving here all work without extra config.
+#
+# Two handlers, in priority order:
+#   1. /root.crt is served straight from the data dir so devices that
+#      *do* want HTTPS can bootstrap trust over plain HTTP. (HTTPS would
+#      chicken-and-egg the cert install.)
+#   2. Everything else reverse-proxies to the app. `reverse_proxy` auto-
+#      upgrades to WebSocket for `/ws`, streams chunked bodies for
+#      `/media/<hash>/<kind>`, and forwards `Range` headers - all of which
+#      the audio/video transport needs.
+http:// {
+	handle /root.crt {
+		root * @DATA_DIR@
+		file_server
+	}
+	handle {
+		reverse_proxy 127.0.0.1:8080
+	}
+}
+
+# ── HTTPS listener (opt-in) ─────────────────────────────────────────────
+#
+# `:443` matches every hostname/IP that arrives over TLS. `tls internal`
+# tells Caddy to issue every certificate from its own local CA (no ACME,
+# which would fail on a pure-LAN box without public DNS / port-80
+# ingress). The `on_demand` subdirective mints a fresh cert for each SNI
+# on first contact and caches it - so `<host>.local` and the bare LAN IP
+# both work out of the box without templating per-host.
+#
+# This block stays here even when nobody installs the cert; the listener
+# is harmless and gives users that want HTTPS a one-step path.
+:443 {
+	tls internal {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:8080
+}

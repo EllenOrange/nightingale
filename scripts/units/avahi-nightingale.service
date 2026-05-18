@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!--
+  Advertises this host as `<hostname>.local` for `_https._tcp` on port 443
+  so phones, tablets, TVs and laptops on the LAN can resolve it without any
+  DNS configuration. Installed to /etc/avahi/services/nightingale.service.
+-->
+<service-group>
+  <name replace-wildcards="yes">Nightingale on %h</name>
+  <service>
+    <type>_https._tcp</type>
+    <port>443</port>
+  </service>
+</service-group>

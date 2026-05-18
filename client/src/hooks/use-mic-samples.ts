@@ -1,12 +1,12 @@
 import {
-  tauriMicrophoneAdapter,
+  microphoneAdapter,
   type MicSampleFrame,
   type MicrophoneAdapter,
   type StopListening,
-} from "@/adapters/microphone";
+} from "@/bridge/microphone";
 import { useEffect, useRef } from "react";
 
-const defaultAdapter = tauriMicrophoneAdapter;
+const defaultAdapter = microphoneAdapter;
 
 /**
  * Subscribes to the raw mono PCM frame stream while `enabled` is true. The

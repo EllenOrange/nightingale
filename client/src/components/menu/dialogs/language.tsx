@@ -22,7 +22,7 @@ import { DialogMode, useDialog } from "@/hooks/use-dialog";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
 import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { reanalyzeTranscript } from "@/tauri-bridge/analysis";
+import { reanalyzeTranscript } from "@/bridge/analysis";
 import { Song } from "@/types/Song";
 
 const LANGUAGES = [

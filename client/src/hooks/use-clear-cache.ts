@@ -1,5 +1,5 @@
 import { CACHE_STATS } from "@/queries/keys";
-import { clearAll, clearModels, clearVideos } from "@/tauri-bridge/cache";
+import { clearAll, clearModels, clearVideos } from "@/bridge/cache";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 

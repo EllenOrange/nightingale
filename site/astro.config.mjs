@@ -21,6 +21,7 @@ export default defineConfig({
         "https://nightingale.cafe/docs/profiles.html",
         "https://nightingale.cafe/docs/configuration.html",
         "https://nightingale.cafe/docs/building.html",
+        "https://nightingale.cafe/docs/self-hosted.html",
         "https://nightingale.cafe/docs/troubleshooting.html",
       ],
     }),

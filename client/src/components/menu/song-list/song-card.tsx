@@ -12,7 +12,7 @@ import { Stars } from "@/components/shared/stars";
 import { useAnalysis } from "@/hooks/use-analysis";
 import type { QueuedStatus } from "@/types/QueuedStatus";
 import type { Song } from "@/types/Song";
-import { convertFileSrc } from "@/tauri-bridge/media";
+import { convertFileSrc } from "@/bridge/media";
 import {
   AudioLinesIcon,
   LanguagesIcon,

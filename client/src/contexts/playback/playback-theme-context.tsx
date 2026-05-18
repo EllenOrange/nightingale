@@ -12,7 +12,7 @@ import {
   nextThemeIndex,
 } from "@/components/playback/background";
 import { FLAVORS, type VideoFlavor } from "@/lib/playback/video-flavor";
-import { ensurePlayableSourceVideo } from "@/tauri-bridge/playback";
+import { ensurePlayableSourceVideo } from "@/bridge/playback";
 import type { AppConfig } from "@/types/AppConfig";
 import type { Song } from "@/types/Song";
 import {

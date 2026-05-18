@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { openUrl } from "@/tauri-bridge/opener";
+import { openUrl } from "@/bridge/opener";
 import Markdown, { type Components } from "react-markdown";
 
 const COMPONENTS: Components = {

@@ -1,14 +1,8 @@
 import type { MicCaptureOptions } from "@/types/MicCaptureOptions";
 import type { MicrophoneInfo } from "@/types/MicrophoneInfo";
 import type { MicSampleFrame } from "@/types/MicSampleFrame";
-import { Channel, invoke } from "@tauri-apps/api/core";
-
-export type { MicCaptureOptions };
-export type { MicSampleFrame };
-
-export type MicSamplesCallback = (frame: MicSampleFrame) => void;
-
-const subscribers = new Set<MicSamplesCallback>();
+import { Channel, invoke } from "./runtime";
+import { dispatchMicFrame, type MicrophoneAdapter, subscribeMicSamples } from "./microphone";
 
 /**
  * Serializes start/stop so React's stop-then-start on song change can't race
@@ -17,30 +11,15 @@ const subscribers = new Set<MicSamplesCallback>();
  */
 let opChain: Promise<unknown> = Promise.resolve();
 
-const dispatch = (frame: MicSampleFrame): void => {
-  for (const cb of subscribers) {
-    try {
-      cb(frame);
-    } catch {
-      // Subscribers must not break the dispatch loop.
-    }
-  }
-};
-
 const enqueue = <T>(op: () => Promise<T>): Promise<T> => {
   const next = opChain.catch(() => undefined).then(op);
   opChain = next;
   return next;
 };
 
-export const listMicrophones = async (): Promise<MicrophoneInfo[]> => {
-  return await invoke<MicrophoneInfo[]>("list_microphones");
-};
+const listDevices = (): Promise<MicrophoneInfo[]> => invoke<MicrophoneInfo[]>("list_microphones");
 
-export const startMicCapture = (
-  preferred: string | null,
-  options: MicCaptureOptions,
-): Promise<string> =>
+const startCapture = (preferred: string | null, options: MicCaptureOptions): Promise<string> =>
   enqueue(async () => {
     /**
      * Always allocate a fresh Channel: when Rust drops the previous one in
@@ -49,7 +28,7 @@ export const startMicCapture = (
      * spam "Couldn't find callback id ..." for every frame.
      */
     const channel = new Channel<MicSampleFrame>();
-    channel.onmessage = dispatch;
+    channel.onmessage = dispatchMicFrame;
     return await invoke<string>("start_mic_capture", {
       preferred,
       options,
@@ -57,14 +36,14 @@ export const startMicCapture = (
     });
   });
 
-export const stopMicCapture = (): Promise<void> =>
+const stopCapture = (): Promise<void> =>
   enqueue(async () => {
     await invoke("stop_mic_capture");
   });
 
-export const subscribeMicSamples = (cb: MicSamplesCallback): (() => void) => {
-  subscribers.add(cb);
-  return () => {
-    subscribers.delete(cb);
-  };
+export const tauriMicrophoneAdapter: MicrophoneAdapter = {
+  listDevices,
+  startCapture,
+  stopCapture,
+  onSamples: async (cb) => subscribeMicSamples(cb),
 };

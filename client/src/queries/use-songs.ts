@@ -1,11 +1,6 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ANALYSIS_QUEUE, SONGS, SONGS_META, MENU } from "./keys";
-import {
-  getPreloadedSongsMeta,
-  loadAnalysisQueue,
-  loadSongs,
-  loadSongsMeta,
-} from "@/tauri-bridge/songs";
+import { getPreloadedSongsMeta, loadAnalysisQueue, loadSongs, loadSongsMeta } from "@/bridge/songs";
 import { useLibraryFilter } from "@/hooks/use-library-filter";
 import { useSearch } from "@/hooks/use-search";
 import { useRef, useState } from "react";

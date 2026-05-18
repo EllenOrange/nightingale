@@ -1,13 +1,12 @@
-import { minimizeWindow, triggerFrontendReady, windowImmersive } from "@/tauri-bridge/window";
-import { isFullScreen as tauriIsFullScreen, setFullScreen } from "@/tauri-bridge/fullScreen";
-import { loadConfig, saveConfig } from "@/tauri-bridge/config";
+import { minimizeWindow, triggerFrontendReady, windowImmersive } from "@/bridge/window";
+import { isFullScreen as tauriIsFullScreen, setFullScreen } from "@/bridge/fullScreen";
+import { loadConfig, saveConfig } from "@/bridge/config";
+import { isTauri } from "@/bridge/runtime";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MinusIcon, SquareIcon, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function TauriAppShell({ children }: { children: React.ReactNode }) {
-  const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-
   useEffect(() => {
     triggerFrontendReady();
   }, []);
@@ -28,7 +27,7 @@ export function TauriAppShell({ children }: { children: React.ReactNode }) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isTauri]);
+  }, []);
 
   if (!isTauri) {
     return children;

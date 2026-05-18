@@ -2,7 +2,7 @@
  * Loads the transcript for the current track and normalizes segments for display.
  */
 
-import { loadTranscript } from "@/tauri-bridge/playback";
+import { loadTranscript } from "@/bridge/playback";
 import type { Segment, Transcript } from "@/types/Transcript";
 import { useEffect, useState } from "react";
 import { splitLongSegments } from "@/utils/playback/transcript-segments";

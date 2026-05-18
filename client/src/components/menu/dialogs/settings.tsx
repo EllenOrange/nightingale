@@ -22,7 +22,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { useEffect, useRef, useState } from "react";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
-import { setFullScreen, isFullScreen as tauriIsFullScreen } from "@/tauri-bridge/fullScreen";
+import { setFullScreen, isFullScreen as tauriIsFullScreen } from "@/bridge/fullScreen";
 import { useDialog } from "@/hooks/use-dialog";
 import { useConfig } from "@/queries/use-config";
 import { useConfigMutation } from "@/mutations/use-config-mutation";

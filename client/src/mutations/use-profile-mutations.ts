@@ -1,5 +1,5 @@
 import { PROFILES } from "@/queries/keys";
-import { createProfile, deleteProfile, switchProfile } from "@/tauri-bridge/profile";
+import { createProfile, deleteProfile, switchProfile } from "@/bridge/profile";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 

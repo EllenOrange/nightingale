@@ -1,7 +1,6 @@
 import type { AudioPaths } from "@/types/Transcript";
 import type { Transcript } from "@/types/Transcript";
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke, listen, type UnlistenFn } from "./runtime";
 
 export const loadTranscript = async (fileHash: string): Promise<Transcript> => {
   return await invoke<Transcript>("load_transcript", { fileHash });

@@ -1,5 +1,5 @@
 import { CacheStats } from "@/types/CacheStats";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./runtime";
 
 export const calculateCacheStats = async (): Promise<CacheStats> => {
   return await invoke<CacheStats>("calculate_cache_stats");

@@ -1,5 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { invoke, listen } from "./runtime";
 import type { LibraryMenuFilters } from "@/types/LibraryMenuFilters";
 import { ShiftDone } from "@/types/ShiftDone";
 

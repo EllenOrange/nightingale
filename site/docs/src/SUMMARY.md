@@ -15,5 +15,6 @@
 - [Backgrounds](./backgrounds.md)
 - [Profiles](./profiles.md)
 - [Configuration](./configuration.md)
+- [Self-Hosted Web Mode](./self-hosted.md)
 - [Building from Source](./building.md)
 - [Troubleshooting](./troubleshooting.md)

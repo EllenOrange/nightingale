@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import { EXIT_SUPPORTED } from "@/bridge/exit";
 import { useMenuFocus } from "@/contexts/menu-focus-context";
 import { useClearCache } from "@/hooks/use-clear-cache";
 import { useCurrentProfile } from "@/hooks/use-current-profile";
@@ -234,10 +235,12 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
                 <InfoIcon />
                 About
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("exit")}>
-                <DoorOpenIcon />
-                Exit
-              </DropdownMenuItem>
+              {EXIT_SUPPORTED && (
+                <DropdownMenuItem onClick={() => setMode("exit")}>
+                  <DoorOpenIcon />
+                  Exit
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>

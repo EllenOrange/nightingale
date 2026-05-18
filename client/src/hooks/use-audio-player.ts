@@ -8,8 +8,8 @@
  * pair because BufferSourceNode is one-shot: pause/seek recreate sources rather than mutating time.
  */
 
-import type { PlaybackAdapter } from "@/adapters/playback";
-import { joinMediaUrl, tauriPlaybackAdapter } from "@/adapters/playback";
+import type { PlaybackAdapter } from "@/bridge/playback";
+import { playbackAdapter } from "@/bridge/playback";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type TimeSubscriber = (time: number) => void;
@@ -37,7 +37,7 @@ export function useAudioPlayer(
   fileHash: string,
   initialGuideVolume: number,
   enabled: boolean,
-  adapter: PlaybackAdapter = tauriPlaybackAdapter,
+  adapter: PlaybackAdapter = playbackAdapter,
 ): AudioPlayer {
   const ctxRef = useRef<AudioContext | null>(null);
   const instrumentalBufRef = useRef<AudioBuffer | null>(null);
@@ -177,14 +177,15 @@ export function useAudioPlayer(
 
     const isCancelled = () => cancelled || cancelledRef.current;
 
-    Promise.all([adapter.getMediaBaseUrl(), adapter.getAudioPaths(fileHash)])
-      .then(async ([baseUrl, paths]) => {
+    adapter
+      .getAudioPaths(fileHash)
+      .then(async (paths) => {
         if (isCancelled()) {
           return;
         }
 
         const [instData, vocData] = await Promise.all([
-          fetch(joinMediaUrl(baseUrl, paths.instrumental)).then((r) => {
+          fetch(paths.instrumental).then((r) => {
             if (!r.ok) {
               throw new Error(`Failed to fetch instrumental: ${r.status}`);
             }
@@ -192,7 +193,7 @@ export function useAudioPlayer(
             return r.arrayBuffer();
           }),
 
-          fetch(joinMediaUrl(baseUrl, paths.vocals)).then((r) => {
+          fetch(paths.vocals).then((r) => {
             if (!r.ok) {
               throw new Error(`Failed to fetch vocals: ${r.status}`);
             }

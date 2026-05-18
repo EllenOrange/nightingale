@@ -1,6 +1,6 @@
 import { Song } from "@/types/Song";
 import { Stepper } from "./stepper";
-import { onShiftKeyDone, onShiftTempoDone, shiftKey, shiftTempo } from "@/tauri-bridge/analysis";
+import { onShiftKeyDone, onShiftTempoDone, shiftKey, shiftTempo } from "@/bridge/analysis";
 import { useEffect, useRef } from "react";
 import { calculateKeyShift } from "@/utils/shift-key";
 

@@ -9,6 +9,7 @@ import { Sidebar } from "@/components/menu/sidebar/sidebar";
 import { EmptySongList } from "@/components/menu/song-list/empty-song-list";
 import { SongList } from "@/components/menu/song-list/song-list";
 import { SidebarInset } from "@/components/ui/sidebar";
+import { EXIT_SUPPORTED } from "@/bridge/exit";
 import { MenuFocusProvider } from "@/contexts/menu-focus-context";
 import { useMenuNav } from "@/hooks/navigation/use-menu-nav";
 import { useDialog } from "@/hooks/use-dialog";
@@ -26,7 +27,9 @@ const MenuInner = () => {
   const onBack = useCallback(() => {
     setMode((prev) => {
       if (prev === null) {
-        return "exit";
+        // Web mode has no app to exit; swallow the back input rather than
+        // surfacing a dialog whose confirm action can't do anything useful.
+        return EXIT_SUPPORTED ? "exit" : null;
       }
 
       if (prev === "exit") {
@@ -51,7 +54,7 @@ const MenuInner = () => {
 
   return (
     <Sidebar>
-      <ExitDialog />
+      {EXIT_SUPPORTED && <ExitDialog />}
       <SettingsDialog />
       <CreateProfileDialog />
       <SelectProfileDialog />

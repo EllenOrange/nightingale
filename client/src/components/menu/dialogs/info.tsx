@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { useDialog } from "@/hooks/use-dialog";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
-import { openUrl } from "@/tauri-bridge/opener";
+import { openUrl } from "@/bridge/opener";
 import { useRef } from "react";
 import { cn } from "@/lib/utils";
 import { version } from "../../../../package.json";

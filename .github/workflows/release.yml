@@ -151,3 +151,64 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.body }}
           args: ${{ matrix.args }}
           includeUpdaterJson: ${{ matrix.updater }}
+
+  build-server:
+    name: Build server ${{ matrix.target }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: client/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: server-${{ matrix.target }}
+
+      # `rust-embed` reads `client/dist/` at compile time, so the React bundle
+      # must exist before `cargo build -p server` runs.
+      - name: Build frontend bundle
+        working-directory: client
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Build server binary
+        run: cargo build --release --locked -p server --target ${{ matrix.target }}
+
+      - name: Package server tarball
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/server dist/nightingale
+          tar -C dist -czf nightingale-server-${{ matrix.target }}.tar.gz nightingale
+          sha256sum nightingale-server-${{ matrix.target }}.tar.gz \
+            > nightingale-server-${{ matrix.target }}.tar.gz.sha256
+
+      - name: Upload to draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          files: |
+            nightingale-server-${{ matrix.target }}.tar.gz
+            nightingale-server-${{ matrix.target }}.tar.gz.sha256

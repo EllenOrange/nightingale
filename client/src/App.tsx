@@ -11,7 +11,7 @@ import { useConfig } from "./queries/use-config";
 import { useUpdate } from "./queries/use-update";
 import { Setup } from "./components/menu/dialogs/setup";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { UPDATES_SUPPORTED } from "./tauri-bridge/platform";
+import { UPDATES_SUPPORTED } from "./bridge/platform";
 
 const queryClient = new QueryClient();
 

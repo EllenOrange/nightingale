@@ -1,11 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { type Update } from "@tauri-apps/plugin-updater";
 import { UPDATER } from "./keys";
-import { checkForUpdate } from "@/tauri-bridge/updater";
-import { UPDATES_SUPPORTED } from "@/tauri-bridge/platform";
+import { checkForUpdate } from "@/bridge/updater";
+import { UPDATE_CHANNEL, UPDATES_SUPPORTED, type UpdateChannel } from "@/bridge/platform";
+
+/**
+ * The `"unsupported"` variant carries the reason so the dialog can render
+ * targeted copy (Linux-Tauri vs self-hosted web). Every other variant only
+ * matters in the auto-update path and stays byte-identical to the Tauri
+ * non-Linux behaviour so the `availableView` / `checkingView` / `errorView`
+ * branches keep narrowing the way they do today.
+ */
+export type UnsupportedChannel = Exclude<UpdateChannel, "auto">;
 
 export type UpdateState =
-  | { status: "unsupported" }
+  | { status: "unsupported"; channel: UnsupportedChannel }
   | { status: "checking" }
   | { status: "error"; error: Error; isOffline: boolean }
   | { status: "up-to-date" }
@@ -37,7 +46,12 @@ const buildState = (query: {
   error: unknown;
 }): UpdateState => {
   if (!UPDATES_SUPPORTED) {
-    return { status: "unsupported" };
+    // The `auto` channel is the only one where `UPDATES_SUPPORTED` is true,
+    // so anything left over here is necessarily one of the unsupported
+    // channels. Narrow explicitly so the dialog can switch on it.
+    const channel: UnsupportedChannel =
+      UPDATE_CHANNEL === "self-hosted-web" ? "self-hosted-web" : "linux-tauri";
+    return { status: "unsupported", channel };
   }
 
   if (query.isLoading || query.isFetching) {
