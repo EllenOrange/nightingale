@@ -41,8 +41,10 @@
 #
 # Build prerequisites for source mode (in the *invoking* user's login shell,
 # not root's): cargo, node, pnpm. rustup / fnm / mise / nvm / asdf are all
-# fine - the script re-execs the build through `sudo -iu $SUDO_USER -- bash
-# -lc` so your shell init has a chance to load.
+# fine - the script re-execs the build through `sudo -u $SUDO_USER -H -- bash
+# -ilc` so both ~/.bash_profile (login) and ~/.bashrc (interactive) load,
+# which is the only way to pick up tool managers gated behind the common
+# `[[ $- != *i* ]] && return` guard at the top of ~/.bashrc.
 
 set -euo pipefail
 
@@ -68,6 +70,13 @@ readonly UNIT_PATH="/etc/systemd/system/nightingale.service"
 readonly CADDYFILE_PATH="/etc/caddy/Caddyfile"
 readonly CADDYFILE_DROPIN_DIR="/etc/caddy/Caddyfile.d"
 readonly CADDYFILE_DROPIN_PATH="${CADDYFILE_DROPIN_DIR}/nightingale.caddy"
+# Trust root lives under /etc/caddy - the same directory caddy already
+# reads its config from, so the `caddy` system user always has read +
+# traverse access regardless of how the operator chose DATA_DIR. This
+# also keeps the data dir off caddy's read path entirely, so an operator
+# can put DATA_DIR under a 0700 user home without the installer having
+# to mutate filesystem permissions.
+readonly ROOT_CRT_PATH="/etc/caddy/nightingale-root.crt"
 readonly AVAHI_SERVICE_PATH="/etc/avahi/services/nightingale.service"
 readonly AVAHI_DAEMON_CONF="/etc/avahi/avahi-daemon.conf"
 
@@ -194,7 +203,10 @@ print_banner() {
     printf '%sInstalls nightingale.service on this Linux host, fronted by Caddy and%s\n' "$C_DIM" "$C_RST"
     printf '%sadvertised as <host>.local over mDNS. Any device on your LAN then%s\n' "$C_DIM" "$C_RST"
   fi
-  printf '%sopens http://<host>.local - mic capture works on the default HTTP URL.%s\n\n' "$C_DIM" "$C_RST"
+  printf '%sopens http://<host>.local. Browsers will tag the site "Not Secure" -%s\n' "$C_DIM" "$C_RST"
+  printf '%sthat is OK for everything except secure-context-only browser APIs (mic%s\n' "$C_DIM" "$C_RST"
+  printf '%scapture, clipboard, fullscreen). Install the LAN root cert once per%s\n' "$C_DIM" "$C_RST"
+  printf '%sdevice (instructions print at the end) to flip those on via HTTPS.%s\n\n' "$C_DIM" "$C_RST"
   printf '%sDocs: https://nightingale.cafe/docs/self-hosted.html%s\n' "$C_DIM" "$C_RST"
 }
 
@@ -323,7 +335,7 @@ configure() {
 
   prompt SERVICE_USER     NIGHTINGALE_USER     "System user for the service"        "$SERVICE_USER"
   prompt HOSTNAME_LABEL   NIGHTINGALE_HOSTNAME "mDNS name (.local)"                  "$HOSTNAME_LABEL"
-  prompt DATA_DIR         NIGHTINGALE_DATA_DIR "Data dir (config.json + root.crt)"  "$DATA_DIR"
+  prompt DATA_DIR         NIGHTINGALE_DATA_DIR "Data dir (app config + cache)"        "$DATA_DIR"
   printf '\n'
 
   if [[ "$MODE" == "source" ]]; then
@@ -372,10 +384,15 @@ detect_arch() {
 # as a systemd unit (the binary lives in /usr/lib/avahi on some distros and
 # isn't always exported to PATH, so the unit file is the more reliable
 # signal that it's installed and runnable).
+#
+# We grep the output of `list-unit-files` rather than relying on its exit
+# code: older systemd (<v245) returns 0 with empty output when no unit
+# matches, which would have given us a false positive.
 have_required_runtime() {
   have_cmd caddy || return 1
-  if have_cmd avahi-daemon; then return 0; fi
-  systemctl list-unit-files avahi-daemon.service >/dev/null 2>&1
+  have_cmd avahi-daemon && return 0
+  systemctl list-unit-files avahi-daemon.service 2>/dev/null \
+    | grep -qE '^avahi-daemon\.service[[:space:]]'
 }
 
 apt_add_caddy_repo() {
@@ -424,7 +441,10 @@ install_packages_zypper() {
 }
 
 install_packages_apk() {
-  apk add --no-cache ca-certificates curl tar caddy avahi >/dev/null
+  # `shadow` ships useradd/groupadd; stock Alpine only has BusyBox's
+  # adduser, which we don't drive. Cheaper to pull shadow on the apk
+  # path than to grow a second user-creation code path.
+  apk add --no-cache ca-certificates curl tar shadow caddy avahi >/dev/null
 }
 
 print_manual_install_help() {
@@ -685,8 +705,15 @@ ensure_user() {
     return
   fi
   log "creating system user $SERVICE_USER"
+  # /usr/sbin/nologin (usrmerge: Debian/Ubuntu/Fedora/Arch/openSUSE/...)
+  # /sbin/nologin     (Alpine and other non-usrmerged hosts)
+  # /bin/false        (last-resort fallback if nologin isn't installed)
+  local nologin
+  for nologin in /usr/sbin/nologin /sbin/nologin /bin/false; do
+    [[ -x "$nologin" ]] && break
+  done
   useradd --system --home-dir "$DATA_DIR" --no-create-home \
-          --shell /usr/sbin/nologin --comment "Nightingale karaoke server" \
+          --shell "$nologin" --comment "Nightingale karaoke server" \
           "$SERVICE_USER"
   NIGHTINGALE_DIRTY=1
 }
@@ -700,26 +727,9 @@ ensure_data_dir() {
     # runs. Files inside are left alone - a -R chown would surprise.
     chown "$SERVICE_USER":"$SERVICE_USER" "$DATA_DIR" 2>/dev/null || true
   fi
-
-  # Caddy serves /root.crt straight out of DATA_DIR. For that to work, the
-  # `caddy` system user has to be able to traverse every parent directory
-  # between `/` and DATA_DIR. We don't mutate filesystem permissions for
-  # this anymore - just warn if the operator picked a path Caddy can't
-  # reach, so they can fix it explicitly (or repoint DATA_DIR somewhere
-  # world-traversable like /var/lib/nightingale).
-  local p="$DATA_DIR" mode other
-  while [[ "$p" != "/" && -n "$p" ]]; do
-    p="$(dirname "$p")"
-    [[ "$p" == "/" ]] && break
-    mode="$(stat -c '%a' "$p" 2>/dev/null || echo "")"
-    [[ -z "$mode" ]] && continue
-    other="${mode:${#mode}-1:1}"
-    if (( ( other & 1 ) == 0 )); then
-      warn "$p has no world-traverse bit (mode ${mode}); caddy can't serve ${DATA_DIR}/root.crt"
-      warn "to enable HTTPS bootstrap either set NIGHTINGALE_DATA_DIR=/var/lib/nightingale or run: sudo chmod o+x ${p}"
-      break
-    fi
-  done
+  # No caddy-traversability check here anymore: the trust root lives
+  # under /etc/caddy/ (which caddy reads by definition), so DATA_DIR
+  # can have whatever permissions the operator wants.
 }
 
 # ── Asset resolution ───────────────────────────────────────────────────
@@ -951,17 +961,12 @@ drop_caddy_config() {
 # ── Avahi config drops ─────────────────────────────────────────────────
 
 drop_avahi_service() {
-  local assets="$1"
+  local assets="$1" src="$assets/units/avahi-nightingale.service"
   install -d -m 0755 /etc/avahi/services
-  local tmp
-  tmp="$(mktemp)"
-  cat "$assets/units/avahi-nightingale.service" > "$tmp"
-  if [[ -f "$AVAHI_SERVICE_PATH" ]] && cmp -s "$tmp" "$AVAHI_SERVICE_PATH"; then
-    rm -f "$tmp"
+  if [[ -f "$AVAHI_SERVICE_PATH" ]] && cmp -s "$src" "$AVAHI_SERVICE_PATH"; then
     return
   fi
-  install -m 0644 -o root -g root "$tmp" "$AVAHI_SERVICE_PATH"
-  rm -f "$tmp"
+  install -m 0644 -o root -g root "$src" "$AVAHI_SERVICE_PATH"
   AVAHI_DIRTY=1
 }
 
@@ -1212,12 +1217,12 @@ start_services() {
 }
 
 # Pull Caddy's local CA root cert via the admin API and publish it at
-# DATA_DIR/root.crt so devices that want HTTPS can bootstrap trust over
-# plain HTTP. The admin API listens on 127.0.0.1:2019 by default and
-# exposes /pki/ca/local with the cert as a JSON string - identical
-# response across distros, no filesystem traversal of /var/lib/caddy.
+# /etc/caddy/nightingale-root.crt so devices that want HTTPS can bootstrap
+# trust over plain HTTP. The admin API listens on 127.0.0.1:2019 by
+# default and exposes /pki/ca/local with the cert as a JSON string -
+# identical response across distros, no filesystem traversal of
+# /var/lib/caddy.
 publish_root_cert() {
-  local dst="${DATA_DIR}/root.crt"
   local tries=0 body=""
   while (( tries < 10 )); do
     body="$(curl -fsS --max-time 2 http://127.0.0.1:2019/pki/ca/local 2>/dev/null || true)"
@@ -1227,8 +1232,8 @@ publish_root_cert() {
   done
 
   if [[ -z "$body" ]]; then
-    warn "couldn't reach Caddy admin API at 127.0.0.1:2019 - skipping root.crt publish"
-    warn "if you need it, run: sudo find /var/lib/caddy -name root.crt -path '*/pki/authorities/local/*'"
+    warn "couldn't reach Caddy admin API at 127.0.0.1:2019 after 5s - skipping root.crt publish"
+    warn "Caddy may still be starting up; re-run this installer in a few seconds and the cert will be published, or check 'systemctl status caddy' for errors"
     return
   fi
 
@@ -1253,9 +1258,9 @@ publish_root_cert() {
 
   pem_tmp="$(mktemp)"
   printf '%s' "$pem" > "$pem_tmp"
-  install -m 0644 -o "$SERVICE_USER" -g "$SERVICE_USER" "$pem_tmp" "$dst"
+  install -m 0644 -o root -g root "$pem_tmp" "$ROOT_CRT_PATH"
   rm -f "$pem_tmp"
-  ok "published trust root at $dst (served at http://<host>/root.crt)"
+  ok "published trust root at $ROOT_CRT_PATH (served at http://<host>/root.crt)"
 }
 
 # ── Summary ────────────────────────────────────────────────────────────
@@ -1266,7 +1271,7 @@ print_summary() {
 
 ${C_BOLD}Nightingale is up.${C_RST}
 
-  ${C_BOLD}Open${C_RST}   http://${host}     ${C_DIM}(works as-is on every device, including mic capture)${C_RST}
+  ${C_BOLD}Open${C_RST}   http://${host}     ${C_DIM}(browser will tag this "Not Secure" - that's expected on plain HTTP)${C_RST}
   ${C_BOLD}Logs${C_RST}   journalctl -u nightingale -f
   ${C_BOLD}Status${C_RST} systemctl status nightingale caddy
 
@@ -1277,9 +1282,12 @@ ${C_BOLD}Running a host firewall?${C_RST} open ${C_BOLD}80/tcp${C_RST}, ${C_BOLD
 ${C_DIM}  ufw:       sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw allow 5353/udp${C_RST}
 ${C_DIM}  firewalld: sudo firewall-cmd --permanent --add-service={http,https,mdns} && sudo firewall-cmd --reload${C_RST}
 
-${C_BOLD}Optional - HTTPS (green padlock):${C_RST} ${C_DIM}only if you want it; HTTP is enough${C_RST}
-${C_DIM}for everything including mic, because browsers treat *.local as a${C_RST}
-${C_DIM}secure context.${C_RST}
+${C_BOLD}For mic capture (and other secure-context APIs): install the trust root.${C_RST}
+${C_DIM}Plain HTTP \`*.local\` is *not* a secure context for browsers, so${C_RST}
+${C_DIM}\`navigator.mediaDevices.getUserMedia\` and friends are blocked there.${C_RST}
+${C_DIM}You need HTTPS once - install the cert and use \`https://${host}\` from${C_RST}
+${C_DIM}then on. (You may be able to "Continue Anyway" past the warning to use${C_RST}
+${C_DIM}the rest of the app over HTTP, but mic stays disabled until trust is in.)${C_RST}
 
   ${C_DIM}# from any device on the LAN${C_RST}
   curl -O http://${host}/root.crt
@@ -1329,7 +1337,7 @@ build_steps() {
     "Filter avahi mDNS to skip virtual bridges (docker / podman / virbr / lxc)"
     "Verify ports 80 and 443 are free"
     "Enable and start avahi-daemon, caddy, nightingale"
-    "Publish Caddy's local CA root at ${datadir_d}/root.crt"
+    "Publish Caddy's local CA root at ${ROOT_CRT_PATH}"
   )
 }
 

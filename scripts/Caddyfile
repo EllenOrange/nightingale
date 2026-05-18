@@ -3,17 +3,25 @@
 # Nightingale LAN front-door for self-hosted web mode.
 #
 # Both HTTP and HTTPS proxy to the same plain-HTTP nightingale.service on
-# 127.0.0.1:8080. HTTP is the default, working path for every device on the
-# LAN - including mic capture - because browsers (Chromium, Firefox, Safari)
-# treat `*.local` mDNS names as a "potentially trustworthy" origin, so the
-# secure-context check that gates `navigator.mediaDevices.getUserMedia`
-# passes without TLS. HTTPS is opt-in: it's wired up automatically with
-# Caddy's local CA so users that *want* a green padlock can install the
-# trust root on each device, but nothing in the product requires it.
+# 127.0.0.1:8080. HTTP is the default reachable URL: pages load on every
+# device with no per-device setup, but browsers will tag the origin
+# "Not Secure" because `*.local` is NOT a secure context per the W3C
+# Secure Contexts spec (only `localhost` / `*.localhost` / loopback IPs /
+# `https://` / `wss://` / `file://` are). That label is harmless for
+# normal pages, but it does block the secure-context-only browser APIs
+# the app uses for mic capture (`navigator.mediaDevices.getUserMedia`),
+# clipboard, fullscreen, etc.
 #
-# Because HTTPS is optional, we deliberately do NOT redirect HTTP -> HTTPS.
-# A redirect would force every visitor through the trust-root install flow
-# before they can use the app, which is the opposite of what we want.
+# To enable those, the user installs the trust root we publish at
+# /root.crt and visits `https://<host>.local` instead - Caddy mints
+# certs from its own local CA on first contact via the `:443` block
+# below, so every SNI hostname/IP gets a valid cert without any
+# per-host config.
+#
+# Because HTTPS is opt-in (and the trust-install dance is per device),
+# we deliberately do NOT redirect HTTP -> HTTPS. A redirect would force
+# every visitor through the cert-install flow before they can even see
+# the app, which is the opposite of what we want.
 #
 # Intentionally no global options block (`{ ... }` at the top) so this
 # file can be imported into an operator's existing Caddyfile via
@@ -31,16 +39,21 @@
 # and any other name resolving here all work without extra config.
 #
 # Two handlers, in priority order:
-#   1. /root.crt is served straight from the data dir so devices that
-#      *do* want HTTPS can bootstrap trust over plain HTTP. (HTTPS would
-#      chicken-and-egg the cert install.)
+#   1. /root.crt is served straight from /etc/caddy so devices that *do*
+#      want HTTPS can bootstrap trust over plain HTTP. (HTTPS would
+#      chicken-and-egg the cert install.) The cert lives in the same
+#      directory as this Caddyfile so the `caddy` system user always
+#      has read+traverse access to it - the data dir can be wherever
+#      the operator wants (including a 0700 user home), since it isn't
+#      on Caddy's read path.
 #   2. Everything else reverse-proxies to the app. `reverse_proxy` auto-
 #      upgrades to WebSocket for `/ws`, streams chunked bodies for
 #      `/media/<hash>/<kind>`, and forwards `Range` headers - all of which
 #      the audio/video transport needs.
 http:// {
 	handle /root.crt {
-		root * @DATA_DIR@
+		root * /etc/caddy
+		rewrite * /nightingale-root.crt
 		file_server
 	}
 	handle {

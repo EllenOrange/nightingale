@@ -1,6 +1,6 @@
 # Self-Hosted Web Mode
 
-Run Nightingale as a service on a Linux box on your LAN. Phones, laptops, tablets and TVs all open it in a browser — mic capture works on the default `http://` URL, no per-device setup. One install script, one URL.
+Run Nightingale as a service on a Linux box on your LAN. Phones, laptops, tablets and TVs all open it in a browser. The default `http://<host>.local` URL works for everything except secure-context-only browser APIs (mic capture, clipboard, fullscreen) — to flip those on, install the trust root once per device and use `https://<host>.local` (one-time per device, instructions below). One install script, one URL.
 
 The whole thing is one shell script (`scripts/install.sh`) that drops a systemd unit, a Caddy front-door, and an avahi advertisement onto a Linux host. Like Jellyfin, you pick the data folder and the songs folder from inside the app once the service is up — nothing is baked into the install.
 
@@ -9,17 +9,17 @@ The whole thing is one shell script (`scripts/install.sh`) that drops a systemd 
 ```text
 LAN device ──http──► caddy.service ──► nightingale.service ──► /var/lib/nightingale
    │                    │   ▲
-   │                    │   └── /root.crt (only if you want HTTPS)
+   │                    │   └── /root.crt  (served from /etc/caddy/, only matters if you want HTTPS)
    └── mDNS ───────► <hostname>.local
 
   (https on :443 is wired up too, opt-in — install root.crt on the device first)
 ```
 
 - A `nightingale.service` running the web server on `127.0.0.1:8080`.
-- A `caddy.service` fronting it on `:80` (default, working path) and `:443` (opt-in HTTPS, using Caddy's local CA).
+- A `caddy.service` fronting it on `:80` (works as-is, browser shows "Not Secure" — fine for the bulk of the app) and `:443` (HTTPS via Caddy's local CA — needed for mic capture and other secure-context-only browser APIs).
 - An `avahi-daemon` advertisement so the box is reachable as `<hostname>.local` on the LAN — no DNS configuration on any device.
 
-Open `http://<hostname>.local` and everything works, mic included. Read on for why, and for the optional HTTPS path.
+Open `http://<hostname>.local` to land in the app. To enable mic capture, install the LAN root cert (one-time per device, see below) and switch to `https://<hostname>.local`.
 
 ## Requirements
 
@@ -76,17 +76,19 @@ If the script lives outside its repo (e.g. you copied it elsewhere), point it at
 
 Neither the data folder nor the songs folder is configured by the installer — both are picked in the app, persisted to `config.json` in the installer's bootstrap path (default `/var/lib/nightingale`, overridable via `NIGHTINGALE_DATA_DIR`), and survive upgrades.
 
-## Why mic capture works over plain HTTP
+## What works over plain HTTP, and what needs HTTPS
 
-Browsers gate `navigator.mediaDevices.getUserMedia` behind a "secure context". Normally that means HTTPS — but [the spec](https://w3c.github.io/webappsec-secure-contexts/) and the major implementations (Chromium, Firefox, Safari) also treat `*.local` mDNS hostnames as **potentially trustworthy**, because the name only resolves on the local link and can't be spoofed by an internet attacker.
+Most of the app — browsing the library, playing songs, queuing, scoring — runs fine on `http://<hostname>.local`. Browsers will tag the page **"Not Secure"** in the address bar, which is expected: per the [W3C Secure Contexts](https://w3c.github.io/webappsec-secure-contexts/) spec, only `localhost` / `*.localhost` / loopback IPs / `https://` / `wss://` / `file://` count as potentially trustworthy origins. `*.local` mDNS hostnames are **not** on that list — they're still treated as a regular insecure HTTP origin.
 
-That means `http://<hostname>.local` is a secure-context origin: mic capture, fullscreen, and every other gated browser feature works on plain HTTP, exactly like it does on `localhost`. No cert install, no per-device setup, no `:443`.
+What that "Not Secure" tag actually breaks: the secure-context-only browser APIs the app uses for mic capture (`navigator.mediaDevices.getUserMedia`), the clipboard, fullscreen, and a few other gated features. On plain HTTP `<hostname>.local`:
 
-The installer still wires up HTTPS in case you want it (see below), but the product itself doesn't need it.
+- **Chromium / Edge** — `navigator.mediaDevices` is `undefined`. Mic doesn't work, period. You may be able to "Continue Anyway" past mixed-content warnings to use the rest of the app, but mic stays off until the origin is HTTPS.
+- **Firefox** — same default; `getUserMedia` rejects the promise. Some about:config flips can override this on a per-origin basis, but it's not something you should ask every visitor to do.
+- **Safari (iOS / macOS)** — strictest of all; the prompt won't even appear.
 
-## Optional: HTTPS + trust the LAN root cert
+The reliable fix is the **opt-in HTTPS path** below: install the LAN root cert once per device, then use `https://<hostname>.local`. Caddy's `:443` listener is already up and minting certs from its local CA — the only missing piece is each device trusting that CA.
 
-Only do this if you want a green padlock, or you've configured a browser to enforce HTTPS for all origins, or you're connecting from a non-mDNS hostname (a bare LAN IP that isn't `*.local`).
+## Opt in to HTTPS (mic-capable, green padlock)
 
 The installer publishes Caddy's local-CA root cert at a plain-HTTP path so devices can fetch it before they trust it:
 
@@ -129,8 +131,8 @@ If your host runs a firewall (`ufw`, `firewalld`, raw `nftables`/`iptables`), ni
 
 | Port   | Proto | What for                                                                                              |
 | ------ | ----- | ----------------------------------------------------------------------------------------------------- |
-| `80`   | TCP   | Caddy serving the app over HTTP — the working default for everything, mic capture included.           |
-| `443`  | TCP   | Caddy serving HTTPS — only needed if you opted into the LAN root cert above. Safe to open regardless. |
+| `80`   | TCP   | Caddy serving the app over HTTP — works for everything except secure-context-only APIs (mic, clipboard, fullscreen). |
+| `443`  | TCP   | Caddy serving HTTPS — needed for mic capture and the rest of the secure-context-only APIs. Open it. |
 | `5353` | UDP   | Avahi mDNS — **without this `<hostname>.local` will not resolve from other devices on the LAN.**      |
 
 **ufw** (Debian / Ubuntu / Raspberry Pi OS):
@@ -164,7 +166,7 @@ sudo setfacl -R -m u:nightingale:rx /srv/music/karaoke
 
 Or grant via group membership — whatever fits your host's setup. The error message in the app's library view will tell you if the scan can't enter a directory.
 
-If you point `NIGHTINGALE_DATA_DIR` at a path Caddy can't traverse (e.g. inside a `0700` user home), the installer warns and points at the offending directory — Caddy will 404 on `http://<host>/root.crt` for that path until you either flip `o+x` on the parent yourself (`sudo chmod o+x /home/<that-user>` — traverse-only, no `o+r`) or move the data dir somewhere world-traversable. The default `/var/lib/nightingale` is reachable by Caddy out of the box. The installer never silently mutates filesystem permissions for you.
+`NIGHTINGALE_DATA_DIR` can be anything the service user can read and write (including a `0700` home directory) — Caddy never touches it directly. The trust root that `http://<host>/root.crt` returns is published to `/etc/caddy/nightingale-root.crt`, where the `caddy` system user always has read access regardless of how `DATA_DIR` is configured.
 
 ## Day-to-day operation
 
