@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useLibraryMenuItems } from "@/queries/use-library-menu-items";
 import type { LibraryMenuItem } from "@/types/LibraryMenuItem";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   isLibraryMenuItemActive,
@@ -28,6 +28,8 @@ import {
 } from "@/lib/library-menu-filter";
 import type { LibraryMenuFilters } from "@/types/LibraryMenuFilters";
 import { useLibraryFilter } from "@/hooks/use-library-filter";
+import { usePersistentScroll } from "@/hooks/use-persistent-scroll";
+import { useSidebarSectionsOpen } from "@/hooks/use-sidebar-sections-open";
 import { useMenuFocus } from "@/contexts/menu-focus-context";
 import {
   SidebarNavProvider,
@@ -40,14 +42,13 @@ type NavSectionConfig = {
   section: LibraryMenuSection;
   label: string;
   icon: LucideIcon;
-  defaultOpen: boolean;
 };
 
 const NAV_SECTIONS: NavSectionConfig[] = [
-  { section: "hot", label: "Quick Filters", icon: Flame, defaultOpen: true },
-  { section: "no_metadata", label: "No Metadata", icon: FileQuestionMark, defaultOpen: false },
-  { section: "artists", label: "Artists", icon: UserIcon, defaultOpen: false },
-  { section: "albums", label: "Albums", icon: DiscIcon, defaultOpen: false },
+  { section: "hot", label: "Quick Filters", icon: Flame },
+  { section: "no_metadata", label: "No Metadata", icon: FileQuestionMark },
+  { section: "artists", label: "Artists", icon: UserIcon },
+  { section: "albums", label: "Albums", icon: DiscIcon },
 ];
 
 interface MenuItemCountsProps {
@@ -97,7 +98,7 @@ function LibraryNavSubItem({ section, item, filter, onSelectItem }: LibraryNavSu
   );
 }
 
-interface LibraryNavSectionProps extends Omit<NavSectionConfig, "defaultOpen"> {
+interface LibraryNavSectionProps extends NavSectionConfig {
   items: LibraryMenuItem[];
   filter: LibraryMenuFilters;
   open: boolean;
@@ -168,12 +169,8 @@ export const MainNavigation = ({
   const { data: menu } = useLibraryMenuItems();
   const { setLibraryFilter, ...filter } = useLibraryFilter();
   const { focus } = useMenuFocus();
-  const [openBySection, setOpenBySection] = useState<Record<LibraryMenuSection, boolean>>(
-    () =>
-      Object.fromEntries(
-        NAV_SECTIONS.map(({ section, defaultOpen }) => [section, defaultOpen]),
-      ) as Record<LibraryMenuSection, boolean>,
-  );
+  const { setScrollContainer } = usePersistentScroll("sidebar");
+  const [openBySection, setOpenBySection] = useSidebarSectionsOpen();
 
   const selectMenuItem = useCallback(
     (section: LibraryMenuSection, item: LibraryMenuItem) => {
@@ -249,7 +246,7 @@ export const MainNavigation = ({
   const showEmptyPlaceholder = !menu || visibleSections.length === 0;
 
   return (
-    <SidebarContent>
+    <SidebarContent ref={setScrollContainer}>
       <FolderActions
         focusedSidebarIndex={folderFocusedSidebarIndex}
         registerCallback={registerFolderCallback}

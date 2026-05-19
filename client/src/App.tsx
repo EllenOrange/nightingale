@@ -4,6 +4,7 @@ import "./App.css";
 import { Toaster } from "./components/ui/sonner";
 import { TauriAppShell } from "./components/window/title-bar";
 import { NavInputProvider } from "./contexts/nav-input-context";
+import { MenuFocusProvider } from "./contexts/menu-focus-context";
 import { Menu } from "./pages/menu/menu";
 import { Playback } from "./pages/playback/playback";
 import { ThemeProvider } from "./contexts/theme-context";
@@ -23,12 +24,14 @@ const UpdateAutoCheck = () => {
 
 const InnerWrapper = () => (
   <>
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Menu />} />
-        <Route path="/playback" element={<Playback />} />
-      </Routes>
-    </BrowserRouter>
+    <MenuFocusProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Menu />} />
+          <Route path="/playback" element={<Playback />} />
+        </Routes>
+      </BrowserRouter>
+    </MenuFocusProvider>
     <Toaster />
     <Setup />
     {UPDATES_SUPPORTED && <UpdateAutoCheck />}

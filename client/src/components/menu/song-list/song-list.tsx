@@ -1,5 +1,5 @@
 import { useBestScoresBySongForActiveProfile } from "@/hooks/use-best-scores-by-song";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { SongCard } from "./song-card";
 import { Filters } from "./filters";
 import { Progress } from "./progress";
@@ -7,6 +7,7 @@ import { useAnalysisQueue, useSongs } from "@/queries/use-songs";
 import { useMenuFocus } from "@/contexts/menu-focus-context";
 import { useLibraryFilter } from "@/hooks/use-library-filter";
 import { useAnalysis } from "@/hooks/use-analysis";
+import { usePersistentScroll } from "@/hooks/use-persistent-scroll";
 import { useSearch } from "@/hooks/use-search";
 import { useNavigate } from "react-router";
 
@@ -14,16 +15,23 @@ export const SongList = () => {
   const navigate = useNavigate();
   const { enqueueOne } = useAnalysis();
   const { data: queue } = useAnalysisQueue();
-  const { focus, actionsRef, scrollRef, setFocus } = useMenuFocus();
+  const { focus, actionsRef, setFocus } = useMenuFocus();
+  const { setScrollContainer, resetScroll } = usePersistentScroll("songList");
   const { search } = useSearch();
   const { artist, album, query } = useLibraryFilter();
   const bestBySong = useBestScoresBySongForActiveProfile();
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useSongs();
 
+  const isFirstFilterRun = useRef(true);
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0 });
+    if (isFirstFilterRun.current) {
+      isFirstFilterRun.current = false;
+      return;
+    }
+
+    resetScroll();
     setFocus((prev) => ({ ...prev, songIndex: 0 }));
-  }, [search, artist, album, query, scrollRef, setFocus]);
+  }, [search, artist, album, query, resetScroll, setFocus]);
 
   const songs = useMemo(() => data?.pages.flatMap((page) => page.processed) ?? [], [data]);
 
@@ -60,13 +68,6 @@ export const SongList = () => {
       actionsRef.current.onConfirmSong = null;
     };
   }, [actionsRef, navigate, enqueueOne]);
-
-  const setScrollContainer = useCallback(
-    (el: HTMLDivElement | null) => {
-      scrollRef.current = el;
-    },
-    [scrollRef],
-  );
 
   useEffect(() => {
     const el = sentinelRef.current;

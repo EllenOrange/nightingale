@@ -38,6 +38,9 @@ export interface MenuFocusContextValue {
   deactivate: () => void;
   actionsRef: RefObject<MenuFocusActions>;
   scrollRef: RefObject<HTMLElement | null>;
+  scrollTopRef: RefObject<number>;
+  sidebarScrollRef: RefObject<HTMLElement | null>;
+  sidebarScrollTopRef: RefObject<number>;
 }
 
 const MenuFocusContext = createContext<MenuFocusContextValue | null>(null);
@@ -66,6 +69,9 @@ export function MenuFocusProvider({ children }: { children: ReactNode }) {
   const [focus, setFocusState] = useState<MenuFocus>(INITIAL_FOCUS);
   const actionsRef = useRef<MenuFocusActions>({ ...INITIAL_ACTIONS });
   const scrollRef = useRef<HTMLElement | null>(null);
+  const scrollTopRef = useRef<number>(0);
+  const sidebarScrollRef = useRef<HTMLElement | null>(null);
+  const sidebarScrollTopRef = useRef<number>(0);
 
   const setFocus = useCallback((updater: (prev: MenuFocus) => MenuFocus) => {
     setFocusState(updater);
@@ -80,7 +86,17 @@ export function MenuFocusProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ focus, setFocus, activate, deactivate, actionsRef, scrollRef }),
+    () => ({
+      focus,
+      setFocus,
+      activate,
+      deactivate,
+      actionsRef,
+      scrollRef,
+      scrollTopRef,
+      sidebarScrollRef,
+      sidebarScrollTopRef,
+    }),
     [focus, setFocus, activate, deactivate],
   );
 

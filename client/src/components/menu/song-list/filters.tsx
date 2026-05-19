@@ -11,7 +11,7 @@ const DEBOUNCE_MS = 500;
 export const Filters = () => {
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const { setSearch } = useSearch();
+  const { search, setSearch } = useSearch();
   const { enqueueAll } = useAnalysis();
   const { focus, actionsRef } = useMenuFocus();
 
@@ -36,6 +36,7 @@ export const Filters = () => {
   return (
     <div className="flex w-full items-center gap-4">
       <Input
+        defaultValue={search}
         onChange={({ target: { value } }) => handleChange(value)}
         className="flex-1"
         placeholder="Type to search songs..."
