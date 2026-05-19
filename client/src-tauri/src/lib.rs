@@ -15,9 +15,7 @@ use analyzer::{
 };
 use app_core::{AppConfig, SongsStore};
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
-use cache::{
-    calculate_cache_stats, clear_all, clear_models_command, clear_videos_command,
-};
+use cache::{calculate_cache_stats, clear_all, clear_models_command, clear_videos_command};
 use config::{load_config, save_config};
 use lyrics::{load_lyrics, save_lyrics, search_lrclib_lyrics};
 use microphones::{list_microphones, set_monitor_gain, start_mic_capture, stop_mic_capture};
@@ -26,7 +24,9 @@ use playback::{
     load_transcript,
 };
 use profile::{add_score, create_profile, delete_profile, load_profiles, switch_profile};
-use scanner::{load_analysis_queue, load_library_menu_items, load_songs, load_songs_meta, trigger_scan};
+use scanner::{
+    load_analysis_queue, load_library_menu_items, load_songs, load_songs_meta, trigger_scan,
+};
 use tauri::{Manager, RunEvent, WebviewWindowBuilder};
 use vendor::{is_ready, trigger_setup};
 
@@ -136,11 +136,7 @@ pub fn run() {
             let _ = dotenvy::dotenv();
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
-            app_core::init_library().map_err(|e| e.to_string())?;
-            app_core::AnalysisQueue::clear();
-            if let Err(e) = app_core::refresh_analyzer_scripts_if_ready() {
-                tracing::warn!("Failed to refresh analyzer scripts: {e}");
-            }
+            app_core::startup()?;
             app_core::media_server::start();
 
             let config = AppConfig::load();

@@ -1,13 +1,5 @@
-use app_core::AudioPaths;
-use serde::Serialize;
+use app_core::{ensure_mp3_stems_ready_payload, AudioPaths, PixabayVideoDownloaded};
 use tauri::{AppHandle, Emitter};
-
-#[derive(Clone, Serialize)]
-struct PixabayVideoDownloaded {
-    flavor: String,
-    path: String,
-    evicted_path: Option<String>,
-}
 
 #[tauri::command]
 pub fn load_transcript(file_hash: String) -> Result<serde_json::Value, String> {
@@ -19,23 +11,10 @@ pub fn get_audio_paths(file_hash: String) -> AudioPaths {
     app_core::get_audio_paths(&file_hash)
 }
 
-#[derive(Clone, Serialize)]
-struct StemsReady {
-    file_hash: String,
-    error: Option<String>,
-}
-
 #[tauri::command]
 pub fn ensure_mp3_stems(app: AppHandle, file_hash: String) {
     std::thread::spawn(move || {
-        let result = app_core::ensure_mp3_stems(&file_hash);
-        let _ = app.emit(
-            "stems-ready",
-            StemsReady {
-                file_hash,
-                error: result.err().map(|e| e.to_string()),
-            },
-        );
+        let _ = app.emit("stems-ready", ensure_mp3_stems_ready_payload(file_hash));
     });
 }
 
@@ -55,11 +34,7 @@ pub fn fetch_pixabay_videos(app: AppHandle, flavor: String) -> Vec<String> {
         app_core::download_pixabay_videos(&flavor_clone, move |path, evicted_path| {
             let _ = app.emit(
                 "pixabay-video-downloaded",
-                PixabayVideoDownloaded {
-                    flavor: flavor.clone(),
-                    path,
-                    evicted_path,
-                },
+                PixabayVideoDownloaded::new(flavor.clone(), path, evicted_path),
             );
         });
     });

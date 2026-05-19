@@ -48,13 +48,9 @@ async fn main() {
         )
         .init();
 
-    if let Err(e) = app_core::init_library() {
-        tracing::error!("init_library failed: {e}");
+    if let Err(e) = app_core::startup() {
+        tracing::error!("startup failed: {e}");
         std::process::exit(1);
-    }
-    app_core::AnalysisQueue::clear();
-    if let Err(e) = app_core::refresh_analyzer_scripts_if_ready() {
-        tracing::warn!("Failed to refresh analyzer scripts: {e}");
     }
 
     let state = AppState::new();
@@ -78,8 +74,8 @@ async fn main() {
 
     tracing::info!(addr = %args.bind, "Nightingale self-hosted server listening");
 
-    let server = axum::serve(listener, app.into_make_service())
-        .with_graceful_shutdown(shutdown_signal());
+    let server =
+        axum::serve(listener, app.into_make_service()).with_graceful_shutdown(shutdown_signal());
 
     if let Err(e) = server.await {
         tracing::error!("server error: {e}");

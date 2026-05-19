@@ -34,13 +34,19 @@ impl CacheDir {
     }
 
     pub fn variant_instrumental_path(&self, hash: &str, key: &str, tempo: f64) -> PathBuf {
-        self.path
-            .join(format!("{hash}_instrumental_{}_{}.mp3", sanitize_key(key), format_tempo(tempo)))
+        self.path.join(format!(
+            "{hash}_instrumental_{}_{}.mp3",
+            sanitize_key(key),
+            format_tempo(tempo)
+        ))
     }
 
     pub fn variant_vocals_path(&self, hash: &str, key: &str, tempo: f64) -> PathBuf {
-        self.path
-            .join(format!("{hash}_vocals_{}_{}.mp3", sanitize_key(key), format_tempo(tempo)))
+        self.path.join(format!(
+            "{hash}_vocals_{}_{}.mp3",
+            sanitize_key(key),
+            format_tempo(tempo)
+        ))
     }
 
     pub fn legacy_instrumental_path(&self, hash: &str) -> PathBuf {
@@ -152,7 +158,8 @@ impl CacheDir {
 }
 
 fn stem_suffix<'a>(name: &'a str, prefix: &str) -> Option<&'a str> {
-    name.strip_prefix(prefix).and_then(|tail| tail.strip_suffix(".mp3"))
+    name.strip_prefix(prefix)
+        .and_then(|tail| tail.strip_suffix(".mp3"))
 }
 
 fn is_variant_transcript_file(name: &str, hash: &str) -> bool {
@@ -212,10 +219,7 @@ impl CacheStats {
                 .metadata()
                 .map(|m| m.len())
                 .unwrap_or(0)
-            + config_path()
-                .metadata()
-                .map(|m| m.len())
-                .unwrap_or(0)
+            + config_path().metadata().map(|m| m.len()).unwrap_or(0)
             + base
                 .join("profiles.json")
                 .metadata()
@@ -239,7 +243,7 @@ pub fn nightingale_dir() -> PathBuf {
 pub fn default_nightingale_dir() -> PathBuf {
     if let Some(path) = std::env::var_os("NIGHTINGALE_DATA_PATH") {
         let p = PathBuf::from(path);
-        
+
         if !p.as_os_str().is_empty() {
             return p;
         }
@@ -373,7 +377,7 @@ fn configured_data_path() -> Option<PathBuf> {
     }
 }
 
-fn normalized_target_path(path: PathBuf) -> Result<PathBuf, String> {
+pub fn normalized_target_path(path: PathBuf) -> Result<PathBuf, String> {
     if path.as_os_str().is_empty() {
         return Err("data_path cannot be empty".to_string());
     }
@@ -387,7 +391,7 @@ fn normalized_target_path(path: PathBuf) -> Result<PathBuf, String> {
     }
 }
 
-fn same_path(lhs: &Path, rhs: &Path) -> bool {
+pub fn same_path(lhs: &Path, rhs: &Path) -> bool {
     match (
         std::fs::canonicalize(lhs).ok(),
         std::fs::canonicalize(rhs).ok(),
@@ -430,8 +434,8 @@ fn copy_path_entry(src: &Path, dst: &Path) -> Result<(), String> {
                 .map_err(|e| format!("failed creating destination parent {:?}: {e}", parent))?;
         }
 
-        let link_target =
-            std::fs::read_link(src).map_err(|e| format!("failed reading symlink {:?}: {e}", src))?;
+        let link_target = std::fs::read_link(src)
+            .map_err(|e| format!("failed reading symlink {:?}: {e}", src))?;
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(&link_target, dst)
@@ -546,4 +550,3 @@ pub fn change_app_data_path(new_path: PathBuf) -> Result<PathBuf, String> {
 
     Ok(new_root)
 }
-

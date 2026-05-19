@@ -1,12 +1,10 @@
 use app_core::{
     delete_cache as core_delete_cache, enqueue_all as core_enqueue_all,
     enqueue_one as core_enqueue_one, reanalyze_full as core_reanalyze_full,
-    reanalyze_transcript as core_reanalyze_transcript, shift_key as core_shift_key,
-    shift_tempo as core_shift_tempo, LibraryMenuFilters,
+    reanalyze_transcript as core_reanalyze_transcript, shift_key_done_payload,
+    shift_tempo_done_payload, LibraryMenuFilters,
 };
-use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use ts_rs::TS;
 
 #[tauri::command]
 pub fn enqueue_one(file_hash: String) {
@@ -33,33 +31,16 @@ pub fn reanalyze_full(file_hash: String) {
     core_reanalyze_full(&file_hash);
 }
 
-#[derive(Clone, Serialize, TS)]
-#[ts(export)]
-struct ShiftDone {
-    file_hash: String,
-    key: Option<String>,
-    tempo: Option<f64>,
-    error: Option<String>,
-}
-
 #[tauri::command]
-pub fn shift_key(app: AppHandle, file_hash: String, key: String, pitch_ratio: f64, key_offset: i32) {
+pub fn shift_key(
+    app: AppHandle,
+    file_hash: String,
+    key: String,
+    pitch_ratio: f64,
+    key_offset: i32,
+) {
     std::thread::spawn(move || {
-        let result = core_shift_key(&file_hash, &key, pitch_ratio, key_offset);
-        let payload = match result {
-            Ok(done) => ShiftDone {
-                file_hash,
-                key: Some(done.key),
-                tempo: Some(done.tempo),
-                error: None,
-            },
-            Err(err) => ShiftDone {
-                file_hash,
-                key: Some(key),
-                tempo: None,
-                error: Some(err.to_string()),
-            },
-        };
+        let payload = shift_key_done_payload(file_hash, key, pitch_ratio, key_offset);
         let _ = app.emit("shift-key-done", payload);
     });
 }
@@ -67,21 +48,7 @@ pub fn shift_key(app: AppHandle, file_hash: String, key: String, pitch_ratio: f6
 #[tauri::command]
 pub fn shift_tempo(app: AppHandle, file_hash: String, tempo: f64) {
     std::thread::spawn(move || {
-        let result = core_shift_tempo(&file_hash, tempo);
-        let payload = match result {
-            Ok(done) => ShiftDone {
-                file_hash,
-                key: Some(done.key),
-                tempo: Some(done.tempo),
-                error: None,
-            },
-            Err(err) => ShiftDone {
-                file_hash,
-                key: None,
-                tempo: Some(tempo),
-                error: Some(err.to_string()),
-            },
-        };
+        let payload = shift_tempo_done_payload(file_hash, tempo);
         let _ = app.emit("shift-tempo-done", payload);
     });
 }

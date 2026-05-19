@@ -1,9 +1,46 @@
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
+use serde::{Deserialize, Serialize};
 #[allow(unused_imports)]
 use tracing::info;
+use ts_rs::TS;
 
-use crate::{cache::nightingale_dir, vendor_scripts};
+use crate::{
+    cache::{change_app_data_path, nightingale_dir, normalized_target_path, same_path},
+    playback::prefetch_one_per_flavor,
+    vendor_scripts,
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "lowercase")]
+pub enum SetupStep {
+    MigrateData,
+    ClearVendor,
+    Ffmpeg,
+    Uv,
+    Python,
+    Venv,
+    Dependencies,
+    ExtractScripts,
+    Videos,
+    Finish,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SetupProgress {
+    pub step: SetupStep,
+    pub percent: usize,
+    pub action: String,
+}
+
+pub fn resolve_data_path_input(input: &str) -> Result<PathBuf, String> {
+    normalized_target_path(PathBuf::from(input))
+}
 
 // ─── Directory Helpers ───────────────────────────────────────────────
 
@@ -56,6 +93,105 @@ pub fn is_ready() -> bool {
         && ffmpeg_path().is_file()
         && python_path().is_file()
         && analyzer_dir().join("analyze.py").is_file()
+}
+
+pub fn run_vendor_setup(
+    data_path: Option<String>,
+    mut on_progress: impl FnMut(SetupProgress) + Send,
+    mut on_data_migrated: impl FnMut(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut emit = |step: SetupStep, percent: usize, action: String| {
+        on_progress(SetupProgress {
+            step,
+            percent,
+            action,
+        });
+    };
+
+    let mut cleared_vendor = false;
+    if let Some(raw_path) = data_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let target = resolve_data_path_input(raw_path)?;
+        let current = nightingale_dir();
+        if !same_path(&current, &target) {
+            emit(
+                SetupStep::ClearVendor,
+                6,
+                "Clearing vendor folder before migration...".to_string(),
+            );
+            clear_vendor_dir()?;
+            cleared_vendor = true;
+
+            emit(
+                SetupStep::MigrateData,
+                12,
+                "Migrating app data...".to_string(),
+            );
+            let new_path = change_app_data_path(target)?;
+            on_data_migrated(&new_path)?;
+            emit(
+                SetupStep::MigrateData,
+                18,
+                format!("Data migrated to {}", new_path.display()),
+            );
+        }
+    }
+
+    if !cleared_vendor {
+        emit(
+            SetupStep::ClearVendor,
+            14,
+            "Clearing vendor folder...".to_string(),
+        );
+        clear_vendor_dir()?;
+    }
+
+    emit(SetupStep::Ffmpeg, 24, "Downloading ffmpeg...".to_string());
+    step_download_ffmpeg()?;
+
+    emit(SetupStep::Uv, 34, "Downloading uv...".to_string());
+    step_download_uv()?;
+
+    emit(
+        SetupStep::Python,
+        46,
+        "Installing python3.10 via uv...".to_string(),
+    );
+    step_install_python()?;
+
+    emit(SetupStep::Venv, 58, "Setting up .venv...".to_string());
+    step_create_venv()?;
+
+    emit(
+        SetupStep::Dependencies,
+        70,
+        "Installing python dependencies...".to_string(),
+    );
+    step_install_packages()?;
+
+    emit(
+        SetupStep::ExtractScripts,
+        80,
+        "Extracting analyzer scripts...".to_string(),
+    );
+    step_extract_scripts()?;
+
+    emit(
+        SetupStep::Videos,
+        90,
+        "Pre-downloading video backgrounds...".to_string(),
+    );
+    prefetch_one_per_flavor(|detail| {
+        emit(SetupStep::Videos, 90, detail.to_string());
+    });
+
+    mark_ready()?;
+    emit(SetupStep::Finish, 100, "Done".to_string());
+
+    Ok(())
 }
 
 // ─── Download helpers ───────────────────────────────────────────────
@@ -161,9 +297,9 @@ fn ffmpeg_download_url() -> Result<&'static str, String> {
         }
         ("macos", "aarch64") => Ok("https://evermeet.cx/ffmpeg/ffmpeg-8.1.zip"),
         ("macos", "x86_64") => Ok("https://evermeet.cx/ffmpeg/ffmpeg-8.1.zip"),
-        ("windows", "x86_64") => {
-            Ok("https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip")
-        }
+        ("windows", "x86_64") => Ok(
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
+        ),
         (os, arch) => Err(format!("Unsupported platform for ffmpeg: {os}-{arch}")),
     }
 }
@@ -575,7 +711,7 @@ pub fn refresh_analyzer_scripts_if_ready() -> Result<(), String> {
     if !is_ready() {
         return Ok(());
     }
-    
+
     vendor_scripts::write_scripts(&analyzer_dir())
         .map_err(|e| format!("Failed to refresh analyzer scripts: {e}"))
 }

@@ -6,6 +6,7 @@ use rand::prelude::{IndexedRandom, SliceRandom};
 use serde::Serialize;
 use serde_json::Value;
 use tracing::{info, warn};
+use ts_rs::TS;
 
 use crate::cache::{CacheDir, normalize_tempo, videos_dir};
 use crate::error::NightingaleError;
@@ -23,6 +24,38 @@ pub struct AudioPaths {
 pub struct ShiftResult {
     pub key: String,
     pub tempo: f64,
+}
+
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct ShiftDone {
+    pub file_hash: String,
+    pub key: Option<String>,
+    pub tempo: Option<f64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StemsReady {
+    pub file_hash: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PixabayVideoDownloaded {
+    pub flavor: String,
+    pub path: String,
+    pub evicted_path: Option<String>,
+}
+
+impl PixabayVideoDownloaded {
+    pub fn new(flavor: String, path: String, evicted_path: Option<String>) -> Self {
+        Self {
+            flavor,
+            path,
+            evicted_path,
+        }
+    }
 }
 
 pub fn load_transcript(file_hash: &str) -> Result<serde_json::Value, NightingaleError> {
@@ -219,7 +252,9 @@ pub fn ensure_playable_source_video(file_hash: &str) -> Result<Option<String>, N
 
     let transcode_result = (|| {
         let Some(parent) = target.parent() else {
-            return Err(NightingaleError::Other("Invalid playable video path".into()));
+            return Err(NightingaleError::Other(
+                "Invalid playable video path".into(),
+            ));
         };
         std::fs::create_dir_all(parent)?;
         let tmp = parent.join(format!("{file_hash}.{}.tmp.mp4", std::process::id()));
@@ -353,11 +388,7 @@ fn resolve_canonical_stems_for_key(
     )))
 }
 
-fn resolve_source_transcript_path(
-    cache: &CacheDir,
-    file_hash: &str,
-    tempo: f64,
-) -> PathBuf {
+fn resolve_source_transcript_path(cache: &CacheDir, file_hash: &str, tempo: f64) -> PathBuf {
     if normalize_tempo(tempo) == 1.0 {
         return cache.transcript_path(file_hash);
     }
@@ -632,6 +663,53 @@ pub fn shift_tempo(file_hash: &str, tempo: f64) -> Result<ShiftResult, Nightinga
         key,
         tempo: target_tempo,
     })
+}
+
+pub fn shift_key_done_payload(
+    file_hash: String,
+    key: String,
+    pitch_ratio: f64,
+    key_offset: i32,
+) -> ShiftDone {
+    match shift_key(&file_hash, &key, pitch_ratio, key_offset) {
+        Ok(done) => ShiftDone {
+            file_hash,
+            key: Some(done.key),
+            tempo: Some(done.tempo),
+            error: None,
+        },
+        Err(err) => ShiftDone {
+            file_hash,
+            key: Some(key),
+            tempo: None,
+            error: Some(err.to_string()),
+        },
+    }
+}
+
+pub fn shift_tempo_done_payload(file_hash: String, tempo: f64) -> ShiftDone {
+    match shift_tempo(&file_hash, tempo) {
+        Ok(done) => ShiftDone {
+            file_hash,
+            key: Some(done.key),
+            tempo: Some(done.tempo),
+            error: None,
+        },
+        Err(err) => ShiftDone {
+            file_hash,
+            key: None,
+            tempo: Some(tempo),
+            error: Some(err.to_string()),
+        },
+    }
+}
+
+pub fn ensure_mp3_stems_ready_payload(file_hash: String) -> StemsReady {
+    let result = ensure_mp3_stems(&file_hash);
+    StemsReady {
+        file_hash,
+        error: result.err().map(|e| e.to_string()),
+    }
 }
 
 const PIXABAY_PER_PAGE: u32 = 200;

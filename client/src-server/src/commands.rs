@@ -1,8 +1,10 @@
 use std::path::Path;
 
 use app_core::{
-    AnalysisQueue, AppConfig, CacheStats, LibraryMenuFilters, LibraryMenuItems, LoadSongsParams,
-    ProfileStore, SongsStore, load_lyrics_file, save_lyrics_and_realign, search_lrclib_for_hash,
+    ensure_mp3_stems_ready_payload, load_lyrics_file, save_lyrics_and_realign,
+    search_lrclib_for_hash, shift_key_done_payload, shift_tempo_done_payload, AnalysisQueue,
+    AppConfig, CacheStats, LibraryMenuFilters, LibraryMenuItems, LoadSongsParams,
+    PixabayVideoDownloaded, ProfileStore, SongsStore,
 };
 use axum::{
     extract::{Path as AxumPath, State},
@@ -10,7 +12,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::events::EventBus;
@@ -131,8 +133,8 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
             Ok(serde_json::to_value(AnalysisQueue::load()).map_err(serde_err)?)
         }
         "load_library_menu_items" => {
-            let items: LibraryMenuItems =
-                app_core::load_library_menu_items().map_err(|e| ApiError::internal(e.to_string()))?;
+            let items: LibraryMenuItems = app_core::load_library_menu_items()
+                .map_err(|e| ApiError::internal(e.to_string()))?;
             Ok(serde_json::to_value(items).map_err(serde_err)?)
         }
 
@@ -205,8 +207,10 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
         }
         "get_audio_paths" => {
             let args: FileHashArgs = deserialize(payload)?;
-            Ok(serde_json::to_value(app_core::get_audio_paths(&args.file_hash))
-                .map_err(serde_err)?)
+            Ok(
+                serde_json::to_value(app_core::get_audio_paths(&args.file_hash))
+                    .map_err(serde_err)?,
+            )
         }
         "ensure_mp3_stems" => ensure_mp3_stems_cmd(events, payload),
         "ensure_playable_source_video" => {
@@ -269,14 +273,6 @@ fn save_config_cmd(payload: Value) -> CmdResult {
     serde_json::to_value(config).map_err(serde_err)
 }
 
-#[derive(Serialize)]
-struct ShiftDone {
-    file_hash: String,
-    key: Option<String>,
-    tempo: Option<f64>,
-    error: Option<String>,
-}
-
 fn shift_key_cmd(events: std::sync::Arc<EventBus>, payload: Value) -> CmdResult {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -288,22 +284,8 @@ fn shift_key_cmd(events: std::sync::Arc<EventBus>, payload: Value) -> CmdResult 
     }
     let args: Args = deserialize(payload)?;
     std::thread::spawn(move || {
-        let result =
-            app_core::shift_key(&args.file_hash, &args.key, args.pitch_ratio, args.key_offset);
-        let payload = match result {
-            Ok(done) => ShiftDone {
-                file_hash: args.file_hash,
-                key: Some(done.key),
-                tempo: Some(done.tempo),
-                error: None,
-            },
-            Err(err) => ShiftDone {
-                file_hash: args.file_hash,
-                key: Some(args.key),
-                tempo: None,
-                error: Some(err.to_string()),
-            },
-        };
+        let payload =
+            shift_key_done_payload(args.file_hash, args.key, args.pitch_ratio, args.key_offset);
         events.emit("shift-key-done", &payload);
     });
     Ok(Value::Null)
@@ -318,52 +300,21 @@ fn shift_tempo_cmd(events: std::sync::Arc<EventBus>, payload: Value) -> CmdResul
     }
     let args: Args = deserialize(payload)?;
     std::thread::spawn(move || {
-        let result = app_core::shift_tempo(&args.file_hash, args.tempo);
-        let payload = match result {
-            Ok(done) => ShiftDone {
-                file_hash: args.file_hash,
-                key: Some(done.key),
-                tempo: Some(done.tempo),
-                error: None,
-            },
-            Err(err) => ShiftDone {
-                file_hash: args.file_hash,
-                key: None,
-                tempo: Some(args.tempo),
-                error: Some(err.to_string()),
-            },
-        };
+        let payload = shift_tempo_done_payload(args.file_hash, args.tempo);
         events.emit("shift-tempo-done", &payload);
     });
     Ok(Value::Null)
 }
 
-#[derive(Serialize)]
-struct StemsReady {
-    file_hash: String,
-    error: Option<String>,
-}
-
 fn ensure_mp3_stems_cmd(events: std::sync::Arc<EventBus>, payload: Value) -> CmdResult {
     let args: FileHashArgs = deserialize(payload)?;
     std::thread::spawn(move || {
-        let result = app_core::ensure_mp3_stems(&args.file_hash);
         events.emit(
             "stems-ready",
-            &StemsReady {
-                file_hash: args.file_hash,
-                error: result.err().map(|e| e.to_string()),
-            },
+            &ensure_mp3_stems_ready_payload(args.file_hash),
         );
     });
     Ok(Value::Null)
-}
-
-#[derive(Serialize)]
-struct PixabayVideoDownloaded {
-    flavor: String,
-    path: String,
-    evicted_path: Option<String>,
 }
 
 fn fetch_pixabay_videos_cmd(events: std::sync::Arc<EventBus>, payload: Value) -> CmdResult {
@@ -381,11 +332,7 @@ fn fetch_pixabay_videos_cmd(events: std::sync::Arc<EventBus>, payload: Value) ->
         app_core::download_pixabay_videos(&flavor_for_thread, move |path, evicted_path| {
             events_clone.emit(
                 "pixabay-video-downloaded",
-                &PixabayVideoDownloaded {
-                    flavor: flavor_for_emit.clone(),
-                    path,
-                    evicted_path,
-                },
+                &PixabayVideoDownloaded::new(flavor_for_emit.clone(), path, evicted_path),
             );
         });
     });
