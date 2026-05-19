@@ -1,8 +1,9 @@
 use app_core::{
     delete_cache as core_delete_cache, enqueue_all as core_enqueue_all,
-    enqueue_one as core_enqueue_one, reanalyze_full as core_reanalyze_full,
-    reanalyze_transcript as core_reanalyze_transcript, shift_key_done_payload,
-    shift_tempo_done_payload, LibraryMenuFilters,
+    enqueue_one as core_enqueue_one, realign as core_realign,
+    reanalyze_force_transcribe as core_reanalyze_force_transcribe,
+    reanalyze_full as core_reanalyze_full, reanalyze_transcript as core_reanalyze_transcript,
+    shift_key_done_payload, shift_tempo_done_payload, LibraryMenuFilters,
 };
 use tauri::{AppHandle, Emitter};
 
@@ -29,6 +30,16 @@ pub fn reanalyze_transcript(file_hash: String, language: Option<String>) {
 #[tauri::command]
 pub fn reanalyze_full(file_hash: String) {
     core_reanalyze_full(&file_hash);
+}
+
+#[tauri::command]
+pub fn realign(file_hash: String) {
+    core_realign(&file_hash);
+}
+
+#[tauri::command]
+pub fn reanalyze_force_transcribe(file_hash: String) {
+    core_reanalyze_force_transcribe(&file_hash);
 }
 
 #[tauri::command]

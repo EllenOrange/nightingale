@@ -4,6 +4,8 @@ import {
   deleteSongCache,
   enqueueAll,
   enqueueOne,
+  realign,
+  reanalyzeForceTranscribe,
   reanalyzeFull,
   reanalyzeTranscript,
 } from "@/bridge/analysis";
@@ -46,6 +48,8 @@ export const useAnalysis = () => {
       deleteSongCache: wrap(deleteSongCache, invalidateSongs),
       reanalyzeTranscript: wrap(reanalyzeTranscript, invalidateSongs),
       reanalyzeFull: wrap(reanalyzeFull, invalidateSongs),
+      realign: wrap(realign, invalidateSongs),
+      reanalyzeForceTranscribe: wrap(reanalyzeForceTranscribe, invalidateSongs),
     };
   }, [queryClient, artist, album, query]);
 };

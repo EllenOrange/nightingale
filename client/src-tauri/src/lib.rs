@@ -10,8 +10,8 @@ mod scanner;
 mod vendor;
 
 use analyzer::{
-    delete_song_cache, enqueue_all, enqueue_one, reanalyze_full, reanalyze_transcript, shift_key,
-    shift_tempo,
+    delete_song_cache, enqueue_all, enqueue_one, realign, reanalyze_force_transcribe,
+    reanalyze_full, reanalyze_transcript, shift_key, shift_tempo,
 };
 use app_core::{AppConfig, SongsStore};
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
@@ -112,6 +112,8 @@ pub fn run() {
             delete_song_cache,
             reanalyze_transcript,
             reanalyze_full,
+            realign,
+            reanalyze_force_transcribe,
             shift_key,
             shift_tempo,
             // Lyrics

@@ -22,6 +22,14 @@ export const reanalyzeFull = async (fileHash: string): Promise<void> => {
   return await invoke<void>("reanalyze_full", { fileHash });
 };
 
+export const realign = async (fileHash: string): Promise<void> => {
+  return await invoke<void>("realign", { fileHash });
+};
+
+export const reanalyzeForceTranscribe = async (fileHash: string): Promise<void> => {
+  return await invoke<void>("reanalyze_force_transcribe", { fileHash });
+};
+
 export const shiftTempo = async (fileHash: string, tempo: number): Promise<void> => {
   return await invoke<void>("shift_tempo", { fileHash, tempo });
 };

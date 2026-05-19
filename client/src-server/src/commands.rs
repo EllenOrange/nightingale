@@ -175,6 +175,16 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
             app_core::reanalyze_full(&args.file_hash);
             Ok(Value::Null)
         }
+        "realign" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            app_core::realign(&args.file_hash);
+            Ok(Value::Null)
+        }
+        "reanalyze_force_transcribe" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            app_core::reanalyze_force_transcribe(&args.file_hash);
+            Ok(Value::Null)
+        }
         "shift_key" => shift_key_cmd(events, payload),
         "shift_tempo" => shift_tempo_cmd(events, payload),
 

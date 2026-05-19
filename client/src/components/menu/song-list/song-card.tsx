@@ -5,6 +5,8 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
@@ -14,13 +16,15 @@ import type { QueuedStatus } from "@/types/QueuedStatus";
 import type { Song } from "@/types/Song";
 import { convertFileSrc } from "@/bridge/media";
 import {
+  AlignLeftIcon,
   AudioLinesIcon,
   LanguagesIcon,
-  FileTextIcon,
   LoaderCircleIcon,
   MenuIcon,
+  MicIcon,
   MusicIcon,
   PencilLineIcon,
+  RefreshCwIcon,
   Trash2Icon,
   VideoIcon,
 } from "lucide-react";
@@ -111,7 +115,14 @@ export const SongCard = memo(
     const navigate = useNavigate();
     const { setMode } = useDialog();
     const queryClient = useQueryClient();
-    const { enqueueOne, deleteSongCache, reanalyzeFull, reanalyzeTranscript } = useAnalysis();
+    const {
+      enqueueOne,
+      deleteSongCache,
+      reanalyzeFull,
+      reanalyzeTranscript,
+      realign,
+      reanalyzeForceTranscribe,
+    } = useAnalysis();
     const { label, variant, className, isAnalyzing, isReady } = getStatusInfo(
       song.is_analyzed,
       queueStatus,
@@ -198,34 +209,48 @@ export const SongCard = memo(
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent side="bottom" align="start" className="min-w-56">
+                <DropdownMenuLabel>Analysis</DropdownMenuLabel>
                 <DropdownMenuGroup>
                   <DropdownMenuItem
                     onClick={withMenuAction(async () => {
-                      await deleteSongCache(song.file_hash);
-                      toast.info(`Cache deleted for "${song.title}"`);
+                      realign(song.file_hash);
+                      toast.info(`Realigning "${song.title}"`);
                     })}
                   >
-                    <Trash2Icon />
-                    Delete cache
+                    <AlignLeftIcon />
+                    Realign
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={withMenuAction(async () => {
                       reanalyzeTranscript(song.file_hash);
-                      toast.info(`Reanalyzing transcript for "${song.title}"`);
+                      toast.info(`Refetching lyrics & aligning "${song.title}"`);
                     })}
                   >
-                    <FileTextIcon />
-                    Reanalyze transcript
+                    <RefreshCwIcon />
+                    Refetch lyrics & align
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={withMenuAction(async () => {
+                      reanalyzeForceTranscribe(song.file_hash);
+                      toast.info(`Force transcribing "${song.title}"`);
+                    })}
+                  >
+                    <MicIcon />
+                    Force transcribe
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={withMenuAction(async () => {
                       reanalyzeFull(song.file_hash);
-                      toast.info(`Reanalyzing full (with stems) for "${song.title}"`);
+                      toast.info(`Full reanalysis (w/ stems) for "${song.title}"`);
                     })}
                   >
                     <AudioLinesIcon />
-                    Reanalyze full (with stems)
+                    Full reanalysis (w/ stems)
                   </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Manage</DropdownMenuLabel>
+                <DropdownMenuGroup>
                   <DropdownMenuItem
                     onClick={withMenuAction(async () => {
                       setMode({ mode: "edit-lyrics", song });
@@ -241,6 +266,18 @@ export const SongCard = memo(
                   >
                     <LanguagesIcon />
                     Change language
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  <DropdownMenuItem
+                    onClick={withMenuAction(async () => {
+                      await deleteSongCache(song.file_hash);
+                      toast.info(`Cache deleted for "${song.title}"`);
+                    })}
+                  >
+                    <Trash2Icon />
+                    Delete cache
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
