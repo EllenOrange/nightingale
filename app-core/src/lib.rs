@@ -16,8 +16,8 @@ mod vendor;
 mod vendor_scripts;
 
 pub use analyzer::{
-    AnalysisQueue, delete_cache, enqueue_all, enqueue_one, reanalyze_full, reanalyze_transcript,
-    shutdown_server,
+    AnalysisQueue, delete_cache, enqueue_all, enqueue_one, realign, reanalyze_force_transcribe,
+    reanalyze_full, reanalyze_transcript, shutdown_server,
 };
 pub use cache::{
     CacheDir, CacheStats, change_app_data_path, clear_models, clear_videos,

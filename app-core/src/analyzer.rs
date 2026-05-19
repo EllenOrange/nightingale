@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::process::{Child, Command, Stdio};
@@ -15,7 +15,7 @@ use crate::config::AppConfig;
 use crate::error::NightingaleError;
 use crate::library_db;
 use crate::library_model::LibraryMenuFilters;
-use crate::lyrics::fetch_lrclib_lyrics;
+use crate::lyrics::{fetch_lrclib_lyrics, write_lyrics_file};
 use crate::song::{read_transcript_meta, TranscriptSource};
 
 // ─── Analysis queue (persisted to disk) ──────────────────────────────
@@ -317,6 +317,9 @@ static ANALYZER: LazyLock<Mutex<AnalyzerState>> = LazyLock::new(|| {
     })
 });
 
+static FORCE_TRANSCRIBE: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 fn update_queue_status(file_hash: &str, status: QueuedStatus) {
@@ -456,6 +459,7 @@ pub fn reanalyze_transcript(file_hash: &str, language: Option<String>) {
     if is_usdx_song(file_hash) {
         return;
     }
+
     if let Some(lang) = language {
         if !lang.is_empty() {
             let mut config = AppConfig::load();
@@ -470,7 +474,34 @@ pub fn reanalyze_full(file_hash: &str) {
     if is_usdx_song(file_hash) {
         return;
     }
+
     reanalyze(file_hash, true);
+}
+
+pub fn realign(file_hash: &str) {
+    if is_usdx_song(file_hash) {
+        return;
+    }
+
+    let cache = CacheDir::new();
+    materialize_lyrics_from_transcript(&cache, file_hash);
+    let _ = std::fs::remove_file(cache.transcript_path(file_hash));
+    cache.delete_transcript_variants(file_hash);
+    update_song_analyzed(file_hash, false, None, None, None, None);
+    enqueue_one(file_hash);
+}
+
+pub fn reanalyze_force_transcribe(file_hash: &str) {
+    if is_usdx_song(file_hash) {
+        return;
+    }
+
+    FORCE_TRANSCRIBE
+        .lock()
+        .unwrap()
+        .insert(file_hash.to_string());
+        
+    reanalyze(file_hash, false);
 }
 
 fn reanalyze(file_hash: &str, full: bool) {
@@ -484,6 +515,48 @@ fn reanalyze(file_hash: &str, full: bool) {
     }
     update_song_analyzed(file_hash, false, None, None, None, None);
     enqueue_one(file_hash);
+}
+
+fn materialize_lyrics_from_transcript(cache: &CacheDir, file_hash: &str) {
+    if cache.lyrics_path(file_hash).is_file() {
+        return;
+    }
+
+    let transcript_path = cache.transcript_path(file_hash);
+    let Ok(data) = std::fs::read_to_string(&transcript_path) else {
+        return;
+    };
+
+    #[derive(Deserialize)]
+    struct Segment {
+        #[serde(default)]
+        text: String,
+    }
+
+    #[derive(Deserialize)]
+    struct TranscriptShape {
+        #[serde(default)]
+        segments: Vec<Segment>,
+    }
+
+    let Ok(parsed) = serde_json::from_str::<TranscriptShape>(&data) else {
+        return;
+    };
+
+    let lines: Vec<String> = parsed
+        .segments
+        .into_iter()
+        .map(|s| s.text.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    if lines.is_empty() {
+        return;
+    }
+
+    if let Err(e) = write_lyrics_file(cache, file_hash, &lines) {
+        warn!("[analyzer] Failed to materialize lyrics from transcript for {file_hash}: {e}");
+    }
 }
 
 // ─── Worker ──────────────────────────────────────────────────────────
@@ -531,7 +604,12 @@ fn process_song(file_hash: &str, cache: &CacheDir) {
     update_queue_status(file_hash, QueuedStatus::Analyzing(0));
 
     let config = AppConfig::load();
-    let lyrics_path = fetch_lrclib_lyrics(&song, cache);
+    let skip_lrclib = FORCE_TRANSCRIBE.lock().unwrap().remove(file_hash);
+    let lyrics_path = if skip_lrclib {
+        None
+    } else {
+        fetch_lrclib_lyrics(&song, cache)
+    };
 
     let mut cmd_json = serde_json::json!({
         "type": "analyze",
