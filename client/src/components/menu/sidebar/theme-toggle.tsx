@@ -1,16 +1,24 @@
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useMenuFocus } from "@/contexts/menu-focus-context";
 import { useTheme } from "@/contexts/theme-context";
 import { cn } from "@/lib/utils";
 import { useConfigMutation } from "@/mutations/use-config-mutation";
 import { MoonIcon, SunIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 interface ThemeToggleProps {
   className?: string;
+  focusedSidebarIndex: number;
+  registerCallback: (callback: (() => void) | null) => void;
 }
 
-export const ThemeToggle = ({ className }: ThemeToggleProps) => {
+export const ThemeToggle = ({
+  className,
+  focusedSidebarIndex,
+  registerCallback,
+}: ThemeToggleProps) => {
+  const { focus } = useMenuFocus();
   const { toggle, theme } = useTheme();
   const { mutate } = useConfigMutation();
 
@@ -20,6 +28,19 @@ export const ThemeToggle = ({ className }: ThemeToggleProps) => {
       : { Icon: MoonIcon, label: "Dark mode" };
   }, [theme]);
 
+  const handleToggle = useCallback(() => {
+    toggle();
+    mutate({ dark_mode: theme !== "dark" });
+  }, [mutate, theme, toggle]);
+
+  useEffect(() => {
+    registerCallback(handleToggle);
+    return () => registerCallback(null);
+  }, [handleToggle, registerCallback]);
+
+  const isFocused =
+    focus.active && focus.panel === "sidebar" && focus.sidebarIndex === focusedSidebarIndex;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -28,12 +49,11 @@ export const ThemeToggle = ({ className }: ThemeToggleProps) => {
           variant="ghost"
           size="icon-xs"
           aria-label={label}
-          onClick={() => {
-            toggle();
-            mutate({ dark_mode: theme !== "dark" });
-          }}
+          onClick={handleToggle}
+          data-sidebar-nav-index={focusedSidebarIndex}
           className={cn(
             "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-0 focus-visible:border-transparent",
+            isFocused && "ring-2 ring-primary bg-sidebar-accent",
             className,
           )}
         >

@@ -9,84 +9,102 @@ import { Header } from "./header";
 import { MainNavigation } from "./main-navigation";
 import { Actions } from "./actions";
 import { useMenuFocus } from "@/contexts/menu-focus-context";
-import { useCallback, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
+import { useCallback, useEffect, useRef, useState, type PropsWithChildren } from "react";
 
-const FOLDER_SLOT_INDEX = 0;
+const THEME_SLOT_INDEX = 0;
+const FOLDER_SLOT_INDEX = THEME_SLOT_INDEX + 1;
 const MAIN_NAV_BASE_INDEX = FOLDER_SLOT_INDEX + 1;
+
+type SidebarCallback = () => void;
+type SidebarSubCallback = (subIndex: number) => void;
 
 export const Sidebar = ({ children }: PropsWithChildren<{}>) => {
   const { focus, actionsRef, setFocus } = useMenuFocus();
-  const [mainNavigationCallbacks, setMainNavigationCallbacks] = useState<(() => void)[]>([]);
-  const [folderCallback, setFolderCallback] = useState<((subIndex: number) => void) | null>(null);
-  const [cacheCallback, setCacheCallback] = useState<((subIndex: number) => void) | null>(null);
-  const [actionsCallback, setActionsCallback] = useState<(() => void) | null>(null);
+  const [mainNavigationCallbacks, setMainNavigationCallbacks] = useState<SidebarCallback[]>([]);
 
   const focusRef = useRef(focus);
+  const themeCallbackRef = useRef<SidebarCallback | null>(null);
+  const folderCallbackRef = useRef<SidebarSubCallback | null>(null);
+  const cacheCallbackRef = useRef<SidebarSubCallback | null>(null);
+  const actionsCallbackRef = useRef<SidebarCallback | null>(null);
+
   focusRef.current = focus;
-
-  const folderClusterCallback = useCallback(() => {
-    folderCallback?.(focusRef.current.sidebarSubIndex);
-  }, [folderCallback]);
-
-  const cacheClusterCallback = useCallback(() => {
-    cacheCallback?.(focusRef.current.sidebarSubIndex);
-  }, [cacheCallback]);
 
   const cacheSlotIndex = MAIN_NAV_BASE_INDEX + mainNavigationCallbacks.length;
   const actionsSlotIndex = cacheSlotIndex + 1;
+  const sidebarCount = actionsSlotIndex + 1;
 
-  const sidebarCallbacks = useMemo(
-    () => [
-      folderClusterCallback,
-      ...mainNavigationCallbacks,
-      cacheClusterCallback,
-      ...(actionsCallback ? [actionsCallback] : []),
-    ],
-    [folderClusterCallback, mainNavigationCallbacks, cacheClusterCallback, actionsCallback],
-  );
+  const registerThemeCallback = useCallback((callback: (() => void) | null) => {
+    themeCallbackRef.current = callback;
+  }, []);
 
-  const registerMainNavigationCallbacks = useCallback((callbacks: (() => void)[]) => {
+  const registerMainNavigationCallbacks = useCallback((callbacks: SidebarCallback[]) => {
     setMainNavigationCallbacks(callbacks);
   }, []);
 
-  const registerFolderCallback = useCallback((callback: ((subIndex: number) => void) | null) => {
-    setFolderCallback(() => callback);
+  const registerFolderCallback = useCallback((callback: SidebarSubCallback | null) => {
+    folderCallbackRef.current = callback;
   }, []);
 
-  const registerCacheCallback = useCallback((callback: ((subIndex: number) => void) | null) => {
-    setCacheCallback(() => callback);
+  const registerCacheCallback = useCallback((callback: SidebarSubCallback | null) => {
+    cacheCallbackRef.current = callback;
   }, []);
 
-  const registerActionsCallback = useCallback((callback: (() => void) | null) => {
-    setActionsCallback(() => callback);
+  const registerActionsCallback = useCallback((callback: SidebarCallback | null) => {
+    actionsCallbackRef.current = callback;
   }, []);
+
+  const confirmSidebarSlot = useCallback(
+    (index: number) => {
+      if (index === THEME_SLOT_INDEX) {
+        themeCallbackRef.current?.();
+        return;
+      }
+
+      if (index === FOLDER_SLOT_INDEX) {
+        folderCallbackRef.current?.(focusRef.current.sidebarSubIndex);
+        return;
+      }
+
+      if (index >= MAIN_NAV_BASE_INDEX && index < cacheSlotIndex) {
+        mainNavigationCallbacks[index - MAIN_NAV_BASE_INDEX]?.();
+        return;
+      }
+
+      if (index === cacheSlotIndex) {
+        cacheCallbackRef.current?.(focusRef.current.sidebarSubIndex);
+        return;
+      }
+
+      if (index === actionsSlotIndex) {
+        actionsCallbackRef.current?.();
+      }
+    },
+    [actionsSlotIndex, cacheSlotIndex, mainNavigationCallbacks],
+  );
+
+  const clampSidebarFocus = useCallback(() => {
+    setFocus((prev) => {
+      const sidebarIndex = Math.min(prev.sidebarIndex, sidebarCount - 1);
+      return sidebarIndex === prev.sidebarIndex ? prev : { ...prev, sidebarIndex };
+    });
+  }, [setFocus, sidebarCount]);
 
   useEffect(() => {
-    actionsRef.current.sidebarCount = sidebarCallbacks.length;
-
-    actionsRef.current.onConfirmSidebar = (index: number) => {
-      sidebarCallbacks[index]?.();
-    };
-
-    setFocus((prev) => {
-      const maxIndex = Math.max(0, sidebarCallbacks.length - 1);
-      const nextSidebarIndex = Math.min(prev.sidebarIndex, maxIndex);
-      if (nextSidebarIndex === prev.sidebarIndex) {
-        return prev;
-      }
-      return { ...prev, sidebarIndex: nextSidebarIndex };
-    });
+    actionsRef.current.sidebarCount = sidebarCount;
+    actionsRef.current.onConfirmSidebar = confirmSidebarSlot;
+    clampSidebarFocus();
 
     return () => {
       actionsRef.current.onConfirmSidebar = null;
       actionsRef.current.sidebarCount = 0;
     };
-  }, [actionsRef, sidebarCallbacks, setFocus]);
+  }, [actionsRef, clampSidebarFocus, confirmSidebarSlot, sidebarCount]);
 
   return (
     <SidebarProvider>
       <ShadCnSidebar>
-        <Header />
+        <Header focusedSidebarIndex={THEME_SLOT_INDEX} registerCallback={registerThemeCallback} />
 
         <MainNavigation
           baseIndex={MAIN_NAV_BASE_INDEX}
