@@ -51,37 +51,37 @@
 
 .dark {
   /* Theme::dark() */
-  --background: color(srgb 0.075 0.075 0.118);
-  --foreground: color(srgb 0.93 0.93 0.96);
-  --card: color(srgb 0.11 0.11 0.17);
-  --card-foreground: color(srgb 0.93 0.93 0.96);
-  --popover: color(srgb 0.11 0.11 0.17);
-  --popover-foreground: color(srgb 0.93 0.93 0.96);
-  --primary: color(srgb 0.42 0.54 1);
+  --background: color(srgb 0.05 0.05 0.085);
+  --foreground: color(srgb 0.96 0.96 0.98);
+  --card: color(srgb 0.13 0.13 0.19);
+  --card-foreground: color(srgb 0.96 0.96 0.98);
+  --popover: color(srgb 0.14 0.14 0.2);
+  --popover-foreground: color(srgb 0.96 0.96 0.98);
+  --primary: color(srgb 0.46 0.58 1);
   --primary-foreground: color(srgb 1 1 1);
-  --secondary: color(srgb 0.16 0.16 0.22);
-  --secondary-foreground: color(srgb 0.93 0.93 0.96);
-  --muted: color(srgb 0.16 0.16 0.22);
-  --muted-foreground: color(srgb 0.55 0.55 0.62);
-  --accent: color(srgb 0.14 0.15 0.22);
-  --accent-foreground: color(srgb 0.93 0.93 0.96);
-  --destructive: color(srgb 0.78 0.18 0.18);
-  --border: color(srgb 0.2 0.2 0.28);
-  --input: color(srgb 0.16 0.16 0.22);
-  --ring: color(srgb 0.42 0.54 1);
-  --chart-1: color(srgb 0.42 0.54 1);
-  --chart-2: color(srgb 0.18 0.52 0.82);
-  --chart-3: color(srgb 0.18 0.68 0.28);
-  --chart-4: color(srgb 0.68 0.53 0.08);
-  --chart-5: color(srgb 0.88 0.68 0.08);
-  --sidebar: color(srgb 0.055 0.055 0.085);
-  --sidebar-foreground: color(srgb 0.93 0.93 0.96);
-  --sidebar-primary: color(srgb 0.42 0.54 1);
+  --secondary: color(srgb 0.19 0.19 0.26);
+  --secondary-foreground: color(srgb 0.96 0.96 0.98);
+  --muted: color(srgb 0.17 0.17 0.23);
+  --muted-foreground: color(srgb 0.68 0.68 0.74);
+  --accent: color(srgb 0.21 0.23 0.33);
+  --accent-foreground: color(srgb 0.96 0.96 0.98);
+  --destructive: color(srgb 0.82 0.22 0.22);
+  --border: color(srgb 0.26 0.26 0.34);
+  --input: color(srgb 0.19 0.19 0.26);
+  --ring: color(srgb 0.46 0.58 1);
+  --chart-1: color(srgb 0.46 0.58 1);
+  --chart-2: color(srgb 0.22 0.58 0.88);
+  --chart-3: color(srgb 0.22 0.72 0.32);
+  --chart-4: color(srgb 0.72 0.57 0.1);
+  --chart-5: color(srgb 0.92 0.72 0.1);
+  --sidebar: color(srgb 0.085 0.085 0.12);
+  --sidebar-foreground: color(srgb 0.96 0.96 0.98);
+  --sidebar-primary: color(srgb 0.46 0.58 1);
   --sidebar-primary-foreground: color(srgb 1 1 1);
-  --sidebar-accent: color(srgb 0.18 0.18 0.25);
-  --sidebar-accent-foreground: color(srgb 0.93 0.93 0.96);
+  --sidebar-accent: color(srgb 0.18 0.18 0.26);
+  --sidebar-accent-foreground: color(srgb 0.96 0.96 0.98);
   --sidebar-border: color(srgb 0.16 0.16 0.22);
-  --sidebar-ring: color(srgb 0.42 0.54 1);
+  --sidebar-ring: color(srgb 0.46 0.58 1);
 }
 
 @theme inline {
