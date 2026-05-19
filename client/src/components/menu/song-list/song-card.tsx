@@ -137,7 +137,7 @@ export const SongCard = memo(
         role="listitem"
         data-song-index={index}
         className={cn(
-          "flex gap-2 cursor-pointer bg-card transition-colors hover:bg-muted focus-visible:ring-0 focus-visible:border-border",
+          "flex gap-2 cursor-pointer bg-card transition-colors hover:ring-primary focus-visible:ring-0 focus-visible:border-border",
           isFocused && "ring-2 ring-primary bg-muted",
           disabled && "bd-muted",
         )}

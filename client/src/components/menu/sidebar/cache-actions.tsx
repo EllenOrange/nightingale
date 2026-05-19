@@ -69,8 +69,9 @@ export const CacheActions = ({ focusedSidebarIndex, registerCallback }: CacheAct
                 size="icon-xs"
                 aria-label={button.label}
                 onClick={() => setMode({ mode: "clear-cache", target: button.target })}
+                data-sidebar-sub-index={index}
                 className={cn(
-                  "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-0 focus-visible:border-transparent",
+                  "text-sidebar-foreground/70 hover:bg-transparent hover:text-sidebar-foreground/70 focus-visible:ring-0 focus-visible:border-transparent dark:hover:bg-transparent",
                   isButtonFocused && "ring-2 ring-primary bg-sidebar-accent",
                 )}
               >

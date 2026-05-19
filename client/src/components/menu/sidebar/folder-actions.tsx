@@ -92,8 +92,9 @@ export const FolderActions = ({ focusedSidebarIndex, registerCallback }: FolderA
                         aria-label={button.label}
                         disabled={button.disabled}
                         onClick={() => button.handler()}
+                        data-sidebar-sub-index={index}
                         className={cn(
-                          "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-0 focus-visible:border-transparent",
+                          "text-sidebar-foreground/70 hover:bg-transparent hover:text-sidebar-foreground/70 focus-visible:ring-0 focus-visible:border-transparent dark:hover:bg-transparent",
                           isButtonFocused && "ring-2 ring-primary bg-sidebar-accent",
                         )}
                       >
@@ -108,7 +109,7 @@ export const FolderActions = ({ focusedSidebarIndex, registerCallback }: FolderA
           </div>
         </SidebarMenuItem>
       </SidebarMenu>
-      <div aria-hidden className="mx-auto mt-1 h-px w-[299px] rounded-full bg-sidebar-border/80" />
+      <div aria-hidden className="mx-auto mt-1 h-px w-full rounded-full bg-sidebar-border/80" />
     </SidebarGroup>
   );
 };

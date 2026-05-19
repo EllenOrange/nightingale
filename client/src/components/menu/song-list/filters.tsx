@@ -45,8 +45,9 @@ export const Filters = () => {
         tabIndex={-1}
         variant="outline"
         onClick={enqueueAll}
+        data-analyze-all-focus="true"
         className={cn(
-          "focus-visible:ring-0 focus-visible:border-transparent",
+          "focus-visible:ring-0 focus-visible:border-transparent hover:ring-primary",
           isAnalyzeAllFocused && "ring-2 ring-primary",
         )}
       >

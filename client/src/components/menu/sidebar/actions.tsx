@@ -112,7 +112,8 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
             <SidebarMenuButton
               tabIndex={-1}
               size="lg"
-              className={`data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground ${
+              data-sidebar-nav-index={focusedSidebarIndex}
+              className={`data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground hover:ring-primary ${
                 isSidebarActive && focus.sidebarIndex === focusedSidebarIndex
                   ? "ring-2 ring-primary bg-sidebar-accent"
                   : ""

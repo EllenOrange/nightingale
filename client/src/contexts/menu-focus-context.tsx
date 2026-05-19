@@ -10,6 +10,7 @@ import {
 } from "react";
 
 export type FocusPanel = "songList" | "sidebar";
+export type FocusSource = "mouse" | "nav";
 
 export interface MenuFocus {
   active: boolean;
@@ -18,6 +19,7 @@ export interface MenuFocus {
   sidebarIndex: number;
   sidebarSubIndex: number;
   analyzeAllFocused: boolean;
+  source: FocusSource;
 }
 
 export interface MenuFocusActions {
@@ -52,6 +54,7 @@ const INITIAL_FOCUS: MenuFocus = {
   sidebarIndex: 0,
   sidebarSubIndex: 0,
   analyzeAllFocused: false,
+  source: "nav",
 };
 
 const INITIAL_ACTIONS: MenuFocusActions = {

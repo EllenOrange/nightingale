@@ -86,7 +86,7 @@ function LibraryNavSubItem({ section, item, filter, onSelectItem }: LibraryNavSu
       <SidebarMenuButton
         data-sidebar-nav-index={itemIndex}
         isActive={isLibraryMenuItemActive(section, item, filter)}
-        className={`flex h-fit items-center justify-between gap-2 px-2 py-1.5 ${
+        className={`flex h-fit items-center justify-between gap-2 px-2 py-1.5 hover:ring-primary ${
           isSidebarActive && isItemFocused ? "ring-2 ring-primary bg-sidebar-accent" : ""
         }`}
         onClick={() => onSelectItem(section, item)}
@@ -124,7 +124,7 @@ function LibraryNavSection({
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
             data-sidebar-nav-index={collapseIndex}
-            className={`flex w-full justify-between ${
+            className={`flex w-full justify-between hover:ring-primary ${
               isSidebarActive && isCollapseFocused ? "ring-2 ring-primary bg-sidebar-accent" : ""
             }`}
           >
@@ -229,7 +229,7 @@ export const MainNavigation = ({
   const isSidebarActive = focus.active && focus.panel === "sidebar";
 
   useEffect(() => {
-    if (!isSidebarActive) {
+    if (!isSidebarActive || focus.source === "mouse") {
       return;
     }
 
@@ -241,7 +241,7 @@ export const MainNavigation = ({
     });
 
     return () => cancelAnimationFrame(rafId);
-  }, [focus.sidebarIndex, isSidebarActive, rows]);
+  }, [focus.sidebarIndex, focus.source, isSidebarActive, rows]);
 
   const showEmptyPlaceholder = !menu || visibleSections.length === 0;
 

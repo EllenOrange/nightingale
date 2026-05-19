@@ -11,6 +11,16 @@ interface UseMenuNavOptions {
   onBack: () => void;
 }
 
+function blurActiveTextInput() {
+  const active = document.activeElement;
+  if (
+    active instanceof HTMLElement &&
+    (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)
+  ) {
+    active.blur();
+  }
+}
+
 export function useMenuNav({ overlayOpen, onBack }: UseMenuNavOptions) {
   const { setFocus, activate, deactivate, actionsRef, scrollRef } = useMenuFocus();
 
@@ -22,11 +32,113 @@ export function useMenuNav({ overlayOpen, onBack }: UseMenuNavOptions) {
   overlayOpenRef.current = overlayOpen;
   const navLockTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Mouse coexistence: deactivate focus on mouse move
+  // Mouse coexistence: sync hover into the same focus store the keyboard/gamepad
+  // writes to, so Up/Down resumes from whatever the mouse is hovering and only
+  // one focus ring is ever visible.
   useEffect(() => {
-    const onMouseMove = () => {
-      if (navLockedRef.current) {
+    const onMouseMove = (event: MouseEvent) => {
+      if (navLockedRef.current || overlayOpenRef.current) {
         return;
+      }
+
+      const target = event.target as Element | null;
+
+      const subEl = target?.closest<HTMLElement>("[data-sidebar-sub-index]");
+      if (subEl) {
+        const parentEl = subEl.closest<HTMLElement>("[data-sidebar-nav-index]");
+        const sidebarIndex = parentEl ? Number(parentEl.dataset.sidebarNavIndex) : NaN;
+        const sidebarSubIndex = Number(subEl.dataset.sidebarSubIndex);
+        if (Number.isFinite(sidebarIndex) && Number.isFinite(sidebarSubIndex)) {
+          blurActiveTextInput();
+          setFocus((prev) => {
+            if (
+              prev.active &&
+              prev.panel === "sidebar" &&
+              prev.sidebarIndex === sidebarIndex &&
+              prev.sidebarSubIndex === sidebarSubIndex
+            ) {
+              return prev;
+            }
+            return {
+              ...prev,
+              active: true,
+              panel: "sidebar",
+              sidebarIndex,
+              sidebarSubIndex,
+              analyzeAllFocused: false,
+              source: "mouse",
+            };
+          });
+          return;
+        }
+      }
+
+      const sidebarEl = target?.closest<HTMLElement>("[data-sidebar-nav-index]");
+      if (sidebarEl) {
+        const sidebarIndex = Number(sidebarEl.dataset.sidebarNavIndex);
+        if (Number.isFinite(sidebarIndex)) {
+          blurActiveTextInput();
+          setFocus((prev) => {
+            if (prev.active && prev.panel === "sidebar" && prev.sidebarIndex === sidebarIndex) {
+              return prev;
+            }
+            const subReset = prev.sidebarIndex !== sidebarIndex ? { sidebarSubIndex: 0 } : null;
+            return {
+              ...prev,
+              ...subReset,
+              active: true,
+              panel: "sidebar",
+              sidebarIndex,
+              analyzeAllFocused: false,
+              source: "mouse",
+            };
+          });
+          return;
+        }
+      }
+
+      if (target?.closest("[data-analyze-all-focus]")) {
+        blurActiveTextInput();
+        setFocus((prev) => {
+          if (prev.active && prev.panel === "songList" && prev.analyzeAllFocused) {
+            return prev;
+          }
+          return {
+            ...prev,
+            active: true,
+            panel: "songList",
+            analyzeAllFocused: true,
+            source: "mouse",
+          };
+        });
+        return;
+      }
+
+      const songEl = target?.closest<HTMLElement>("[data-song-index]");
+      if (songEl) {
+        const songIndex = Number(songEl.dataset.songIndex);
+        if (Number.isFinite(songIndex)) {
+          blurActiveTextInput();
+          setFocus((prev) => {
+            if (
+              prev.active &&
+              prev.panel === "songList" &&
+              !prev.analyzeAllFocused &&
+              prev.songIndex === songIndex
+            ) {
+              return prev;
+            }
+            return {
+              ...prev,
+              active: true,
+              panel: "songList",
+              songIndex,
+              analyzeAllFocused: false,
+              source: "mouse",
+            };
+          });
+          return;
+        }
       }
 
       deactivate();
@@ -34,7 +146,7 @@ export function useMenuNav({ overlayOpen, onBack }: UseMenuNavOptions) {
 
     window.addEventListener("mousemove", onMouseMove);
     return () => window.removeEventListener("mousemove", onMouseMove);
-  }, [deactivate]);
+  }, [deactivate, setFocus]);
 
   // Tab key for panel switching (not routed through NavInput)
   useEffect(() => {
@@ -50,11 +162,14 @@ export function useMenuNav({ overlayOpen, onBack }: UseMenuNavOptions) {
         navLockedRef.current = false;
       }, NAV_LOCK_MS);
 
+      blurActiveTextInput();
+
       setFocus((prev) => ({
         ...prev,
         active: true,
         analyzeAllFocused: false,
         panel: prev.panel === "songList" ? "sidebar" : "songList",
+        source: "nav",
       }));
     };
 
@@ -113,6 +228,7 @@ export function useMenuNav({ overlayOpen, onBack }: UseMenuNavOptions) {
 
         if (actionsRef.current.isSidebarBusy?.()) return;
 
+        blurActiveTextInput();
         activate();
 
         // Set nav lock to prevent mouse hover from overriding
@@ -160,7 +276,7 @@ export function useMenuNav({ overlayOpen, onBack }: UseMenuNavOptions) {
                   return prev;
                 }
                 handled = true;
-                return { ...prev, sidebarSubIndex: nextSub, active: true };
+                return { ...prev, sidebarSubIndex: nextSub, active: true, source: "nav" };
               }
             }
 
@@ -175,18 +291,19 @@ export function useMenuNav({ overlayOpen, onBack }: UseMenuNavOptions) {
               panel: "sidebar",
               analyzeAllFocused: false,
               active: true,
+              source: "nav",
             }));
             return;
           }
 
-          setFocus((prev) => ({ ...prev, panel: "songList", active: true }));
+          setFocus((prev) => ({ ...prev, panel: "songList", active: true, source: "nav" }));
           return;
         }
 
         // Vertical navigation
         if (action.up || action.down) {
           setFocus((prev) => {
-            const next = { ...prev, active: true };
+            const next = { ...prev, active: true, source: "nav" as const };
 
             if (prev.panel === "songList") {
               const songCount = actionsRef.current.songCount;
