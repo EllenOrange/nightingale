@@ -1,3 +1,4 @@
+import { EditLyricsDialog } from "@/components/menu/dialogs/edit-lyrics";
 import { ExitDialog } from "@/components/menu/dialogs/exit";
 import { InfoDialog } from "@/components/menu/dialogs/info";
 import { SelectLanguageDialog } from "@/components/menu/dialogs/language";
@@ -58,6 +59,7 @@ const MenuInner = () => {
       <InfoDialog />
       <UpdateDialog />
       <SelectLanguageDialog />
+      <EditLyricsDialog />
       <SidebarInset>{content}</SidebarInset>
     </Sidebar>
   );

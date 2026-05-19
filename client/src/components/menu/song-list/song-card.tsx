@@ -20,6 +20,7 @@ import {
   LoaderCircleIcon,
   MenuIcon,
   MusicIcon,
+  PencilLineIcon,
   Trash2Icon,
   VideoIcon,
 } from "lucide-react";
@@ -136,7 +137,7 @@ export const SongCard = memo(
         role="listitem"
         data-song-index={index}
         className={cn(
-          "flex gap-2 cursor-pointer transition-colors hover:bg-muted focus-visible:ring-0 focus-visible:border-border",
+          "flex gap-2 cursor-pointer bg-card transition-colors hover:bg-muted focus-visible:ring-0 focus-visible:border-border",
           isFocused && "ring-2 ring-primary bg-muted",
           disabled && "bd-muted",
         )}
@@ -224,6 +225,14 @@ export const SongCard = memo(
                   >
                     <AudioLinesIcon />
                     Reanalyze full (with stems)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={withMenuAction(async () => {
+                      setMode({ mode: "edit-lyrics", song });
+                    })}
+                  >
+                    <PencilLineIcon />
+                    Edit lyrics
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={withMenuAction(async () => {

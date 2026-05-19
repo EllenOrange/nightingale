@@ -1,7 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
-use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -16,7 +15,8 @@ use crate::config::AppConfig;
 use crate::error::NightingaleError;
 use crate::library_db;
 use crate::library_model::LibraryMenuFilters;
-use crate::song::{read_transcript_meta, Song, TranscriptSource};
+use crate::lyrics::fetch_lrclib_lyrics;
+use crate::song::{read_transcript_meta, TranscriptSource};
 
 // ─── Analysis queue (persisted to disk) ──────────────────────────────
 
@@ -332,7 +332,7 @@ fn remove_from_queue(file_hash: &str) {
     let _ = library_db::analysis_queue_delete(file_hash);
 }
 
-fn update_song_analyzed(
+pub(crate) fn update_song_analyzed(
     file_hash: &str,
     is_analyzed: bool,
     language: Option<String>,
@@ -369,7 +369,7 @@ fn ensure_worker_running(state: &mut AnalyzerState) {
 
 // ─── Public API ──────────────────────────────────────────────────────
 
-fn is_usdx_song(file_hash: &str) -> bool {
+pub(crate) fn is_usdx_song(file_hash: &str) -> bool {
     library_db::load_song_by_hash(file_hash)
         .ok()
         .flatten()
@@ -719,126 +719,3 @@ fn send_and_monitor(
     }
 }
 
-// ─── Lyrics fetching ─────────────────────────────────────────────────
-
-fn fetch_lrclib_lyrics(song: &Song, cache: &CacheDir) -> Option<PathBuf> {
-    let title = &song.title;
-    let artist = &song.artist;
-
-    if title.is_empty() || artist == "Unknown Artist" {
-        return None;
-    }
-
-    let agent = ureq::Agent::new_with_defaults();
-
-    info!(
-        "[lrclib] Searching: \"{title}\" by \"{artist}\" ({:.0}s, album=\"{}\")",
-        song.duration_secs, song.album
-    );
-
-    let url = format!(
-        "https://lrclib.net/api/search?track_name={}&artist_name={}",
-        urlencoding::encode(title),
-        urlencoding::encode(artist),
-    );
-    let resp = match agent
-        .get(&url)
-        .header("User-Agent", "Nightingale/1.0")
-        .call()
-    {
-        Ok(r) => r,
-        Err(e) => {
-            warn!("[lrclib] Search request failed: {e}");
-            return None;
-        }
-    };
-    let results: Vec<serde_json::Value> = match resp.into_body().read_json() {
-        Ok(r) => r,
-        Err(e) => {
-            warn!("[lrclib] Failed to parse search results: {e}");
-            return None;
-        }
-    };
-
-    let with_lyrics: Vec<_> = results
-        .into_iter()
-        .filter(|r| {
-            r.get("plainLyrics")
-                .and_then(|v| v.as_str())
-                .is_some_and(|s| !s.is_empty())
-                || r.get("syncedLyrics")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.is_empty())
-        })
-        .collect();
-
-    info!(
-        "[lrclib] Search returned {} results with lyrics",
-        with_lyrics.len()
-    );
-
-    let album_lower = song.album.to_lowercase();
-    let record = with_lyrics.into_iter().min_by_key(|r| {
-        let album_match = r
-            .get("albumName")
-            .and_then(|v| v.as_str())
-            .is_some_and(|a| a.to_lowercase() == album_lower);
-        let d = r.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let duration_penalty = ((d - song.duration_secs).abs() * 10.0) as i64;
-        let album_bonus: i64 = if album_match { 0 } else { 5_000 };
-
-        album_bonus + duration_penalty
-    });
-
-    if let Some(ref r) = record {
-        let d = r.get("duration").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let name = r
-            .get("trackName")
-            .and_then(|v| v.as_str())
-            .unwrap_or("?");
-        let album = r
-            .get("albumName")
-            .and_then(|v| v.as_str())
-            .unwrap_or("?");
-        info!(
-            "[lrclib] Picked \"{}\" from \"{}\" (duration {:.0}s, delta {:.1}s)",
-            name,
-            album,
-            d,
-            (d - song.duration_secs).abs()
-        );
-    }
-
-    let record = record?;
-
-    let plain = record
-        .get("plainLyrics")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())?;
-
-    let lines: Vec<String> = plain
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect();
-
-    if lines.is_empty() {
-        warn!("[lrclib] Extracted 0 lines, skipping");
-        return None;
-    }
-
-    info!("[lrclib] Extracted {} lines", lines.len());
-    let lyrics_json = serde_json::json!({"lines": lines});
-
-    let out = cache.lyrics_path(&song.file_hash);
-    match std::fs::write(&out, serde_json::to_string_pretty(&lyrics_json).unwrap()) {
-        Ok(_) => {
-            info!("[lrclib] Lyrics saved to {}", out.display());
-            Some(out)
-        }
-        Err(e) => {
-            warn!("[lrclib] Failed to write lyrics: {e}");
-            None
-        }
-    }
-}

@@ -9,6 +9,7 @@ export type DialogMode =
   | "about"
   | "update"
   | { mode: "language"; song: Song }
+  | { mode: "edit-lyrics"; song: Song }
   | null;
 
 const dialogAtom = atom<DialogMode>(null);
