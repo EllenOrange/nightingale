@@ -145,18 +145,40 @@ export function useMenuNav({ overlayOpen, onBack }: UseMenuNavOptions) {
           return;
         }
 
-        // Panel switching
-        if (action.left) {
-          setFocus((prev) => ({
-            ...prev,
-            panel: "sidebar",
-            analyzeAllFocused: false,
-            active: true,
-          }));
-          return;
-        }
+        // Horizontal: sidebar cluster rows cycle sub-index via L/R; otherwise L/R switches panels.
+        if (action.left || action.right) {
+          let handled = false;
 
-        if (action.right) {
+          setFocus((prev) => {
+            if (prev.panel === "sidebar") {
+              const subCount = actionsRef.current.sidebarSubCountByIndex.get(prev.sidebarIndex);
+              if (subCount && subCount > 1) {
+                const delta = action.left ? -1 : 1;
+                const nextSub = Math.max(0, Math.min(subCount - 1, prev.sidebarSubIndex + delta));
+                if (nextSub === prev.sidebarSubIndex) {
+                  handled = true;
+                  return prev;
+                }
+                handled = true;
+                return { ...prev, sidebarSubIndex: nextSub, active: true };
+              }
+            }
+
+            return prev;
+          });
+
+          if (handled) return;
+
+          if (action.left) {
+            setFocus((prev) => ({
+              ...prev,
+              panel: "sidebar",
+              analyzeAllFocused: false,
+              active: true,
+            }));
+            return;
+          }
+
           setFocus((prev) => ({ ...prev, panel: "songList", active: true }));
           return;
         }
@@ -192,13 +214,16 @@ export function useMenuNav({ overlayOpen, onBack }: UseMenuNavOptions) {
               const sidebarCount = actionsRef.current.sidebarCount;
               if (sidebarCount <= 0) {
                 next.sidebarIndex = 0;
+                next.sidebarSubIndex = 0;
                 return next;
               }
 
               if (action.up) {
                 next.sidebarIndex = Math.max(0, prev.sidebarIndex - 1);
+                next.sidebarSubIndex = 0;
               } else if (action.down) {
                 next.sidebarIndex = Math.min(sidebarCount - 1, prev.sidebarIndex + 1);
+                next.sidebarSubIndex = 0;
               }
             }
 

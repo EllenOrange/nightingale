@@ -34,6 +34,7 @@ import {
   useSidebarRowFocus,
   type SidebarNavRow,
 } from "@/contexts/sidebar-nav-context";
+import { FolderActions } from "./folder-actions";
 
 type NavSectionConfig = {
   section: LibraryMenuSection;
@@ -152,10 +153,18 @@ function LibraryNavSection({
 }
 
 interface MainNavigationProps {
+  baseIndex: number;
   registerCallbacks: (callbacks: (() => void)[]) => void;
+  folderFocusedSidebarIndex: number;
+  registerFolderCallback: (callback: ((subIndex: number) => void) | null) => void;
 }
 
-export const MainNavigation = ({ registerCallbacks }: MainNavigationProps) => {
+export const MainNavigation = ({
+  baseIndex,
+  registerCallbacks,
+  folderFocusedSidebarIndex,
+  registerFolderCallback,
+}: MainNavigationProps) => {
   const { data: menu } = useLibraryMenuItems();
   const { setLibraryFilter, ...filter } = useLibraryFilter();
   const { focus } = useMenuFocus();
@@ -237,14 +246,14 @@ export const MainNavigation = ({ registerCallbacks }: MainNavigationProps) => {
     return () => cancelAnimationFrame(rafId);
   }, [focus.sidebarIndex, isSidebarActive, rows]);
 
-  if (!menu) {
-    return null;
-  }
-
-  const showEmptyPlaceholder = visibleSections.length === 0;
+  const showEmptyPlaceholder = !menu || visibleSections.length === 0;
 
   return (
     <SidebarContent>
+      <FolderActions
+        focusedSidebarIndex={folderFocusedSidebarIndex}
+        registerCallback={registerFolderCallback}
+      />
       <SidebarGroup>
         <SidebarMenu>
           {showEmptyPlaceholder ? (
@@ -256,7 +265,7 @@ export const MainNavigation = ({ registerCallbacks }: MainNavigationProps) => {
               </div>
             </SidebarMenuItem>
           ) : (
-            <SidebarNavProvider rows={rows}>
+            <SidebarNavProvider rows={rows} baseIndex={baseIndex}>
               {visibleSections.map((config) => (
                 <LibraryNavSection
                   key={config.section}

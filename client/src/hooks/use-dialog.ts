@@ -1,6 +1,8 @@
 import { Song } from "@/types/Song";
 import { atom, useAtom } from "jotai";
 
+export type ClearCacheTarget = "all" | "videos" | "models";
+
 export type DialogMode =
   | "exit"
   | "create-profile"
@@ -9,6 +11,8 @@ export type DialogMode =
   | "about"
   | "update"
   | { mode: "language"; song: Song }
+  | { mode: "edit-lyrics"; song: Song }
+  | { mode: "clear-cache"; target: ClearCacheTarget }
   | null;
 
 const dialogAtom = atom<DialogMode>(null);

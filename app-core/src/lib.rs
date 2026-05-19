@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod library_model;
 mod library_menu;
+mod lyrics;
 pub mod media_server;
 mod playback;
 mod profile;
@@ -17,6 +18,9 @@ mod vendor_scripts;
 pub use analyzer::{
     AnalysisQueue, delete_cache, enqueue_all, enqueue_one, reanalyze_full, reanalyze_transcript,
     shutdown_server,
+};
+pub use lyrics::{
+    LrclibCandidate, LyricsFile, load_lyrics_file, save_lyrics_and_realign, search_lrclib_for_hash,
 };
 pub use cache::{
     CacheDir, CacheStats, change_app_data_path, clear_models, clear_videos,
