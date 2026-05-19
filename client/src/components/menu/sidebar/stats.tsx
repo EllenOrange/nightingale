@@ -18,7 +18,7 @@ interface StatsProps {
 export const Stats = ({ cacheFocusedSidebarIndex, registerCacheCallback }: StatsProps) => {
   const { data: stats, isLoading, isError } = useCacheStats();
 
-  const total = stats ? totalUsedBytes(stats) : 0;
+  const total = stats ? totalUsedBytes(stats) : 0n;
 
   const noStatsLabel = isError ? "Cache stats unavailable" : "…";
 

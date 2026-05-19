@@ -1,5 +1,5 @@
-import { loadLyrics, searchLrclibLyrics } from "@/tauri-bridge/lyrics";
-import { loadTranscript } from "@/tauri-bridge/playback";
+import { loadLyrics, searchLrclibLyrics } from "@/bridge/lyrics";
+import { loadTranscript } from "@/bridge/playback";
 import type { LrclibCandidate } from "@/types/LrclibCandidate";
 import { linesFromTranscript } from "@/utils/edit-lyrics";
 import { useQuery } from "@tanstack/react-query";

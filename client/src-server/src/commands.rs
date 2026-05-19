@@ -2,7 +2,7 @@ use std::path::Path;
 
 use app_core::{
     AnalysisQueue, AppConfig, CacheStats, LibraryMenuFilters, LibraryMenuItems, LoadSongsParams,
-    ProfileStore, SongsStore,
+    ProfileStore, SongsStore, load_lyrics_file, save_lyrics_and_realign, search_lrclib_for_hash,
 };
 use axum::{
     extract::{Path as AxumPath, State},
@@ -175,6 +175,27 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
         }
         "shift_key" => shift_key_cmd(events, payload),
         "shift_tempo" => shift_tempo_cmd(events, payload),
+
+        // ── Lyrics ───────────────────────────────────────────────────────
+        "load_lyrics" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            Ok(serde_json::to_value(load_lyrics_file(&args.file_hash)).map_err(serde_err)?)
+        }
+        "search_lrclib_lyrics" => {
+            let args: FileHashArgs = deserialize(payload)?;
+            Ok(serde_json::to_value(search_lrclib_for_hash(&args.file_hash)).map_err(serde_err)?)
+        }
+        "save_lyrics" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                file_hash: String,
+                lines: Vec<String>,
+            }
+            let args: Args = deserialize(payload)?;
+            save_lyrics_and_realign(&args.file_hash, args.lines).map_err(ApiError::bad_request)?;
+            Ok(Value::Null)
+        }
 
         // ── Playback ─────────────────────────────────────────────────────
         "load_transcript" => {

@@ -1,6 +1,6 @@
 import type { LrclibCandidate } from "@/types/LrclibCandidate";
 import type { LyricsFile } from "@/types/LyricsFile";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "./runtime";
 
 export const loadLyrics = async (fileHash: string): Promise<LyricsFile | null> => {
   return await invoke<LyricsFile | null>("load_lyrics", { fileHash });

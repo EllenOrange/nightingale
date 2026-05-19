@@ -1,5 +1,5 @@
 import { ANALYSIS_QUEUE, LYRICS, MENU, SONGS, SONGS_META } from "@/queries/keys";
-import { saveLyrics } from "@/tauri-bridge/lyrics";
+import { saveLyrics } from "@/bridge/lyrics";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
