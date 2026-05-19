@@ -16,6 +16,7 @@ export interface MenuFocus {
   panel: FocusPanel;
   songIndex: number;
   sidebarIndex: number;
+  sidebarSubIndex: number;
   analyzeAllFocused: boolean;
 }
 
@@ -27,6 +28,7 @@ export interface MenuFocusActions {
   isSidebarBusy: (() => boolean) | null;
   songCount: number;
   sidebarCount: number;
+  sidebarSubCountByIndex: Map<number, number>;
 }
 
 export interface MenuFocusContextValue {
@@ -45,6 +47,7 @@ const INITIAL_FOCUS: MenuFocus = {
   panel: "songList",
   songIndex: 0,
   sidebarIndex: 0,
+  sidebarSubIndex: 0,
   analyzeAllFocused: false,
 };
 
@@ -56,6 +59,7 @@ const INITIAL_ACTIONS: MenuFocusActions = {
   isSidebarBusy: null,
   songCount: 0,
   sidebarCount: 0,
+  sidebarSubCountByIndex: new Map(),
 };
 
 export function MenuFocusProvider({ children }: { children: ReactNode }) {

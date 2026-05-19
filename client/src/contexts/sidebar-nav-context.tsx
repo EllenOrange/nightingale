@@ -21,15 +21,17 @@ const SidebarNavContext = createContext<SidebarNavContextValue | null>(null);
 
 interface SidebarNavProviderProps {
   rows: SidebarNavRow[];
+  baseIndex?: number;
   children: ReactNode;
 }
 
-export function SidebarNavProvider({ rows, children }: SidebarNavProviderProps) {
+export function SidebarNavProvider({ rows, baseIndex = 0, children }: SidebarNavProviderProps) {
   const value = useMemo<SidebarNavContextValue>(() => {
     const collapseIndexBySection = new Map<LibraryMenuSection, number>();
     const itemIndexBySection = new Map<LibraryMenuSection, Map<string, number>>();
 
-    rows.forEach((row, index) => {
+    rows.forEach((row, localIndex) => {
+      const index = localIndex + baseIndex;
       if (row.kind === "collapse") {
         collapseIndexBySection.set(row.section, index);
         return;
@@ -41,7 +43,7 @@ export function SidebarNavProvider({ rows, children }: SidebarNavProviderProps) 
     });
 
     return { collapseIndexBySection, itemIndexBySection };
-  }, [rows]);
+  }, [rows, baseIndex]);
 
   return <SidebarNavContext.Provider value={value}>{children}</SidebarNavContext.Provider>;
 }

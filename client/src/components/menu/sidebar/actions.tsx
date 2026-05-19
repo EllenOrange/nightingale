@@ -10,31 +10,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { useMenuFocus } from "@/contexts/menu-focus-context";
-import { useClearCache } from "@/hooks/use-clear-cache";
 import { useCurrentProfile } from "@/hooks/use-current-profile";
 import { useDialog } from "@/hooks/use-dialog";
 import { useShouldRunSetup } from "@/hooks/use-should-run-setup";
-import { useConfigMutation } from "@/mutations/use-config-mutation";
-import { useTheme } from "@/contexts/theme-context";
 import {
-  BoxIcon,
   ChevronsUpDownIcon,
   CogIcon,
   DoorOpenIcon,
   DownloadIcon,
-  FolderIcon,
   InfoIcon,
-  MoonIcon,
   RefreshCcwDotIcon,
-  RefreshCwIcon,
-  SunIcon,
-  Trash2Icon,
   UserIcon,
-  VideoIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavInput } from "@/hooks/navigation/use-nav-input";
-import { useFolderActions } from "@/hooks/use-folder-actions";
 import { useUpdate } from "@/queries/use-update";
 
 interface ActionsProps {
@@ -44,13 +33,9 @@ interface ActionsProps {
 
 export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps) => {
   const { setMode } = useDialog();
-  const clearCache = useClearCache();
   const profile = useCurrentProfile();
-  const { toggle, theme } = useTheme();
-  const { mutate } = useConfigMutation();
   const { focus, actionsRef } = useMenuFocus();
   const { setShouldRunSetup } = useShouldRunSetup();
-  const { rescanFolder, rescanFolderDisabled, selectFolder } = useFolderActions();
 
   const update = useUpdate();
   const updateAvailable = update.status === "available";
@@ -116,12 +101,6 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
     }, []),
   );
 
-  const { ThemeIcon, themeLabel } = useMemo(() => {
-    return theme === "dark"
-      ? { ThemeIcon: SunIcon, themeLabel: "Light Mode" }
-      : { ThemeIcon: MoonIcon, themeLabel: "Dark mode" };
-  }, [theme]);
-
   const isSidebarActive = focus.active && focus.panel === "sidebar";
 
   return (
@@ -164,34 +143,6 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>Folder</DropdownMenuLabel>
-            <DropdownMenuGroup>
-              <DropdownMenuItem onClick={selectFolder}>
-                <FolderIcon />
-                Select folder
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={rescanFolder} disabled={rescanFolderDisabled}>
-                <RefreshCwIcon />
-                Rescan folder
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Cache</DropdownMenuLabel>
-            <DropdownMenuGroup>
-              <DropdownMenuItem onClick={clearCache.all}>
-                <Trash2Icon />
-                Clear all cache
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={clearCache.videos}>
-                <VideoIcon />
-                Clear videos cache
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={clearCache.models}>
-                <BoxIcon />
-                Clear models cache
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
             <DropdownMenuLabel>General</DropdownMenuLabel>
             <DropdownMenuGroup>
               <DropdownMenuItem
@@ -209,16 +160,6 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
               <DropdownMenuItem onClick={() => setMode("settings")}>
                 <CogIcon />
                 Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  toggle();
-
-                  mutate({ dark_mode: theme === "dark" ? false : true });
-                }}
-              >
-                <ThemeIcon />
-                {themeLabel}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setMode("update")}>
                 <DownloadIcon />

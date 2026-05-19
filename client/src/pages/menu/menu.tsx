@@ -1,3 +1,4 @@
+import { ClearCacheDialog } from "@/components/menu/dialogs/clear-cache";
 import { EditLyricsDialog } from "@/components/menu/dialogs/edit-lyrics";
 import { ExitDialog } from "@/components/menu/dialogs/exit";
 import { InfoDialog } from "@/components/menu/dialogs/info";
@@ -60,6 +61,7 @@ const MenuInner = () => {
       <UpdateDialog />
       <SelectLanguageDialog />
       <EditLyricsDialog />
+      <ClearCacheDialog />
       <SidebarInset>{content}</SidebarInset>
     </Sidebar>
   );
