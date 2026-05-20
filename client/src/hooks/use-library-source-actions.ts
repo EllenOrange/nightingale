@@ -1,5 +1,6 @@
 import { useConfig } from "@/queries/use-config";
 import { useJellyfinHealth } from "@/queries/use-jellyfin-health";
+import { useNavidromeHealth } from "@/queries/use-navidrome-health";
 import {
   useDisconnectSource,
   useRescan,
@@ -14,7 +15,8 @@ import { getSource } from "@/lib/library-source";
  */
 export const useLibrarySourceActions = () => {
   const { data: config } = useConfig();
-  const { data: health } = useJellyfinHealth();
+  const { data: jellyfinHealth } = useJellyfinHealth();
+  const { data: navidromeHealth } = useNavidromeHealth();
 
   const folderMutation = useSelectFolderSource();
   const rescanMutation = useRescan();
@@ -22,8 +24,10 @@ export const useLibrarySourceActions = () => {
 
   const hasSource = !!config?.library_source;
   const jellyfinSource = getSource(config, "jellyfin");
+  const navidromeSource = getSource(config, "navidrome");
   const isFolderSource = config?.library_source?.kind === "folder";
   const isJellyfinSource = jellyfinSource !== null;
+  const isNavidromeSource = navidromeSource !== null;
 
   const isPending =
     folderMutation.isPending || rescanMutation.isPending || disconnectMutation.isPending;
@@ -31,17 +35,24 @@ export const useLibrarySourceActions = () => {
   // Rescan is safe to fire whenever there's an active source — start_scan()
   // bumps the cancellation generation, so kicking off a new one while one is
   // already running just supersedes the old. The only hard-blocks are: no
-  // source at all, or a Jellyfin source whose server we know is offline.
+  // source at all, or a remote source whose server we know is offline.
   const rescanDisabled =
-    !hasSource || rescanMutation.isPending || (isJellyfinSource && health?.reachable === false);
+    !hasSource ||
+    rescanMutation.isPending ||
+    (isJellyfinSource && jellyfinHealth?.reachable === false) ||
+    (isNavidromeSource && navidromeHealth?.reachable === false);
 
   return {
     config,
-    health,
+    health: jellyfinHealth,
+    jellyfinHealth,
+    navidromeHealth,
     hasSource,
     jellyfinSource,
+    navidromeSource,
     isFolderSource,
     isJellyfinSource,
+    isNavidromeSource,
     selectFolder: () => folderMutation.mutate(),
     rescan: () => rescanMutation.mutate(),
     disconnectSource: () => disconnectMutation.mutate(),

@@ -12,6 +12,12 @@ pub enum NightingaleError {
         stage: &'static str,
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
+    /// A Navidrome (Subsonic) HTTP / parsing failure. Same breadcrumb
+    /// convention as `Jellyfin`.
+    Navidrome {
+        stage: &'static str,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
     Other(String),
 }
 
@@ -21,6 +27,7 @@ impl fmt::Display for NightingaleError {
             Self::Io(e) => write!(f, "{e}"),
             Self::Json(e) => write!(f, "{e}"),
             Self::Jellyfin { stage, source } => write!(f, "Jellyfin {stage}: {source}"),
+            Self::Navidrome { stage, source } => write!(f, "Navidrome {stage}: {source}"),
             Self::Other(msg) => write!(f, "{msg}"),
         }
     }
@@ -32,6 +39,7 @@ impl std::error::Error for NightingaleError {
             Self::Io(e) => Some(e),
             Self::Json(e) => Some(e),
             Self::Jellyfin { source, .. } => Some(source.as_ref()),
+            Self::Navidrome { source, .. } => Some(source.as_ref()),
             Self::Other(_) => None,
         }
     }
@@ -43,6 +51,16 @@ impl NightingaleError {
         E: std::error::Error + Send + Sync + 'static,
     {
         Self::Jellyfin {
+            stage,
+            source: Box::new(source),
+        }
+    }
+
+    pub fn navidrome<E>(stage: &'static str, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::Navidrome {
             stage,
             source: Box::new(source),
         }

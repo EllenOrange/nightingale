@@ -1,6 +1,6 @@
 use app_core::{
     AnalysisQueue, AppConfig, JellyfinHealth, JellyfinLoginResult, LibraryMenuItems,
-    LibrarySource, LoadSongsParams, SongsMeta, SongsStore,
+    LibrarySource, LoadSongsParams, NavidromeHealth, NavidromeLoginResult, SongsMeta, SongsStore,
 };
 
 #[tauri::command]
@@ -40,6 +40,20 @@ pub fn jellyfin_login(
 #[tauri::command]
 pub fn jellyfin_ping() -> JellyfinHealth {
     app_core::jellyfin_ping_current()
+}
+
+#[tauri::command]
+pub fn navidrome_login(
+    base_url: String,
+    username: String,
+    password: String,
+) -> Result<NavidromeLoginResult, String> {
+    app_core::navidrome_login(&base_url, &username, &password).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn navidrome_ping() -> NavidromeHealth {
+    app_core::navidrome_ping_current()
 }
 
 #[tauri::command]

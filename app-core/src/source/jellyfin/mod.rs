@@ -41,6 +41,9 @@ const COVER_FILL_WIDTH: u32 = 300;
 const VIDEO_TYPES: &[&str] = &["MusicVideo", "Movie", "Episode"];
 const ITEM_FIELDS: &str = "MediaSources,RunTimeTicks,Path,Container,ProductionYear,Genres,ImageTags";
 const INCLUDE_ITEM_TYPES: &str = "Audio,MusicVideo,Movie,Video,Episode";
+/// `origin.kind` discriminator stored in each song's JSON payload. Shared
+/// with `library_db::remote::*` so the SQL helpers can find our rows.
+const ORIGIN_KIND: &str = "jellyfin";
 
 /// Decrypted Jellyfin credentials. Built from `AppConfig`; never persisted in
 /// this form.
@@ -271,8 +274,10 @@ impl MediaSource for JellyfinSource {
 
     fn scan(&self, ctx: &ScanContext<'_>) -> Result<(), NightingaleError> {
         let folder_label = self.label();
-        let known: HashSet<String> = library_db::load_jellyfin_item_ids().unwrap_or_default();
-        let known_covers = library_db::load_jellyfin_cover_tags().unwrap_or_default();
+        let known: HashSet<String> =
+            library_db::remote::load_remote_item_ids(ORIGIN_KIND).unwrap_or_default();
+        let known_covers =
+            library_db::remote::load_remote_cover_tags(ORIGIN_KIND).unwrap_or_default();
 
         let mut seen_ids: Vec<String> = Vec::new();
         let mut batch: Vec<Song> = Vec::new();
@@ -310,12 +315,15 @@ impl MediaSource for JellyfinSource {
                         .filter(|s| !s.is_empty());
                     let cached_tag = known_covers.get(&item.id).cloned().flatten();
                     if upstream_tag != cached_tag {
-                        let _ =
-                            library_db::refresh_jellyfin_cover_for_item(&item.id, |item_id| {
+                        let _ = library_db::remote::refresh_remote_cover_for_item(
+                            ORIGIN_KIND,
+                            &item.id,
+                            |item_id| {
                                 upstream_tag
                                     .as_deref()
                                     .and_then(|t| self.fetch_cover(ctx.cache, item_id, t))
-                            });
+                            },
+                        );
                     }
                     continue;
                 }
@@ -347,7 +355,7 @@ impl MediaSource for JellyfinSource {
             &folder_label,
             total_record_count.max(seen_ids.len()),
         );
-        let _ = library_db::delete_jellyfin_songs_not_in_item_ids(&seen_ids);
+        let _ = library_db::remote::delete_remote_songs_not_in_item_ids(ORIGIN_KIND, &seen_ids);
 
         Ok(())
     }

@@ -31,10 +31,15 @@ pub use library_db::{init_library, library_db_path};
 pub use library_menu::{LibraryMenuItem, LibraryMenuItems, load_library_menu_items};
 pub use library_model::{LibraryMenuFilters, LoadSongsParams, SongsMeta, SongsStore};
 pub use source::{
-    JellyfinAuth, JellyfinSource, MediaSource, SourceKind, active_source,
+    JellyfinAuth, JellyfinSource, MediaSource, NavidromeAuth, NavidromeSource, SourceKind,
+    active_source,
     jellyfin::{
         JellyfinHealth, JellyfinLoginResult, login as jellyfin_login, ping as jellyfin_ping,
         ping_current as jellyfin_ping_current,
+    },
+    navidrome::{
+        NavidromeHealth, NavidromeLoginResult, login as navidrome_login, ping as navidrome_ping,
+        ping_current as navidrome_ping_current,
     },
 };
 pub use lyrics::{

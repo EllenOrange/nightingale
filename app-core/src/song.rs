@@ -24,8 +24,9 @@ pub enum TranscriptSource {
 }
 
 /// Where the bytes for a song actually live. `LocalFile` means `Song.path` is the
-/// real source-of-truth on disk; `Jellyfin` means `Song.path` is a placeholder
-/// inside `cache/sources/` that the source adapter will materialise on demand.
+/// real source-of-truth on disk; the remote variants (`Jellyfin`, `Navidrome`)
+/// mean `Song.path` is a placeholder inside `cache/sources/` that the source
+/// adapter will materialise on demand.
 ///
 /// The server's base URL deliberately does NOT live on the origin: it lives on
 /// the active `AppConfig.library_source` and would otherwise go stale the next
@@ -44,10 +45,32 @@ pub enum SongOrigin {
         #[serde(default)]
         cover_tag: Option<String>,
     },
+    Navidrome {
+        item_id: String,
+        #[serde(default)]
+        container: Option<String>,
+        /// Subsonic `coverArt` id for this song, captured at scan time. We
+        /// re-fetch the cover only when this value changes.
+        #[serde(default)]
+        cover_tag: Option<String>,
+    },
 }
 
 pub(crate) fn default_origin() -> SongOrigin {
     SongOrigin::LocalFile
+}
+
+impl SongOrigin {
+    /// Mutable handle to the `cover_tag` slot on any remote-origin variant.
+    /// `library_db::remote::refresh_remote_cover_for_item` uses this to clear
+    /// the stored tag when the upstream cover disappears, without needing to
+    /// know which remote source it's dealing with.
+    pub fn cover_tag_mut(&mut self) -> Option<&mut Option<String>> {
+        match self {
+            Self::LocalFile => None,
+            Self::Jellyfin { cover_tag, .. } | Self::Navidrome { cover_tag, .. } => Some(cover_tag),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

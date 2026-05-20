@@ -29,10 +29,23 @@ pub enum LibrarySource {
         /// `X-Emby-Authorization` header. Generated once at connect time.
         device_id: String,
     },
+    Navidrome {
+        base_url: String,
+        username: String,
+        /// Subsonic user password. Same secret-at-rest envelope as the
+        /// Jellyfin `access_token` (encrypted in `config.json`, plaintext
+        /// in-memory). Required at request time because the Subsonic auth
+        /// token is `MD5(password + salt)` with a fresh salt per call.
+        password: String,
+    },
 }
 
 impl LibrarySource {
-    fn map_access_token(self, transform: impl FnOnce(&str) -> String) -> Self {
+    /// Apply `transform` to every credential field that lives in the
+    /// secret-at-rest envelope (Jellyfin's access token, Navidrome's
+    /// password). New remote sources that carry secrets must extend this
+    /// match.
+    fn map_secret(self, transform: impl FnOnce(&str) -> String) -> Self {
         match self {
             Self::Folder { path } => Self::Folder { path },
             Self::Jellyfin {
@@ -47,6 +60,15 @@ impl LibrarySource {
                 username,
                 access_token: transform(&access_token),
                 device_id,
+            },
+            Self::Navidrome {
+                base_url,
+                username,
+                password,
+            } => Self::Navidrome {
+                base_url,
+                username,
+                password: transform(&password),
             },
         }
     }
@@ -173,15 +195,15 @@ impl AppConfig {
                 let had_data_path = cfg.data_path.is_some();
                 let had_library_source = cfg.library_source.is_some();
                 let had_legacy_folder = cfg.last_folder.is_some();
-                let had_plaintext_token = cfg
+                let had_plaintext_secret = cfg
                     .library_source
                     .as_ref()
-                    .is_some_and(jellyfin_token_is_plaintext);
+                    .is_some_and(has_plaintext_secret);
                 let needs_save = !had_data_path
                     || (!had_library_source && had_legacy_folder)
-                    || had_plaintext_token;
+                    || had_plaintext_secret;
                 if let Some(src) = cfg.library_source.take() {
-                    cfg.library_source = Some(src.map_access_token(secret::decrypt_string));
+                    cfg.library_source = Some(src.map_secret(secret::decrypt_string));
                 }
                 (cfg.with_defaults(), needs_save)
             }
@@ -206,7 +228,7 @@ impl AppConfig {
         }
         let mut for_disk = self.clone();
         if let Some(src) = for_disk.library_source.take() {
-            for_disk.library_source = Some(src.map_access_token(secret::encrypt_string));
+            for_disk.library_source = Some(src.map_secret(secret::encrypt_string));
         }
         if let Ok(json) = serde_json::to_string_pretty(&for_disk) {
             let _ = std::fs::write(&path, json);
@@ -254,11 +276,15 @@ impl AppConfig {
     }
 }
 
-fn jellyfin_token_is_plaintext(src: &LibrarySource) -> bool {
-    match src {
-        LibrarySource::Jellyfin { access_token, .. } => {
-            !access_token.is_empty() && !secret::is_encrypted(access_token)
-        }
-        _ => false,
-    }
+/// Detects credentials still sitting on disk in plaintext (older builds or a
+/// hand-edited `config.json`). `load` uses this to know whether to re-save
+/// after decrypting, so the next write re-wraps the secret in the at-rest
+/// envelope. Any new remote source that persists a secret must extend this.
+fn has_plaintext_secret(src: &LibrarySource) -> bool {
+    let secret = match src {
+        LibrarySource::Folder { .. } => return false,
+        LibrarySource::Jellyfin { access_token, .. } => access_token,
+        LibrarySource::Navidrome { password, .. } => password,
+    };
+    !secret.is_empty() && !secret::is_encrypted(secret)
 }

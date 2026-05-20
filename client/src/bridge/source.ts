@@ -4,6 +4,8 @@ import type { AppConfig } from "@/types/AppConfig";
 import type { JellyfinHealth } from "@/types/JellyfinHealth";
 import type { JellyfinLoginResult } from "@/types/JellyfinLoginResult";
 import type { LibrarySource } from "@/types/LibrarySource";
+import type { NavidromeHealth } from "@/types/NavidromeHealth";
+import type { NavidromeLoginResult } from "@/types/NavidromeLoginResult";
 
 import { invoke, isTauri } from "./runtime";
 
@@ -51,4 +53,16 @@ export const jellyfinLogin = async (params: {
 
 export const jellyfinPing = async (): Promise<JellyfinHealth> => {
   return await invoke<JellyfinHealth>("jellyfin_ping");
+};
+
+export const navidromeLogin = async (params: {
+  baseUrl: string;
+  username: string;
+  password: string;
+}): Promise<NavidromeLoginResult> => {
+  return await invoke<NavidromeLoginResult>("navidrome_login", params);
+};
+
+export const navidromePing = async (): Promise<NavidromeHealth> => {
+  return await invoke<NavidromeHealth>("navidrome_ping");
 };

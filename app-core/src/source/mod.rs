@@ -3,9 +3,9 @@
 //! Each source knows how to enumerate songs for the library and how to make a
 //! local file appear on disk when the analyzer/player needs to read bytes.
 //! The folder source is the original "Select folder" behavior; the Jellyfin
-//! source talks to a remote server over HTTP. The trait is sized so
-//! Navidrome/Subsonic and friends can be added without touching downstream
-//! code.
+//! and Navidrome (Subsonic) sources talk to a remote server over HTTP. The
+//! trait stays small so additional servers (Plex, generic Subsonic forks)
+//! can drop in without touching downstream code.
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -18,9 +18,11 @@ use crate::song::Song;
 
 pub mod folder;
 pub mod jellyfin;
+pub mod navidrome;
 
 pub use folder::FolderSource;
 pub use jellyfin::{JellyfinAuth, JellyfinSource};
+pub use navidrome::{NavidromeAuth, NavidromeSource};
 
 /// How many songs we buffer in memory before flushing them to the library DB
 /// during a scan. Small enough to keep memory bounded, large enough to avoid
@@ -32,6 +34,7 @@ pub const SCAN_BATCH_SIZE: usize = 25;
 pub enum SourceKind {
     Folder,
     Jellyfin,
+    Navidrome,
 }
 
 /// Context passed to a source while it is running a scan. Implementations
@@ -125,6 +128,11 @@ pub fn active_source_from_config(
             let auth = JellyfinAuth::from_source(src)
                 .ok_or_else(|| NightingaleError::Other("invalid jellyfin source".into()))?;
             Ok(Some(Box::new(JellyfinSource::new(auth))))
+        }
+        LibrarySource::Navidrome { .. } => {
+            let auth = NavidromeAuth::from_source(src)
+                .ok_or_else(|| NightingaleError::Other("invalid navidrome source".into()))?;
+            Ok(Some(Box::new(NavidromeSource::new(auth))))
         }
     }
 }

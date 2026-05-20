@@ -1,4 +1,4 @@
-import { FolderIcon, MusicIcon } from "lucide-react";
+import { Disc3Icon, FolderIcon, MusicIcon } from "lucide-react";
 
 import { JellyfinIcon } from "@/components/icons/jellyfin";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,8 @@ export const EmptySongList = () => {
         </EmptyMedia>
         <EmptyTitle>No library yet</EmptyTitle>
         <EmptyDescription>
-          Pick a folder on this machine or connect a Jellyfin server to start enjoying your karaoke!
+          Pick a folder on this machine or connect a Jellyfin or Navidrome server to start enjoying
+          your karaoke!
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent className="flex-row justify-center gap-2">
@@ -34,6 +35,9 @@ export const EmptySongList = () => {
         </Button>
         <Button variant="outline" onClick={() => selectFolder()} disabled={isPending}>
           <FolderIcon /> Select folder
+        </Button>
+        <Button variant="outline" onClick={() => setMode("navidrome-connect")} disabled={isPending}>
+          <Disc3Icon /> Connect Navidrome
         </Button>
       </EmptyContent>
     </Empty>

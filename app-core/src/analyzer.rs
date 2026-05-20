@@ -743,7 +743,9 @@ fn prepare_audio_for_analysis(
         SongOrigin::LocalFile => {
             Ok((song.clone(), song.path.clone(), song.file_hash.clone()))
         }
-        SongOrigin::Jellyfin { .. } => {
+        // Both remote origins go through the active source's
+        // `ensure_local_media` and then get rekeyed to the true Blake3 hash.
+        SongOrigin::Jellyfin { .. } | SongOrigin::Navidrome { .. } => {
             let source = active_source()?
                 .ok_or_else(|| NightingaleError::Other("no active library source".into()))?;
             let downloaded_path = source.ensure_local_media(song, cache)?;
@@ -776,7 +778,7 @@ fn prepare_audio_for_analysis(
             updated.path = new_source_path.clone();
 
             library_db::rekey_song(&song.file_hash, &real_hash, &updated).map_err(|e| {
-                NightingaleError::Other(format!("failed to rekey jellyfin song: {e}"))
+                NightingaleError::Other(format!("failed to rekey remote song: {e}"))
             })?;
 
             Ok((updated, new_source_path, real_hash))

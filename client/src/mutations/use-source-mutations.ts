@@ -4,14 +4,25 @@ import { toast } from "sonner";
 import {
   clearLibrarySource,
   jellyfinLogin,
+  navidromeLogin,
   selectFolderPath,
   setLibrarySource,
   triggerScan,
 } from "@/bridge/source";
-import { ANALYSIS_QUEUE, CONFIG, JELLYFIN_HEALTH, MENU, SONGS, SONGS_META } from "@/queries/keys";
+import {
+  ANALYSIS_QUEUE,
+  CONFIG,
+  JELLYFIN_HEALTH,
+  MENU,
+  NAVIDROME_HEALTH,
+  SONGS,
+  SONGS_META,
+} from "@/queries/keys";
 import type { AppConfig } from "@/types/AppConfig";
 import type { JellyfinHealth } from "@/types/JellyfinHealth";
 import type { JellyfinLoginResult } from "@/types/JellyfinLoginResult";
+import type { NavidromeHealth } from "@/types/NavidromeHealth";
+import type { NavidromeLoginResult } from "@/types/NavidromeLoginResult";
 
 const useInvalidateLibrary = () => {
   const queryClient = useQueryClient();
@@ -23,6 +34,7 @@ const useInvalidateLibrary = () => {
     queryClient.invalidateQueries({ queryKey: MENU });
     queryClient.invalidateQueries({ queryKey: ANALYSIS_QUEUE });
     queryClient.invalidateQueries({ queryKey: JELLYFIN_HEALTH });
+    queryClient.invalidateQueries({ queryKey: NAVIDROME_HEALTH });
   };
 };
 
@@ -128,6 +140,57 @@ export const useConnectJellyfin = () => {
         server_name: login.server_name ?? undefined,
         server_id: undefined,
         version: undefined,
+        error: undefined,
+      });
+
+      invalidateLibrary();
+    },
+  });
+};
+
+/**
+ * Authenticate against a Navidrome / Subsonic server. Mirrors
+ * `useJellyfinLogin`: no persistence, just a smoke test the dialog can use
+ * to display a friendly error before it asks to commit the source.
+ */
+export const useNavidromeLogin = () =>
+  useMutation<NavidromeLoginResult, Error, { baseUrl: string; username: string; password: string }>(
+    {
+      mutationFn: navidromeLogin,
+    },
+  );
+
+/**
+ * Composite: authenticate, persist the credentials as the active library
+ * source, and trigger a scan (which is done backend-side as part of
+ * `set_library_source`).
+ */
+export const useConnectNavidrome = () => {
+  const queryClient = useQueryClient();
+  const invalidateLibrary = useInvalidateLibrary();
+
+  return useMutation<
+    { config: AppConfig; login: NavidromeLoginResult },
+    Error,
+    { baseUrl: string; username: string; password: string }
+  >({
+    mutationFn: async (params) => {
+      const login = await navidromeLogin(params);
+      const config = await setLibrarySource({
+        kind: "navidrome",
+        base_url: login.server_url,
+        username: login.username,
+        password: login.password,
+      });
+      return { config, login };
+    },
+    onSuccess: ({ config, login }) => {
+      queryClient.setQueryData(CONFIG, config);
+
+      queryClient.setQueryData<NavidromeHealth>(NAVIDROME_HEALTH, {
+        reachable: true,
+        server_name: login.server_name ?? undefined,
+        version: login.server_version ?? undefined,
         error: undefined,
       });
 

@@ -2,8 +2,9 @@
 
 /**
  * Where the bytes for a song actually live. `LocalFile` means `Song.path` is the
- * real source-of-truth on disk; `Jellyfin` means `Song.path` is a placeholder
- * inside `cache/sources/` that the source adapter will materialise on demand.
+ * real source-of-truth on disk; the remote variants (`Jellyfin`, `Navidrome`)
+ * mean `Song.path` is a placeholder inside `cache/sources/` that the source
+ * adapter will materialise on demand.
  *
  * The server's base URL deliberately does NOT live on the origin: it lives on
  * the active `AppConfig.library_source` and would otherwise go stale the next
@@ -18,6 +19,16 @@ export type SongOrigin =
       /**
        * Jellyfin's `ImageTags.Primary` for this item, captured at scan
        * time. We re-fetch the cover only when this value changes.
+       */
+      cover_tag: string | null;
+    }
+  | {
+      kind: "navidrome";
+      item_id: string;
+      container: string | null;
+      /**
+       * Subsonic `coverArt` id for this song, captured at scan time. We
+       * re-fetch the cover only when this value changes.
        */
       cover_tag: string | null;
     };

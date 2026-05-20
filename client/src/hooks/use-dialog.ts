@@ -11,6 +11,7 @@ export type DialogMode =
   | "about"
   | "update"
   | "jellyfin-connect"
+  | "navidrome-connect"
   | { mode: "language"; song: Song }
   | { mode: "edit-lyrics"; song: Song }
   | { mode: "clear-cache"; target: ClearCacheTarget }

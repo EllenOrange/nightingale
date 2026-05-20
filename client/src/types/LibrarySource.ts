@@ -23,4 +23,16 @@ export type LibrarySource =
        * `X-Emby-Authorization` header. Generated once at connect time.
        */
       device_id: string;
+    }
+  | {
+      kind: "navidrome";
+      base_url: string;
+      username: string;
+      /**
+       * Subsonic user password. Same secret-at-rest envelope as the
+       * Jellyfin `access_token` (encrypted in `config.json`, plaintext
+       * in-memory). Required at request time because the Subsonic auth
+       * token is `MD5(password + salt)` with a fresh salt per call.
+       */
+      password: string;
     };

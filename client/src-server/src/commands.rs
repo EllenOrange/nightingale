@@ -149,6 +149,22 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
         "jellyfin_ping" => {
             Ok(serde_json::to_value(app_core::jellyfin_ping_current()).map_err(serde_err)?)
         }
+        "navidrome_login" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                base_url: String,
+                username: String,
+                password: String,
+            }
+            let args: Args = deserialize(payload)?;
+            let result = app_core::navidrome_login(&args.base_url, &args.username, &args.password)
+                .map_err(|e| ApiError::bad_request(e.to_string()))?;
+            Ok(serde_json::to_value(result).map_err(serde_err)?)
+        }
+        "navidrome_ping" => {
+            Ok(serde_json::to_value(app_core::navidrome_ping_current()).map_err(serde_err)?)
+        }
         "load_songs" => {
             #[derive(Deserialize)]
             struct Args {
