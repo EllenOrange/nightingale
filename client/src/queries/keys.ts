@@ -8,3 +8,4 @@ export const MENU = ["menu"];
 export const UPDATER = ["updater"];
 export const LYRICS = ["lyrics"];
 export const LRCLIB = ["lrclib"];
+export const JELLYFIN_HEALTH = ["jellyfin-health"];

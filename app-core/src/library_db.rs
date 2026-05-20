@@ -460,6 +460,52 @@ pub fn delete_songs_not_in_paths(paths: &[String]) -> rusqlite::Result<()> {
     })
 }
 
+/// Item IDs of every Jellyfin-origin row currently in the DB. We track Jellyfin
+/// songs by `origin.item_id` (extracted from the JSON payload) rather than by
+/// `path` because `path` mutates after the first analysis (`rekey_song` rewrites
+/// it to the local cache file) — keying on `item_id` keeps the row stable
+/// across re-scans so analysed markers, language etc. survive.
+pub fn load_jellyfin_item_ids() -> rusqlite::Result<std::collections::HashSet<String>> {
+    with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT json_extract(payload, '$.origin.item_id')
+             FROM songs
+             WHERE json_extract(payload, '$.origin.kind') = 'jellyfin'",
+        )?;
+        let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
+        let ids: Vec<Option<String>> = rows.collect::<Result<Vec<_>, _>>()?;
+        Ok(ids.into_iter().flatten().collect())
+    })
+}
+
+/// Prune Jellyfin rows whose item id is no longer present upstream. Folder rows
+/// are untouched.
+pub fn delete_jellyfin_songs_not_in_item_ids(item_ids: &[String]) -> rusqlite::Result<()> {
+    with_conn_mut(|c| {
+        if item_ids.is_empty() {
+            c.execute(
+                "DELETE FROM songs WHERE json_extract(payload, '$.origin.kind') = 'jellyfin'",
+                [],
+            )?;
+            return Ok(());
+        }
+        let placeholders = (1..=item_ids.len())
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "DELETE FROM songs
+             WHERE json_extract(payload, '$.origin.kind') = 'jellyfin'
+               AND json_extract(payload, '$.origin.item_id') NOT IN ({placeholders})"
+        );
+        c.execute(
+            &sql,
+            rusqlite::params_from_iter(item_ids.iter().map(|s| s.as_str())),
+        )?;
+        Ok(())
+    })
+}
+
 fn load_song_from_payload_column(r: &rusqlite::Row<'_>) -> rusqlite::Result<Song> {
     let payload: String = r.get(0)?;
     serde_json::from_str(&payload).map_err(|e| {
@@ -483,6 +529,55 @@ pub fn load_song_by_hash(file_hash: &str) -> rusqlite::Result<Option<Song>> {
             })
             .optional()?;
         Ok(song)
+    })
+}
+
+/// Rewrite a song row keyed by `old_hash` so its `file_hash`, `path`, and
+/// JSON payload reflect a freshly downloaded source whose true Blake3 differs
+/// from the placeholder we initially stored. Also points any pending row in
+/// `analysis_queue` at the new hash so the in-flight scan keeps working.
+pub fn rekey_song(old_hash: &str, new_hash: &str, new_song: &Song) -> rusqlite::Result<()> {
+    let payload = song_to_payload(new_song)?;
+    let album_art = new_song
+        .album_art_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned());
+    with_conn_mut(|c| {
+        let tx = c.transaction()?;
+        tx.execute(
+            "UPDATE songs SET file_hash = ?2, path = ?3, payload = ?4, album_art_path = ?5,
+                title = ?6, artist = ?7, album = ?8, duration_secs = ?9,
+                is_analyzed = ?10, language = ?11, transcript_source = ?12, is_video = ?13
+             WHERE file_hash = ?1",
+            params![
+                old_hash,
+                new_hash,
+                new_song.path.to_string_lossy(),
+                payload,
+                album_art,
+                new_song.title,
+                new_song.artist,
+                new_song.album,
+                new_song.duration_secs,
+                new_song.is_analyzed as i32,
+                new_song.language,
+                transcript_source_to_db(new_song.transcript_source),
+                new_song.is_video as i32,
+            ],
+        )?;
+        // `analysis_queue.file_hash` is the PK; UPDATE-OR-IGNORE shape covers
+        // the (extremely unlikely) case where a row already exists for the
+        // new hash.
+        tx.execute(
+            "DELETE FROM analysis_queue WHERE file_hash = ?1",
+            params![new_hash],
+        )?;
+        tx.execute(
+            "UPDATE analysis_queue SET file_hash = ?2 WHERE file_hash = ?1",
+            params![old_hash, new_hash],
+        )?;
+        tx.commit()?;
+        Ok(())
     })
 }
 

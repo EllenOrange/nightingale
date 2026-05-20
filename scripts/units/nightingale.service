@@ -24,9 +24,21 @@ LimitNOFILE=65536
 # Light sandboxing - keep the data dir writable but lock the rest of the
 # filesystem down to reads. Songs folders the user picks later in the app
 # must be readable by the service user.
+#
+# ProtectHome is templated by the installer:
+#   - "read-only" (default) for system-user installs where DATA_DIR is
+#     outside /home (e.g. /var/lib/nightingale). The app's data dir is
+#     still writable via ReadWritePaths below, and the user's home is
+#     readable so songs picked from there work.
+#   - "off" when DATA_DIR is under /home (real-user install). uv keeps
+#     its cache at $HOME/.cache/uv by default - with read-only home that
+#     write fails with EROFS partway through vendor setup. Switching the
+#     protection off (rather than carving the cache out of read-only with
+#     a second ReadWritePaths entry) also lets songs and other tools the
+#     analyser may shell out to write inside $HOME freely.
 NoNewPrivileges=true
 ProtectSystem=full
-ProtectHome=read-only
+ProtectHome=@PROTECT_HOME@
 PrivateTmp=true
 ReadWritePaths=@DATA_DIR@
 

@@ -19,7 +19,7 @@ import logoSrc from "@/assets/images/logo_square.png";
 import { useShouldRunSetup } from "@/hooks/use-should-run-setup";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { selectFolderRaw } from "@/bridge/folder";
+import { selectFolderPath } from "@/bridge/source";
 import { useConfig } from "@/queries/use-config";
 import { ANALYSIS_QUEUE, CONFIG, MENU, SONGS, SONGS_META } from "@/queries/keys";
 import { useQueryClient } from "@tanstack/react-query";
@@ -77,7 +77,7 @@ const ChangeDataFolderStep = ({ onStart, folder, setFolder }: ChangeDataStepProp
           <Button
             variant="outline"
             onClick={async () => {
-              const folder = await selectFolderRaw();
+              const folder = await selectFolderPath();
 
               if (!folder) {
                 return;

@@ -2,6 +2,7 @@ import { ClearCacheDialog } from "@/components/menu/dialogs/clear-cache";
 import { EditLyricsDialog } from "@/components/menu/dialogs/edit-lyrics";
 import { ExitDialog } from "@/components/menu/dialogs/exit";
 import { InfoDialog } from "@/components/menu/dialogs/info";
+import { JellyfinConnectDialog } from "@/components/menu/dialogs/jellyfin-connect";
 import { SelectLanguageDialog } from "@/components/menu/dialogs/language";
 import { CreateProfileDialog } from "@/components/menu/dialogs/profile/create";
 import { SelectProfileDialog } from "@/components/menu/dialogs/profile/select";
@@ -64,6 +65,7 @@ export const Menu = () => {
       <SelectLanguageDialog />
       <EditLyricsDialog />
       <ClearCacheDialog />
+      <JellyfinConnectDialog />
       <SidebarInset>{content}</SidebarInset>
     </Sidebar>
   );

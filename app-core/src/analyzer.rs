@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -16,7 +17,8 @@ use crate::error::NightingaleError;
 use crate::library_db;
 use crate::library_model::LibraryMenuFilters;
 use crate::lyrics::{fetch_lrclib_lyrics, write_lyrics_file};
-use crate::song::{read_transcript_meta, TranscriptSource};
+use crate::song::{compute_file_hash, read_transcript_meta, Song, SongOrigin, TranscriptSource};
+use crate::source::active_source;
 
 // ─── Analysis queue (persisted to disk) ──────────────────────────────
 
@@ -589,15 +591,28 @@ fn spawn_worker() {
     });
 }
 
-fn process_song(file_hash: &str, cache: &CacheDir) {
-    let Some(song) = library_db::load_song_by_hash(file_hash).ok().flatten() else {
-        warn!("[analyzer] Song with hash {file_hash} not found in store, skipping");
+fn process_song(initial_hash: &str, cache: &CacheDir) {
+    let Some(song) = library_db::load_song_by_hash(initial_hash).ok().flatten() else {
+        warn!("[analyzer] Song with hash {initial_hash} not found in store, skipping");
         return;
     };
 
+    let (song, local_path, file_hash_owned) = match prepare_audio_for_analysis(&song, cache) {
+        Ok(out) => out,
+        Err(e) => {
+            warn!("[analyzer] Failed to prepare audio for analysis: {e}");
+            update_queue_status(
+                initial_hash,
+                QueuedStatus::Failed(format!("audio prep failed: {e}")),
+            );
+            return;
+        }
+    };
+    let file_hash = file_hash_owned.as_str();
+
     info!(
         "[analyzer] Starting analysis: {} (hash={})",
-        song.path.display(),
+        local_path.display(),
         file_hash
     );
 
@@ -613,7 +628,7 @@ fn process_song(file_hash: &str, cache: &CacheDir) {
 
     let mut cmd_json = serde_json::json!({
         "type": "analyze",
-        "audio_path": song.path.to_string_lossy(),
+        "audio_path": local_path.to_string_lossy(),
         "cache_path": cache.path.to_string_lossy(),
         "hash": file_hash,
         "model": config.whisper_model(),
@@ -709,6 +724,63 @@ fn finalize_song(file_hash: &str, cache: &CacheDir) {
             file_hash,
             QueuedStatus::Failed("Transcript file not found after analysis".into()),
         );
+    }
+}
+
+// ─── Audio materialization for non-local sources ─────────────────────
+
+/// Make sure the song's audio is present on disk and the row is keyed by the
+/// true Blake3 hash before analysis kicks off. For `LocalFile` songs this is a
+/// no-op. For Jellyfin songs we download once into `cache/sources/<hash>.<ext>`
+/// then rekey the DB row + analysis queue from the placeholder id-hash to the
+/// content hash so all downstream cache files (`<hash>_instrumental.mp3` etc.)
+/// follow the existing convention.
+fn prepare_audio_for_analysis(
+    song: &Song,
+    cache: &CacheDir,
+) -> Result<(Song, PathBuf, String), NightingaleError> {
+    match &song.origin {
+        SongOrigin::LocalFile => {
+            Ok((song.clone(), song.path.clone(), song.file_hash.clone()))
+        }
+        SongOrigin::Jellyfin { .. } => {
+            let source = active_source()?
+                .ok_or_else(|| NightingaleError::Other("no active library source".into()))?;
+            let downloaded_path = source.ensure_local_audio(song, cache)?;
+
+            let real_hash = compute_file_hash(&downloaded_path)?;
+            if real_hash == song.file_hash {
+                return Ok((song.clone(), downloaded_path, song.file_hash.clone()));
+            }
+
+            let ext = downloaded_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("bin");
+            let new_source_path =
+                cache.path.join("sources").join(format!("{real_hash}.{ext}"));
+
+            if new_source_path != downloaded_path {
+                if let Some(parent) = new_source_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if new_source_path.is_file() {
+                    let _ = std::fs::remove_file(&downloaded_path);
+                } else {
+                    std::fs::rename(&downloaded_path, &new_source_path)?;
+                }
+            }
+
+            let mut updated = song.clone();
+            updated.file_hash = real_hash.clone();
+            updated.path = new_source_path.clone();
+
+            library_db::rekey_song(&song.file_hash, &real_hash, &updated).map_err(|e| {
+                NightingaleError::Other(format!("failed to rekey jellyfin song: {e}"))
+            })?;
+
+            Ok((updated, new_source_path, real_hash))
+        }
     }
 }
 

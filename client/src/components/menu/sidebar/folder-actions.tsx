@@ -1,45 +1,25 @@
-import { Button } from "@/components/ui/button";
-import { SidebarGroup, SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useMenuFocus } from "@/contexts/menu-focus-context";
-import { useFolderActions } from "@/hooks/use-folder-actions";
-import { cn } from "@/lib/utils";
-import { FolderIcon, LibraryBigIcon, RefreshCwIcon, type LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { LibraryBigIcon } from "lucide-react";
 
-interface FolderButton {
-  icon: LucideIcon;
-  label: string;
-  handler: () => Promise<void> | void;
-  disabled: boolean;
-}
+import { SidebarGroup, SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar";
+import { useMenuFocus } from "@/contexts/menu-focus-context";
+import { useSourceButtons } from "@/hooks/use-source-buttons";
+
+import { SourceActionButton } from "./source-action-button";
 
 interface FolderActionsProps {
   focusedSidebarIndex: number;
   registerCallback: (callback: ((subIndex: number) => void) | null) => void;
 }
 
+/**
+ * Sidebar "Library" cluster — renders the source action buttons and wires
+ * them into the menu's keyboard nav system. State derivation lives in
+ * `useSourceButtons`; per-button presentation lives in `SourceActionButton`.
+ */
 export const FolderActions = ({ focusedSidebarIndex, registerCallback }: FolderActionsProps) => {
   const { focus, actionsRef } = useMenuFocus();
-  const { rescanFolder, rescanFolderDisabled, selectFolder } = useFolderActions();
-
-  const buttons = useMemo<FolderButton[]>(
-    () => [
-      {
-        icon: FolderIcon,
-        label: "Select folder",
-        handler: selectFolder,
-        disabled: false,
-      },
-      {
-        icon: RefreshCwIcon,
-        label: "Rescan folder",
-        handler: rescanFolder,
-        disabled: rescanFolderDisabled,
-      },
-    ],
-    [rescanFolder, rescanFolderDisabled, selectFolder],
-  );
+  const buttons = useSourceButtons();
 
   const buttonsRef = useRef(buttons);
   buttonsRef.current = buttons;
@@ -62,8 +42,8 @@ export const FolderActions = ({ focusedSidebarIndex, registerCallback }: FolderA
     };
   }, [actionsRef, focusedSidebarIndex, registerCallback, buttons.length]);
 
-  const isSidebarActive = focus.active && focus.panel === "sidebar";
-  const isClusterFocused = isSidebarActive && focus.sidebarIndex === focusedSidebarIndex;
+  const isClusterFocused =
+    focus.active && focus.panel === "sidebar" && focus.sidebarIndex === focusedSidebarIndex;
 
   return (
     <SidebarGroup>
@@ -78,33 +58,19 @@ export const FolderActions = ({ focusedSidebarIndex, registerCallback }: FolderA
               Library
             </span>
             <div className="flex items-center gap-0.5">
-              {buttons.map((button, index) => {
-                const Icon = button.icon;
-                const isButtonFocused = isClusterFocused && focus.sidebarSubIndex === index;
-
-                return (
-                  <Tooltip key={button.label}>
-                    <TooltipTrigger asChild>
-                      <Button
-                        tabIndex={-1}
-                        variant="ghost"
-                        size="icon-xs"
-                        aria-label={button.label}
-                        disabled={button.disabled}
-                        onClick={() => button.handler()}
-                        data-sidebar-sub-index={index}
-                        className={cn(
-                          "text-sidebar-foreground/70 hover:bg-transparent hover:text-sidebar-foreground/70 focus-visible:ring-0 focus-visible:border-transparent dark:hover:bg-transparent",
-                          isButtonFocused && "ring-2 ring-primary bg-sidebar-accent",
-                        )}
-                      >
-                        <Icon />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{button.label}</TooltipContent>
-                  </Tooltip>
-                );
-              })}
+              {buttons.map((button, index) => (
+                <SourceActionButton
+                  key={button.key}
+                  icon={button.icon}
+                  label={button.label}
+                  tooltip={button.tooltip}
+                  disabled={button.disabled}
+                  focused={isClusterFocused && focus.sidebarSubIndex === index}
+                  badge={button.badge}
+                  onClick={button.handler}
+                  subIndex={index}
+                />
+              ))}
             </div>
           </div>
         </SidebarMenuItem>

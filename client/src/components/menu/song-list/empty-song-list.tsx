@@ -1,3 +1,6 @@
+import { FolderIcon, MusicIcon } from "lucide-react";
+
+import { JellyfinIcon } from "@/components/icons/jellyfin";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -7,11 +10,12 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { useDialog } from "@/hooks/use-dialog";
 import { useFolderActions } from "@/hooks/use-folder-actions";
-import { MusicIcon } from "lucide-react";
 
 export const EmptySongList = () => {
-  const { selectFolder } = useFolderActions();
+  const { selectFolder, isPending } = useFolderActions();
+  const { setMode } = useDialog();
 
   return (
     <Empty>
@@ -19,15 +23,17 @@ export const EmptySongList = () => {
         <EmptyMedia variant="icon">
           <MusicIcon />
         </EmptyMedia>
-        <EmptyTitle>Folder not selected</EmptyTitle>
+        <EmptyTitle>No library yet</EmptyTitle>
         <EmptyDescription>
-          You haven't selected folder yet.
-          <br /> Select a folder to start enjoying your karaoke!
+          Pick a folder on this machine or connect a Jellyfin server to start enjoying your karaoke!
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent className="flex-row justify-center gap-2">
-        <Button variant="outline" onClick={selectFolder}>
-          Select Folder
+        <Button variant="outline" onClick={() => setMode("jellyfin-connect")} disabled={isPending}>
+          <JellyfinIcon /> Connect Jellyfin
+        </Button>
+        <Button variant="outline" onClick={() => selectFolder()} disabled={isPending}>
+          <FolderIcon /> Select folder
         </Button>
       </EmptyContent>
     </Empty>

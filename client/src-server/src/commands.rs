@@ -1,10 +1,8 @@
-use std::path::Path;
-
 use app_core::{
     ensure_mp3_stems_ready_payload, load_lyrics_file, save_lyrics_and_realign,
     search_lrclib_for_hash, shift_key_done_payload, shift_tempo_done_payload, AnalysisQueue,
-    AppConfig, CacheStats, LibraryMenuFilters, LibraryMenuItems, LoadSongsParams,
-    PixabayVideoDownloaded, ProfileStore, SongsStore,
+    AppConfig, CacheStats, JellyfinAuth, JellyfinHealth, LibraryMenuFilters, LibraryMenuItems,
+    LibrarySource, LoadSongsParams, PixabayVideoDownloaded, ProfileStore, SongsStore,
 };
 use axum::{
     extract::{Path as AxumPath, State},
@@ -112,13 +110,66 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
 
         // ── Scanner ──────────────────────────────────────────────────────
         "trigger_scan" => {
+            app_core::start_scan();
+            Ok(Value::Null)
+        }
+        "set_library_source" => {
             #[derive(Deserialize)]
             struct Args {
-                folder: String,
+                source: LibrarySource,
             }
             let args: Args = deserialize(payload)?;
-            app_core::start_scan(Path::new(&args.folder));
-            Ok(Value::Null)
+            let mut config = AppConfig::load();
+            config.library_source = Some(args.source);
+            config.last_folder = None;
+            config.save();
+            app_core::start_scan();
+            Ok(serde_json::to_value(config).map_err(serde_err)?)
+        }
+        "clear_library_source" => {
+            let mut config = AppConfig::load();
+            config.library_source = None;
+            config.last_folder = None;
+            config.save();
+            Ok(serde_json::to_value(config).map_err(serde_err)?)
+        }
+        "jellyfin_login" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                base_url: String,
+                username: String,
+                password: String,
+            }
+            let args: Args = deserialize(payload)?;
+            let result = app_core::jellyfin_login(&args.base_url, &args.username, &args.password, None)
+                .map_err(|e| ApiError::bad_request(e.to_string()))?;
+            Ok(serde_json::to_value(result).map_err(serde_err)?)
+        }
+        "jellyfin_ping" => {
+            let config = AppConfig::load();
+            let health = match config.library_source {
+                Some(LibrarySource::Jellyfin {
+                    base_url,
+                    user_id: _,
+                    username: _,
+                    access_token,
+                    device_id,
+                }) => app_core::jellyfin_ping(&JellyfinAuth {
+                    base_url,
+                    user_id: String::new(),
+                    access_token,
+                    device_id,
+                }),
+                _ => JellyfinHealth {
+                    reachable: false,
+                    server_name: None,
+                    version: None,
+                    server_id: None,
+                    error: Some("no jellyfin source configured".into()),
+                },
+            };
+            Ok(serde_json::to_value(health).map_err(serde_err)?)
         }
         "load_songs" => {
             #[derive(Deserialize)]

@@ -25,7 +25,8 @@ use playback::{
 };
 use profile::{add_score, create_profile, delete_profile, load_profiles, switch_profile};
 use scanner::{
-    load_analysis_queue, load_library_menu_items, load_songs, load_songs_meta, trigger_scan,
+    clear_library_source, jellyfin_login, jellyfin_ping, load_analysis_queue,
+    load_library_menu_items, load_songs, load_songs_meta, set_library_source, trigger_scan,
 };
 use tauri::{Manager, RunEvent, WebviewWindowBuilder};
 use vendor::{is_ready, trigger_setup};
@@ -102,6 +103,10 @@ pub fn run() {
             add_score,
             // Scanner
             trigger_scan,
+            set_library_source,
+            clear_library_source,
+            jellyfin_login,
+            jellyfin_ping,
             load_songs,
             load_songs_meta,
             load_analysis_queue,

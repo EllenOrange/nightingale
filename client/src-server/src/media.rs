@@ -35,15 +35,15 @@ fn allowed_roots() -> Vec<PathBuf> {
     // The data path and the default Nightingale dir (which can hold `config.json`,
     // logs, etc.) are both legitimate sources of media. Songs scanned from
     // user library folders are streamed straight from disk, so we additionally
-    // honour the configured `data_path` if it points somewhere else.
+    // honour the configured `library_source` folder if any.
     let mut roots = vec![
         app_core::nightingale_dir(),
         app_core::default_nightingale_dir(),
     ];
     let config = app_core::AppConfig::load();
     roots.push(config.effective_data_path());
-    if let Some(last_folder) = config.last_folder.as_deref() {
-        roots.push(PathBuf::from(last_folder));
+    if let Some(app_core::LibrarySource::Folder { path }) = config.library_source.as_ref() {
+        roots.push(path.clone());
     }
     roots
 }

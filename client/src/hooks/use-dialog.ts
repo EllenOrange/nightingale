@@ -10,6 +10,7 @@ export type DialogMode =
   | "settings"
   | "about"
   | "update"
+  | "jellyfin-connect"
   | { mode: "language"; song: Song }
   | { mode: "edit-lyrics"; song: Song }
   | { mode: "clear-cache"; target: ClearCacheTarget }

@@ -1,10 +1,66 @@
-use std::path::Path;
-
-use app_core::{AnalysisQueue, LibraryMenuItems, LoadSongsParams, SongsMeta, SongsStore};
+use app_core::{
+    AnalysisQueue, AppConfig, JellyfinAuth, JellyfinHealth, JellyfinLoginResult, LibraryMenuItems,
+    LibrarySource, LoadSongsParams, SongsMeta, SongsStore,
+};
 
 #[tauri::command]
-pub fn trigger_scan(folder: String) {
-    app_core::start_scan(Path::new(&folder));
+pub fn trigger_scan() {
+    app_core::start_scan();
+}
+
+#[tauri::command]
+pub fn set_library_source(source: LibrarySource) -> AppConfig {
+    let mut config = AppConfig::load();
+    config.library_source = Some(source);
+    config.last_folder = None;
+    config.save();
+    app_core::start_scan();
+    config
+}
+
+#[tauri::command]
+pub fn clear_library_source() -> AppConfig {
+    let mut config = AppConfig::load();
+    config.library_source = None;
+    config.last_folder = None;
+    config.save();
+    config
+}
+
+#[tauri::command]
+pub fn jellyfin_login(
+    base_url: String,
+    username: String,
+    password: String,
+) -> Result<JellyfinLoginResult, String> {
+    app_core::jellyfin_login(&base_url, &username, &password, None)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn jellyfin_ping() -> JellyfinHealth {
+    let config = AppConfig::load();
+    match config.library_source {
+        Some(app_core::LibrarySource::Jellyfin {
+            base_url,
+            user_id: _,
+            username: _,
+            access_token,
+            device_id,
+        }) => app_core::jellyfin_ping(&JellyfinAuth {
+            base_url,
+            user_id: String::new(),
+            access_token,
+            device_id,
+        }),
+        _ => JellyfinHealth {
+            reachable: false,
+            server_name: None,
+            version: None,
+            server_id: None,
+            error: Some("no jellyfin source configured".into()),
+        },
+    }
 }
 
 #[tauri::command]

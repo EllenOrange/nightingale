@@ -23,6 +23,26 @@ pub enum TranscriptSource {
     Usdx,
 }
 
+/// Where the bytes for a song actually live. `LocalFile` means `Song.path` is the
+/// real source-of-truth on disk; `Jellyfin` means `Song.path` is whatever the
+/// adapter materialised locally (placeholder until first download).
+#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[ts(export)]
+pub enum SongOrigin {
+    LocalFile,
+    Jellyfin {
+        item_id: String,
+        base_url: String,
+        #[serde(default)]
+        container: Option<String>,
+    },
+}
+
+pub(crate) fn default_origin() -> SongOrigin {
+    SongOrigin::LocalFile
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Song {
@@ -48,6 +68,8 @@ pub struct Song {
     pub is_video: bool,
     #[serde(default)]
     pub usdx: Option<UsdxBundle>,
+    #[serde(default = "default_origin")]
+    pub origin: SongOrigin,
 }
 
 fn default_tempo() -> f64 {
@@ -76,6 +98,7 @@ impl Song {
         key_offset: i32,
         is_video: bool,
         usdx: Option<UsdxBundle>,
+        origin: SongOrigin,
     ) -> Self {
         let (mut title, mut artist, mut album, duration_secs, cover_bytes) = if is_video {
             read_video_metadata(path)
@@ -123,6 +146,7 @@ impl Song {
             key_offset,
             is_video,
             usdx,
+            origin,
         }
     }
 }
@@ -169,6 +193,7 @@ pub fn build_song(path: &Path, cache: &CacheDir, is_video: bool) -> Result<Song,
         0,
         is_video,
         None,
+        SongOrigin::LocalFile,
     ))
 }
 

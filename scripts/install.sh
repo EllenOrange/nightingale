@@ -32,6 +32,12 @@
 #                          existing install pick up the unit's previously
 #                          chosen NIGHTINGALE_DATA_PATH instead)
 #   NIGHTINGALE_REF        git ref used to fetch companion assets in curl-pipe mode
+#   NIGHTINGALE_PROTECT_HOME
+#                          systemd ProtectHome= for the service unit
+#                          (off | read-only | tmpfs). Defaults to "off" when
+#                          DATA_DIR is under /home (so uv / pip / etc. can
+#                          write their per-user caches in $HOME/.cache),
+#                          and "read-only" otherwise.
 #   NIGHTINGALE_FORCE_CADDYFILE
 #                          set to 1 to overwrite a non-managed /etc/caddy/Caddyfile
 #                          (or any colliding Caddyfile.d snippet) - the operator's
@@ -57,6 +63,7 @@ SOURCE_DIR=""          # source mode
 SERVICE_USER=""
 HOSTNAME_LABEL=""
 DATA_DIR=""
+PROTECT_HOME=""        # systemd ProtectHome= value, derived from DATA_DIR
 
 readonly DEFAULT_REPO="rzru/nightingale"
 readonly DEFAULT_VERSION="latest"
@@ -319,6 +326,22 @@ resolve_defaults() {
     else
       DATA_DIR="$DEFAULT_DATA_DIR"
     fi
+  fi
+
+  # Pick a systemd ProtectHome= value that matches where DATA_DIR lives.
+  # When the operator parks data under /home/* (real-user install) the
+  # service user is almost always that human's account, and any tool we
+  # shell out to (uv, ffmpeg, pip) defaults its caches to $HOME/.cache.
+  # ProtectHome=read-only would make those write attempts hit EROFS and
+  # abort the in-app vendor setup. For the standard /var/lib/nightingale
+  # case we keep the hardened default. Operators can pin it explicitly
+  # with NIGHTINGALE_PROTECT_HOME=off|read-only|tmpfs.
+  if [[ -n "${NIGHTINGALE_PROTECT_HOME:-}" ]]; then
+    PROTECT_HOME="$NIGHTINGALE_PROTECT_HOME"
+  elif [[ "$DATA_DIR" == /home/* ]]; then
+    PROTECT_HOME="off"
+  else
+    PROTECT_HOME="read-only"
   fi
 }
 
@@ -797,6 +820,7 @@ render_with_overrides() {
   sed \
     -e "s|@DATA_DIR@|${DATA_DIR}|g" \
     -e "s|@SERVICE_USER@|${SERVICE_USER}|g" \
+    -e "s|@PROTECT_HOME@|${PROTECT_HOME}|g" \
     "$src" > "$tmp"
   if [[ -f "$dst" ]] && cmp -s "$tmp" "$dst"; then
     rm -f "$tmp"

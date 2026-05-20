@@ -4,8 +4,11 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::thread;
 
 use tiny_http::{Header, Response, Server, StatusCode};
+use tracing::warn;
 
 static PORT: AtomicU16 = AtomicU16::new(0);
+
+const REMOTE_PREFIX: &str = "/remote/";
 
 fn mime_for_ext(ext: &str) -> &'static str {
     match ext {
@@ -42,6 +45,29 @@ fn parse_range(range_header: &str, file_len: u64) -> Option<(u64, u64)> {
 }
 
 fn handle_request(request: tiny_http::Request) {
+    // The renderer hits `/remote/<urlencoded-url>` to stream remote sources
+    // (currently just Jellyfin video). We act as a thin proxy so the
+    // bearer token never leaves this process and we can speak HTTP Range
+    // uniformly with the local file route below.
+    if request.url().starts_with(REMOTE_PREFIX) {
+        if let Some(rest) = request.url().get(REMOTE_PREFIX.len()..) {
+            let decoded = urlencoding::decode(rest)
+                .map(|d| d.into_owned())
+                .unwrap_or_else(|_| rest.to_string());
+
+            if decoded.starts_with("http://") || decoded.starts_with("https://") {
+                handle_remote(request, &decoded);
+                return;
+            }
+        }
+
+        let _ = request.respond(
+            Response::from_string("Bad remote URL").with_status_code(StatusCode(400)),
+        );
+        
+        return;
+    }
+
     let raw_path = urlencoding::decode(request.url())
         .map(|d| d.into_owned())
         .unwrap_or_else(|_| request.url().to_string());
@@ -136,6 +162,85 @@ fn handle_request(request: tiny_http::Request) {
             );
         }
     }
+}
+
+/// Proxy a GET against `url` back to the caller, forwarding `Range` so HTML5
+/// `<video>`/`<audio>` players can seek. We surface upstream status/headers
+/// unchanged where possible.
+fn handle_remote(request: tiny_http::Request, url: &str) {
+    let agent = ureq::Agent::new_with_defaults();
+    let mut req = agent.get(url);
+    if let Some(range) = request
+        .headers()
+        .iter()
+        .find(|h| h.field.as_str() == "Range" || h.field.as_str() == "range")
+    {
+        req = req.header("Range", range.value.as_str());
+    }
+
+    let resp = match req.call() {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("[media_server] Remote proxy GET {url} failed: {e}");
+            let _ = request.respond(
+                Response::from_string("Upstream request failed")
+                    .with_status_code(StatusCode(502)),
+            );
+            return;
+        }
+    };
+
+    let status = resp.status().as_u16();
+    let mut content_type: Option<String> = resp
+        .headers()
+        .get("content-type")
+        .and_then(|h| h.to_str().ok().map(|s| s.to_string()));
+    let content_range: Option<String> = resp
+        .headers()
+        .get("content-range")
+        .and_then(|h| h.to_str().ok().map(|s| s.to_string()));
+    let accept_ranges_upstream: Option<String> = resp
+        .headers()
+        .get("accept-ranges")
+        .and_then(|h| h.to_str().ok().map(|s| s.to_string()));
+
+    if content_type.is_none() {
+        content_type = Some("application/octet-stream".into());
+    }
+
+    let mut body = resp.into_body();
+    let mut reader = body.as_reader();
+    let mut bytes = Vec::new();
+    if let Err(e) = reader.read_to_end(&mut bytes) {
+        warn!("[media_server] Remote proxy body read failed: {e}");
+        let _ = request.respond(
+            Response::from_string("Upstream read failed").with_status_code(StatusCode(502)),
+        );
+        return;
+    }
+
+    let mut response = Response::from_data(bytes).with_status_code(StatusCode(status));
+    if let Some(ct) = content_type {
+        if let Ok(h) = Header::from_bytes("Content-Type", ct) {
+            response = response.with_header(h);
+        }
+    }
+    if let Some(cr) = content_range {
+        if let Ok(h) = Header::from_bytes("Content-Range", cr) {
+            response = response.with_header(h);
+        }
+    }
+    if let Some(ar) = accept_ranges_upstream {
+        if let Ok(h) = Header::from_bytes("Accept-Ranges", ar) {
+            response = response.with_header(h);
+        }
+    } else if let Ok(h) = Header::from_bytes("Accept-Ranges", "bytes") {
+        response = response.with_header(h);
+    }
+    if let Ok(h) = Header::from_bytes("Access-Control-Allow-Origin", "*") {
+        response = response.with_header(h);
+    }
+    let _ = request.respond(response);
 }
 
 pub fn start() -> u16 {
