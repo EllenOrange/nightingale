@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::cache::config_path;
+use crate::secret;
 
 /// Where the user wants Nightingale to source songs from. Persisted in
 /// `config.json` and consumed by both the scanner and the analyzer.
@@ -19,12 +20,36 @@ pub enum LibrarySource {
         base_url: String,
         user_id: String,
         username: String,
-        /// Access token returned by `/Users/AuthenticateByName`.
+        /// Access token returned by `/Users/AuthenticateByName`. At rest in
+        /// `config.json` this value is an encrypted envelope; in-memory and
+        /// over IPC it's the plaintext token. See `secret.rs` for the on-disk
+        /// format + migration semantics.
         access_token: String,
         /// Stable per-install identifier we hand to Jellyfin in the
         /// `X-Emby-Authorization` header. Generated once at connect time.
         device_id: String,
     },
+}
+
+impl LibrarySource {
+    fn map_access_token(self, transform: impl FnOnce(&str) -> String) -> Self {
+        match self {
+            Self::Folder { path } => Self::Folder { path },
+            Self::Jellyfin {
+                base_url,
+                user_id,
+                username,
+                access_token,
+                device_id,
+            } => Self::Jellyfin {
+                base_url,
+                user_id,
+                username,
+                access_token: transform(&access_token),
+                device_id,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -128,7 +153,7 @@ impl AppConfig {
         self.library_source = Some(LibrarySource::Folder {
             path: PathBuf::from(folder),
         });
-        
+
         true
     }
 
@@ -144,12 +169,20 @@ impl AppConfig {
         };
 
         let (mut config, mut should_save) = match loaded {
-            Some(cfg) => {
+            Some(mut cfg) => {
                 let had_data_path = cfg.data_path.is_some();
                 let had_library_source = cfg.library_source.is_some();
                 let had_legacy_folder = cfg.last_folder.is_some();
-                let needs_save =
-                    !had_data_path || (!had_library_source && had_legacy_folder);
+                let had_plaintext_token = cfg
+                    .library_source
+                    .as_ref()
+                    .is_some_and(jellyfin_token_is_plaintext);
+                let needs_save = !had_data_path
+                    || (!had_library_source && had_legacy_folder)
+                    || had_plaintext_token;
+                if let Some(src) = cfg.library_source.take() {
+                    cfg.library_source = Some(src.map_access_token(secret::decrypt_string));
+                }
                 (cfg.with_defaults(), needs_save)
             }
             None => (Self::default().with_defaults(), true),
@@ -171,7 +204,11 @@ impl AppConfig {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        if let Ok(json) = serde_json::to_string_pretty(self) {
+        let mut for_disk = self.clone();
+        if let Some(src) = for_disk.library_source.take() {
+            for_disk.library_source = Some(src.map_access_token(secret::encrypt_string));
+        }
+        if let Ok(json) = serde_json::to_string_pretty(&for_disk) {
             let _ = std::fs::write(&path, json);
         }
     }
@@ -214,5 +251,14 @@ impl AppConfig {
         self.language_overrides
             .get_or_insert_with(HashMap::new)
             .insert(file_hash, lang);
+    }
+}
+
+fn jellyfin_token_is_plaintext(src: &LibrarySource) -> bool {
+    match src {
+        LibrarySource::Jellyfin { access_token, .. } => {
+            !access_token.is_empty() && !secret::is_encrypted(access_token)
+        }
+        _ => false,
     }
 }

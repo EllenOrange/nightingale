@@ -10,6 +10,7 @@ pub mod media_server;
 mod playback;
 mod profile;
 mod scanner;
+mod secret;
 mod song;
 mod source;
 mod usdx;
@@ -25,6 +26,7 @@ pub use cache::{
     default_nightingale_dir, nightingale_dir, normalized_target_path, same_path,
 };
 pub use config::{AppConfig, LibrarySource};
+pub use media_server::MediaEndpoint;
 pub use library_db::{init_library, library_db_path};
 pub use library_menu::{LibraryMenuItem, LibraryMenuItems, load_library_menu_items};
 pub use library_model::{LibraryMenuFilters, LoadSongsParams, SongsMeta, SongsStore};
@@ -32,6 +34,7 @@ pub use source::{
     JellyfinAuth, JellyfinSource, MediaSource, SourceKind, active_source,
     jellyfin::{
         JellyfinHealth, JellyfinLoginResult, login as jellyfin_login, ping as jellyfin_ping,
+        ping_current as jellyfin_ping_current,
     },
 };
 pub use lyrics::{
@@ -56,9 +59,18 @@ pub use vendor::{
 
 pub fn startup() -> Result<(), String> {
     init_library().map_err(|e| e.to_string())?;
+
     AnalysisQueue::clear();
+
+    let cache = CacheDir::new();
+
+    if let Err(e) = library_db::rewrite_legacy_jellyfin_paths(&cache.path) {
+        tracing::warn!("Failed to migrate legacy Jellyfin paths: {e}");
+    }
+
     if let Err(e) = refresh_analyzer_scripts_if_ready() {
         tracing::warn!("Failed to refresh analyzer scripts: {e}");
     }
+    
     Ok(())
 }

@@ -478,6 +478,119 @@ pub fn load_jellyfin_item_ids() -> rusqlite::Result<std::collections::HashSet<St
     })
 }
 
+/// `item_id -> ImageTags.Primary` for every Jellyfin row, used during scan to
+/// decide whether a cover needs to be re-fetched. A `None` value means the
+/// row exists but we never recorded a cover tag for it.
+pub fn load_jellyfin_cover_tags()
+-> rusqlite::Result<std::collections::HashMap<String, Option<String>>> {
+    with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT json_extract(payload, '$.origin.item_id'),
+                    json_extract(payload, '$.origin.cover_tag')
+             FROM songs
+             WHERE json_extract(payload, '$.origin.kind') = 'jellyfin'",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?))
+        })?;
+        let mut out = std::collections::HashMap::new();
+        for row in rows {
+            let (id, tag) = row?;
+            if let Some(id) = id {
+                out.insert(id, tag);
+            }
+        }
+        Ok(out)
+    })
+}
+
+/// Run `fetch` to obtain a fresh cover path for the given Jellyfin item id,
+/// then update the row's `album_art_path` + payload accordingly. `fetch` is
+/// invoked with the item id and may return `None` if the upstream cover
+/// disappeared.
+pub fn refresh_jellyfin_cover_for_item<F>(item_id: &str, fetch: F) -> rusqlite::Result<()>
+where
+    F: FnOnce(&str) -> Option<std::path::PathBuf>,
+{
+    let song_row = with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT file_hash, payload FROM songs
+             WHERE json_extract(payload, '$.origin.kind') = 'jellyfin'
+               AND json_extract(payload, '$.origin.item_id') = ?1
+             LIMIT 1",
+        )?;
+        stmt.query_row([item_id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })
+        .optional()
+    })?;
+    let Some((file_hash, payload)) = song_row else {
+        return Ok(());
+    };
+    let mut song: Song = match serde_json::from_str(&payload) {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
+    let new_cover = fetch(item_id);
+    if let crate::song::SongOrigin::Jellyfin { cover_tag, .. } = &mut song.origin
+        && new_cover.is_none()
+    {
+        *cover_tag = None;
+    }
+    song.album_art_path = new_cover;
+    update_song_fields(&file_hash, &song)
+}
+
+/// One-shot startup migration: pre-2026-05 builds stored an unmaterialised
+/// Jellyfin row's `path` as `jellyfin://item/<id>`. The new code expects every
+/// row to carry the future cache-file path so the `path.is_file()` check in
+/// `ensure_local_media` works naturally. Rewrites legacy rows in-place.
+pub fn rewrite_legacy_jellyfin_paths(cache_dir: &std::path::Path) -> rusqlite::Result<()> {
+    let candidates = with_conn(|c| {
+        let mut stmt = c.prepare(
+            "SELECT file_hash, payload FROM songs
+             WHERE json_extract(payload, '$.origin.kind') = 'jellyfin'
+               AND path LIKE 'jellyfin://%'",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+    })?;
+
+    if candidates.is_empty() {
+        return Ok(());
+    }
+
+    let sources_dir = cache_dir.join("sources");
+
+    with_conn_mut(|c| {
+        let tx = c.transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "UPDATE songs SET path = ?2, payload = ?3 WHERE file_hash = ?1",
+            )?;
+            for (file_hash, payload) in candidates {
+                let Ok(mut song) = serde_json::from_str::<Song>(&payload) else {
+                    continue;
+                };
+                let container = match &song.origin {
+                    crate::song::SongOrigin::Jellyfin { container, .. } => container.clone(),
+                    _ => None,
+                };
+                let ext = container.as_deref().unwrap_or("bin");
+                let new_path = sources_dir.join(format!("{file_hash}.{ext}"));
+                song.path = new_path.clone();
+                let Ok(new_payload) = serde_json::to_string(&song) else {
+                    continue;
+                };
+                stmt.execute(params![file_hash, new_path.to_string_lossy(), new_payload])?;
+            }
+        }
+        tx.commit()
+    })
+}
+
 /// Prune Jellyfin rows whose item id is no longer present upstream. Folder rows
 /// are untouched.
 pub fn delete_jellyfin_songs_not_in_item_ids(item_ids: &[String]) -> rusqlite::Result<()> {

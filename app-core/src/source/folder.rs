@@ -14,12 +14,10 @@ use crate::library_db;
 use crate::song::{Song, build_song};
 use crate::usdx;
 
-use super::{MediaSource, ScanContext, SourceKind};
+use super::{MediaSource, SCAN_BATCH_SIZE, ScanContext, SourceKind, flush_batch};
 
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "flac", "ogg", "wav", "m4a", "aac", "wma"];
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "avi", "webm", "mov", "m4v"];
-
-const SCAN_SAVE_BATCH_SIZE: usize = 25;
 
 #[derive(Debug, Clone, Copy)]
 enum MediaKind {
@@ -50,21 +48,16 @@ impl MediaSource for FolderSource {
     fn scan(&self, ctx: &ScanContext<'_>) -> Result<(), NightingaleError> {
         let media_files = collect_media_paths(&self.root);
         let folder_label = self.label();
-        let (existing_folder, _) =
-            library_db::read_library_meta().unwrap_or((String::new(), 0));
-        let same_folder = existing_folder == folder_label;
 
-        if same_folder {
-            let paths: Vec<String> = media_files
-                .iter()
-                .map(|(p, _)| p.to_string_lossy().into_owned())
-                .collect();
-            let _ = library_db::delete_songs_not_in_paths(&paths);
-            let _ = library_db::update_library_meta(&folder_label, media_files.len());
-        } else {
-            let _ = library_db::replace_all_songs_sorted(&[]);
-            let _ = library_db::update_library_meta(&folder_label, media_files.len());
-        }
+        // Source-switch wipes are handled centrally in `scanner::start_scan`;
+        // here we only need to prune rows whose paths disappeared between
+        // scans of the same folder.
+        let paths: Vec<String> = media_files
+            .iter()
+            .map(|(p, _)| p.to_string_lossy().into_owned())
+            .collect();
+        let _ = library_db::delete_songs_not_in_paths(&paths);
+        let _ = library_db::update_library_meta(&folder_label, media_files.len());
 
         let already_processed: HashSet<String> =
             library_db::load_song_path_strings().unwrap_or_default();
@@ -92,18 +85,16 @@ impl MediaSource for FolderSource {
                     warn!("Failed to process {}: {e}", path.display());
                 }
             }
-            if (i + 1) % SCAN_SAVE_BATCH_SIZE == 0 && !batch.is_empty() {
+            if (i + 1) % SCAN_BATCH_SIZE == 0 {
                 flush_batch(&mut batch, generation);
             }
         }
 
-        if !batch.is_empty() {
-            flush_batch(&mut batch, generation);
-        }
+        flush_batch(&mut batch, generation);
         Ok(())
     }
 
-    fn ensure_local_audio(
+    fn ensure_local_media(
         &self,
         song: &Song,
         _cache: &CacheDir,
@@ -158,9 +149,4 @@ fn collect_media_paths(folder: &Path) -> Vec<(PathBuf, MediaKind)> {
 
     paths.retain(|(p, kind)| matches!(kind, MediaKind::Usdx) || !claimed.contains(p));
     paths
-}
-
-fn flush_batch(batch: &mut Vec<Song>, generation: u64) {
-    let _ = library_db::append_songs_for_scan(batch, generation);
-    batch.clear();
 }

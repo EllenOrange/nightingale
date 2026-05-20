@@ -5,13 +5,14 @@ import {
   useRescan,
   useSelectFolderSource,
 } from "@/mutations/use-source-mutations";
+import { getSource } from "@/lib/library-source";
 
 /**
  * Coordinated source actions used by the sidebar + empty-state. Wraps the
  * `bridge/source` mutations and exposes precomputed booleans for "what's the
  * active source" / "is rescan enabled".
  */
-export const useFolderActions = () => {
+export const useLibrarySourceActions = () => {
   const { data: config } = useConfig();
   const { data: health } = useJellyfinHealth();
 
@@ -20,8 +21,9 @@ export const useFolderActions = () => {
   const disconnectMutation = useDisconnectSource();
 
   const hasSource = !!config?.library_source;
+  const jellyfinSource = getSource(config, "jellyfin");
   const isFolderSource = config?.library_source?.kind === "folder";
-  const isJellyfinSource = config?.library_source?.kind === "jellyfin";
+  const isJellyfinSource = jellyfinSource !== null;
 
   const isPending =
     folderMutation.isPending || rescanMutation.isPending || disconnectMutation.isPending;
@@ -37,6 +39,7 @@ export const useFolderActions = () => {
     config,
     health,
     hasSource,
+    jellyfinSource,
     isFolderSource,
     isJellyfinSource,
     selectFolder: () => folderMutation.mutate(),

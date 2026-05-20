@@ -10,6 +10,7 @@ import {
 } from "@/bridge/source";
 import { ANALYSIS_QUEUE, CONFIG, JELLYFIN_HEALTH, MENU, SONGS, SONGS_META } from "@/queries/keys";
 import type { AppConfig } from "@/types/AppConfig";
+import type { JellyfinHealth } from "@/types/JellyfinHealth";
 import type { JellyfinLoginResult } from "@/types/JellyfinLoginResult";
 
 const useInvalidateLibrary = () => {
@@ -117,8 +118,19 @@ export const useConnectJellyfin = () => {
       });
       return { config, login };
     },
-    onSuccess: ({ config }) => {
+    onSuccess: ({ config, login }) => {
       queryClient.setQueryData(CONFIG, config);
+
+      // Seed the health cache from the successful login so the sidebar pill
+      // flips to green immediately instead of waiting for the next poll.
+      queryClient.setQueryData<JellyfinHealth>(JELLYFIN_HEALTH, {
+        reachable: true,
+        server_name: login.server_name ?? undefined,
+        server_id: undefined,
+        version: undefined,
+        error: undefined,
+      });
+
       invalidateLibrary();
     },
   });

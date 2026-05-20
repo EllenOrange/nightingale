@@ -12,7 +12,10 @@ export type LibrarySource =
       user_id: string;
       username: string;
       /**
-       * Access token returned by `/Users/AuthenticateByName`.
+       * Access token returned by `/Users/AuthenticateByName`. At rest in
+       * `config.json` this value is an encrypted envelope; in-memory and
+       * over IPC it's the plaintext token. See `secret.rs` for the on-disk
+       * format + migration semantics.
        */
       access_token: string;
       /**

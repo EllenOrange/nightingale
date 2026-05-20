@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { jellyfinPing } from "@/bridge/source";
+import { getSource } from "@/lib/library-source";
 import { useConfig } from "@/queries/use-config";
 
 import { JELLYFIN_HEALTH } from "./keys";
@@ -15,7 +16,7 @@ const OFFLINE_REFRESH_MS = 10_000;
  */
 export const useJellyfinHealth = () => {
   const { data: config } = useConfig();
-  const enabled = config?.library_source?.kind === "jellyfin";
+  const enabled = getSource(config, "jellyfin") !== null;
 
   return useQuery({
     queryKey: JELLYFIN_HEALTH,

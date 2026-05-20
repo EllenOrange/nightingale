@@ -1,3 +1,4 @@
+import type { MediaEndpoint } from "@/types/MediaEndpoint";
 import type { AudioPaths } from "@/types/Transcript";
 import type { Transcript } from "@/types/Transcript";
 import { invoke, listen, type UnlistenFn } from "./runtime";
@@ -31,8 +32,8 @@ export const fetchPixabayVideos = async (flavor: string): Promise<string[]> => {
   return await invoke<string[]>("fetch_pixabay_videos", { flavor });
 };
 
-export const getMediaPort = async (): Promise<number> => {
-  return await invoke<number>("get_media_port");
+export const getMediaEndpoint = async (): Promise<MediaEndpoint> => {
+  return await invoke<MediaEndpoint>("get_media_endpoint");
 };
 
 export interface PixabayVideoDownloaded {

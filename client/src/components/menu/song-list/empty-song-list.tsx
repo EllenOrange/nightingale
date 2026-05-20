@@ -11,10 +11,10 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { useDialog } from "@/hooks/use-dialog";
-import { useFolderActions } from "@/hooks/use-folder-actions";
+import { useLibrarySourceActions } from "@/hooks/use-library-source-actions";
 
 export const EmptySongList = () => {
-  const { selectFolder, isPending } = useFolderActions();
+  const { selectFolder, isPending } = useLibrarySourceActions();
   const { setMode } = useDialog();
 
   return (

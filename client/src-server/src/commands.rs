@@ -1,8 +1,8 @@
 use app_core::{
     ensure_mp3_stems_ready_payload, load_lyrics_file, save_lyrics_and_realign,
     search_lrclib_for_hash, shift_key_done_payload, shift_tempo_done_payload, AnalysisQueue,
-    AppConfig, CacheStats, JellyfinAuth, JellyfinHealth, LibraryMenuFilters, LibraryMenuItems,
-    LibrarySource, LoadSongsParams, PixabayVideoDownloaded, ProfileStore, SongsStore,
+    AppConfig, CacheStats, LibraryMenuFilters, LibraryMenuItems, LibrarySource, LoadSongsParams,
+    PixabayVideoDownloaded, ProfileStore, SongsStore,
 };
 use axum::{
     extract::{Path as AxumPath, State},
@@ -147,29 +147,7 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
             Ok(serde_json::to_value(result).map_err(serde_err)?)
         }
         "jellyfin_ping" => {
-            let config = AppConfig::load();
-            let health = match config.library_source {
-                Some(LibrarySource::Jellyfin {
-                    base_url,
-                    user_id: _,
-                    username: _,
-                    access_token,
-                    device_id,
-                }) => app_core::jellyfin_ping(&JellyfinAuth {
-                    base_url,
-                    user_id: String::new(),
-                    access_token,
-                    device_id,
-                }),
-                _ => JellyfinHealth {
-                    reachable: false,
-                    server_name: None,
-                    version: None,
-                    server_id: None,
-                    error: Some("no jellyfin source configured".into()),
-                },
-            };
-            Ok(serde_json::to_value(health).map_err(serde_err)?)
+            Ok(serde_json::to_value(app_core::jellyfin_ping_current()).map_err(serde_err)?)
         }
         "load_songs" => {
             #[derive(Deserialize)]
@@ -290,9 +268,6 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
         // ── Mic (browser-side; no server-side state) ────────────────────
         "list_microphones" => Ok(Value::Array(vec![])),
         "start_mic_capture" | "stop_mic_capture" => Ok(Value::Null),
-
-        // ── Tauri-only no-ops ────────────────────────────────────────────
-        "get_media_port" => Ok(Value::from(0u16)),
 
         _ => Err(ApiError(
             StatusCode::NOT_FOUND,

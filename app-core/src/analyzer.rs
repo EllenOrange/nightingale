@@ -746,7 +746,7 @@ fn prepare_audio_for_analysis(
         SongOrigin::Jellyfin { .. } => {
             let source = active_source()?
                 .ok_or_else(|| NightingaleError::Other("no active library source".into()))?;
-            let downloaded_path = source.ensure_local_audio(song, cache)?;
+            let downloaded_path = source.ensure_local_media(song, cache)?;
 
             let real_hash = compute_file_hash(&downloaded_path)?;
             if real_hash == song.file_hash {

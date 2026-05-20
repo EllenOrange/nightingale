@@ -4,7 +4,7 @@ import { FolderIcon, RefreshCwIcon } from "lucide-react";
 import { JellyfinIcon } from "@/components/icons/jellyfin";
 import type { BadgeTone } from "@/components/menu/sidebar/source-action-button";
 import { useDialog } from "@/hooks/use-dialog";
-import { useFolderActions } from "@/hooks/use-folder-actions";
+import { useLibrarySourceActions } from "@/hooks/use-library-source-actions";
 
 export interface SourceButton {
   key: string;
@@ -24,21 +24,11 @@ export interface SourceButton {
  */
 export const useSourceButtons = (): SourceButton[] => {
   const { setMode } = useDialog();
-  const {
-    selectFolder,
-    rescan,
-    rescanDisabled,
-    isPending,
-    hasSource,
-    isJellyfinSource,
-    config,
-    health,
-  } = useFolderActions();
-
-  const jellyfinSource = config?.library_source?.kind === "jellyfin" ? config.library_source : null;
+  const { selectFolder, rescan, rescanDisabled, isPending, hasSource, jellyfinSource, health } =
+    useLibrarySourceActions();
 
   const jellyfin = useMemo<{ tooltip: string; badge?: BadgeTone }>(() => {
-    if (!isJellyfinSource || !jellyfinSource) {
+    if (!jellyfinSource) {
       return { tooltip: "Connect Jellyfin" };
     }
     const hostname = health?.server_name ?? jellyfinSource.base_url.replace(/^https?:\/\//, "");
@@ -52,7 +42,7 @@ export const useSourceButtons = (): SourceButton[] => {
       tooltip: health.error ? `Offline: ${hostname} — ${health.error}` : `Offline: ${hostname}`,
       badge: "warn",
     };
-  }, [isJellyfinSource, jellyfinSource, health]);
+  }, [jellyfinSource, health]);
 
   return useMemo<SourceButton[]>(() => {
     const buttons: SourceButton[] = [

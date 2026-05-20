@@ -219,8 +219,25 @@ pub fn ensure_playable_source_video(file_hash: &str) -> Result<Option<String>, N
         return Err(NightingaleError::Other("Song not found".into()));
     };
 
+    if !song.is_video && song.usdx.as_ref().and_then(|b| b.video.as_ref()).is_none() {
+        return Ok(None);
+    }
+
+    let cache = CacheDir::new();
+
+    // For remote-origin songs we have to materialise the underlying media
+    // file before we can decide whether it needs ffmpeg transcoding. Folder
+    // sources are no-ops here (the trait just hands `song.path` back).
+    let materialised = if matches!(song.origin, crate::song::SongOrigin::LocalFile) {
+        None
+    } else {
+        let source = crate::source::active_source()?
+            .ok_or_else(|| NightingaleError::Other("no active library source".into()))?;
+        Some(source.ensure_local_media(&song, &cache)?)
+    };
+
     let source_path = if song.is_video {
-        song.path.clone()
+        materialised.unwrap_or_else(|| song.path.clone())
     } else if let Some(video) = song.usdx.as_ref().and_then(|b| b.video.clone()) {
         video
     } else {
@@ -231,7 +248,6 @@ pub fn ensure_playable_source_video(file_hash: &str) -> Result<Option<String>, N
         return Ok(Some(source_path.to_string_lossy().into_owned()));
     }
 
-    let cache = CacheDir::new();
     let target = cache.playable_video_path(file_hash);
     if target.is_file() {
         return Ok(Some(target.to_string_lossy().into_owned()));

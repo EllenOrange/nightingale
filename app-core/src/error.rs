@@ -4,6 +4,14 @@ use std::fmt;
 pub enum NightingaleError {
     Io(std::io::Error),
     Json(serde_json::Error),
+    /// A Jellyfin HTTP / parsing failure. `stage` is a short static breadcrumb
+    /// (e.g. `"list items"`, `"download cover"`) so the message is consistent
+    /// across every call site instead of every adapter rolling its own
+    /// `format!("Jellyfin ...: {e}")`.
+    Jellyfin {
+        stage: &'static str,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
     Other(String),
 }
 
@@ -12,6 +20,7 @@ impl fmt::Display for NightingaleError {
         match self {
             Self::Io(e) => write!(f, "{e}"),
             Self::Json(e) => write!(f, "{e}"),
+            Self::Jellyfin { stage, source } => write!(f, "Jellyfin {stage}: {source}"),
             Self::Other(msg) => write!(f, "{msg}"),
         }
     }
@@ -22,7 +31,20 @@ impl std::error::Error for NightingaleError {
         match self {
             Self::Io(e) => Some(e),
             Self::Json(e) => Some(e),
+            Self::Jellyfin { source, .. } => Some(source.as_ref()),
             Self::Other(_) => None,
+        }
+    }
+}
+
+impl NightingaleError {
+    pub fn jellyfin<E>(stage: &'static str, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::Jellyfin {
+            stage,
+            source: Box::new(source),
         }
     }
 }

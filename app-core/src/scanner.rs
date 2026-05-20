@@ -59,6 +59,19 @@ pub fn start_scan() {
         }
     };
 
+    // If the active source's identity changed (folder → Jellyfin, different
+    // Jellyfin server, different folder path) the rows already in the DB
+    // belong to a different library and would otherwise stick around — each
+    // source's per-scan pruning only touches its own rows. Wipe everything
+    // up front so the upcoming scan starts from a clean slate.
+    let new_label = source.label();
+    let (existing_label, _) = library_db::read_library_meta().unwrap_or_default();
+    if existing_label != new_label {
+        let _ = library_db::replace_all_songs_sorted(&[]);
+        let _ = library_db::analysis_queue_clear();
+        let _ = library_db::update_library_meta(&new_label, 0);
+    }
+
     std::thread::spawn(move || {
         let cache = CacheDir::new();
         let ctx = ScanContext {

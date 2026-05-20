@@ -32,8 +32,8 @@ use tauri::{Manager, RunEvent, WebviewWindowBuilder};
 use vendor::{is_ready, trigger_setup};
 
 #[tauri::command]
-fn get_media_port() -> u16 {
-    app_core::media_server::port()
+fn get_media_endpoint() -> app_core::MediaEndpoint {
+    app_core::media_server::endpoint()
 }
 
 #[tauri::command]
@@ -131,7 +131,7 @@ pub fn run() {
             ensure_mp3_stems,
             ensure_playable_source_video,
             fetch_pixabay_videos,
-            get_media_port,
+            get_media_endpoint,
             list_microphones,
             start_mic_capture,
             stop_mic_capture,
@@ -145,6 +145,7 @@ pub fn run() {
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
             app_core::startup()?;
             app_core::media_server::start();
+            let media_endpoint = app_core::media_server::endpoint();
 
             let config = AppConfig::load();
             set_monitor_gain(config.mic_mirror_gain());
@@ -163,9 +164,14 @@ pub fn run() {
             let meta_json = serde_json::to_string(&songs_meta).map_err(|e| e.to_string())?;
             let meta_b64 = B64.encode(meta_json.as_bytes());
 
+            let endpoint_json =
+                serde_json::to_string(&media_endpoint).map_err(|e| e.to_string())?;
+            let endpoint_b64 = B64.encode(endpoint_json.as_bytes());
+
             let init_script = format!(
                 "window.__NIGHTINGALE_APP_CONFIG__ = JSON.parse(atob('{b64}')); \
-                 window.__NIGHTINGALE_SONGS_META__ = JSON.parse(atob('{meta_b64}'));",
+                 window.__NIGHTINGALE_SONGS_META__ = JSON.parse(atob('{meta_b64}')); \
+                 window.__NIGHTINGALE_MEDIA_ENDPOINT__ = JSON.parse(atob('{endpoint_b64}'));",
             );
 
             let window_config = app

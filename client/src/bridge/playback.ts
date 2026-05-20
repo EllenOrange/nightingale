@@ -1,10 +1,11 @@
+import type { MediaEndpoint } from "@/types/MediaEndpoint";
 import type { AudioPaths } from "@/types/Transcript";
 import {
   ensureMp3Stems as tauriEnsureMp3Stems,
   ensurePlayableSourceVideo as tauriEnsurePlayableSourceVideo,
   fetchPixabayVideos as tauriFetchPixabayVideos,
   getAudioPaths as tauriRawGetAudioPaths,
-  getMediaPort as tauriGetMediaPort,
+  getMediaEndpoint as tauriGetMediaEndpoint,
   loadTranscript as tauriLoadTranscript,
   onPixabayVideoDownloaded as tauriOnPixabayVideoDownloaded,
   onStemsReady as tauriOnStemsReady,
@@ -26,27 +27,42 @@ export interface PlaybackAdapter {
 }
 
 // ─── Tauri implementation ─────────────────────────────────────────────────
+//
+// The local media server gates every request behind a per-process session
+// token embedded in the URL (`/s/<token>/local/<path>`), so any localhost
+// process or web page that lacks the token cannot read files off it. The
+// endpoint is baked into the page via the init script (see
+// `client/src-tauri/src/lib.rs`), with an IPC fallback for hot-reload.
 
-let cachedTauriPort: number | null = null;
+declare global {
+  interface Window {
+    __NIGHTINGALE_MEDIA_ENDPOINT__?: MediaEndpoint;
+  }
+}
+
+let cachedEndpoint: MediaEndpoint | null = null;
+
+const ensureEndpoint = async (): Promise<MediaEndpoint> => {
+  if (cachedEndpoint) return cachedEndpoint;
+  cachedEndpoint = window.__NIGHTINGALE_MEDIA_ENDPOINT__ ?? (await tauriGetMediaEndpoint());
+  return cachedEndpoint;
+};
 
 const tauriToMediaUrl = (absolutePath: string): string => {
-  if (cachedTauriPort === null) {
+  if (cachedEndpoint === null) {
     throw new Error("playbackAdapter.init() must be awaited before toMediaUrl");
   }
-  return `http://127.0.0.1:${cachedTauriPort}/${encodeURIComponent(absolutePath)}`;
+  const { port, session_token } = cachedEndpoint;
+  return `http://127.0.0.1:${port}/s/${session_token}/local/${encodeURIComponent(absolutePath)}`;
 };
 
 export const tauriPlaybackAdapter: PlaybackAdapter = {
   async init() {
-    if (cachedTauriPort === null) {
-      cachedTauriPort = await tauriGetMediaPort();
-    }
+    await ensureEndpoint();
   },
   toMediaUrl: tauriToMediaUrl,
   async getAudioPaths(fileHash) {
-    if (cachedTauriPort === null) {
-      cachedTauriPort = await tauriGetMediaPort();
-    }
+    await ensureEndpoint();
     const paths = await tauriRawGetAudioPaths(fileHash);
     return {
       instrumental: tauriToMediaUrl(paths.instrumental),

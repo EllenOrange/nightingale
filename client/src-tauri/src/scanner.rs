@@ -1,5 +1,5 @@
 use app_core::{
-    AnalysisQueue, AppConfig, JellyfinAuth, JellyfinHealth, JellyfinLoginResult, LibraryMenuItems,
+    AnalysisQueue, AppConfig, JellyfinHealth, JellyfinLoginResult, LibraryMenuItems,
     LibrarySource, LoadSongsParams, SongsMeta, SongsStore,
 };
 
@@ -39,28 +39,7 @@ pub fn jellyfin_login(
 
 #[tauri::command]
 pub fn jellyfin_ping() -> JellyfinHealth {
-    let config = AppConfig::load();
-    match config.library_source {
-        Some(app_core::LibrarySource::Jellyfin {
-            base_url,
-            user_id: _,
-            username: _,
-            access_token,
-            device_id,
-        }) => app_core::jellyfin_ping(&JellyfinAuth {
-            base_url,
-            user_id: String::new(),
-            access_token,
-            device_id,
-        }),
-        _ => JellyfinHealth {
-            reachable: false,
-            server_name: None,
-            version: None,
-            server_id: None,
-            error: Some("no jellyfin source configured".into()),
-        },
-    }
+    app_core::jellyfin_ping_current()
 }
 
 #[tauri::command]
