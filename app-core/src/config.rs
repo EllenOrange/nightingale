@@ -89,8 +89,13 @@ pub struct AppConfig {
     pub fullscreen: Option<bool>,
     pub dark_mode: Option<bool>,
     pub mic_active: Option<bool>,
-    pub mic_mirroring: Option<bool>,
-    pub mic_mirror_gain: Option<f64>,
+    /// `serde(alias = "mic_mirroring")` keeps configs written by builds that
+    /// called this feature "mic mirroring" loading without a manual migration;
+    /// the next `save` rewrites them under the new name.
+    #[serde(alias = "mic_mirroring")]
+    pub mic_monitoring: Option<bool>,
+    #[serde(alias = "mic_mirror_gain")]
+    pub mic_monitor_gain: Option<f64>,
     pub preferred_mic: Option<String>,
     pub whisper_model: Option<String>,
     pub beam_size: Option<u32>,
@@ -116,8 +121,8 @@ impl Default for AppConfig {
             fullscreen: None,
             dark_mode: None,
             mic_active: None,
-            mic_mirroring: None,
-            mic_mirror_gain: None,
+            mic_monitoring: None,
+            mic_monitor_gain: None,
             preferred_mic: None,
             whisper_model: None,
             beam_size: None,
@@ -269,8 +274,8 @@ impl AppConfig {
         self.asr_engine.as_deref().unwrap_or("whisper")
     }
 
-    pub fn mic_mirror_gain(&self) -> f32 {
-        self.mic_mirror_gain
+    pub fn mic_monitor_gain(&self) -> f32 {
+        self.mic_monitor_gain
             .map(|v| v as f32)
             .unwrap_or(0.65)
             .clamp(0.0, 2.0)

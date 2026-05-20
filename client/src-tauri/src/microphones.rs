@@ -150,7 +150,7 @@ fn write_output_frames<T, F>(
 static MIC_RUNNING: AtomicBool = AtomicBool::new(false);
 static MIC_SHUTDOWN: once_cell::sync::Lazy<Arc<AtomicBool>> =
     once_cell::sync::Lazy::new(|| Arc::new(AtomicBool::new(false)));
-static MIRROR_ENABLED: AtomicBool = AtomicBool::new(false);
+static MONITOR_ENABLED: AtomicBool = AtomicBool::new(false);
 static MIC_CHANNEL: once_cell::sync::Lazy<Arc<Mutex<Option<Channel<MicSampleFrame>>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 static MIC_THREAD: once_cell::sync::Lazy<Mutex<Option<JoinHandle<()>>>> =
@@ -169,7 +169,7 @@ fn take_mic_thread() -> Option<JoinHandle<()>> {
 
 fn stop_internal() {
     MIC_SHUTDOWN.store(true, Ordering::SeqCst);
-    MIRROR_ENABLED.store(false, Ordering::SeqCst);
+    MONITOR_ENABLED.store(false, Ordering::SeqCst);
     /*
      * Drop the channel before joining: this triggers Tauri's `Channel` Drop,
      * which sends `{end: true}` to JS so the callback id is unregistered
@@ -224,12 +224,12 @@ pub fn start_mic_capture(
     stop_internal();
 
     let next_options = options.unwrap_or_default();
-    MIRROR_ENABLED.store(next_options.emit_audio, Ordering::SeqCst);
+    MONITOR_ENABLED.store(next_options.emit_audio, Ordering::SeqCst);
 
     let (device, name) = match find_device(preferred.as_deref()) {
         Ok(pair) => pair,
         Err(e) => {
-            MIRROR_ENABLED.store(false, Ordering::SeqCst);
+            MONITOR_ENABLED.store(false, Ordering::SeqCst);
             return Err(e);
         }
     };
@@ -282,7 +282,7 @@ fn try_build_stream(
                 }
             }
 
-            if MIRROR_ENABLED.load(Ordering::Relaxed) {
+            if MONITOR_ENABLED.load(Ordering::Relaxed) {
                 if let Ok(mut q) = audio_cb.try_lock() {
                     for sample in &mono_samples {
                         q.push_back(*sample);
@@ -369,7 +369,7 @@ fn try_build_output_stream(
     let next_sample: Arc<dyn Fn() -> f32 + Send + Sync> = {
         let audio_shared = Arc::clone(&audio_shared);
         Arc::new(move || -> f32 {
-            if !MIRROR_ENABLED.load(Ordering::Relaxed) {
+            if !MONITOR_ENABLED.load(Ordering::Relaxed) {
                 return 0.0;
             }
             if let Ok(mut q) = audio_shared.try_lock() {

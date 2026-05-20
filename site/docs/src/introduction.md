@@ -22,7 +22,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 - **Video Files** — use video files with synchronized background playback
 - **Audio-Reactive Backgrounds** — 10 GPU shaders that react to your mic, 5 Pixabay video flavors, source-video for video files
 - **Sidebar Filters + Analyze All** — quickly browse and batch-analyze your library
-- **Mic Mirroring** — optional low-latency live mic monitoring with adjustable gain (0–200%)
+- **Mic Monitoring** — optional low-latency live mic monitoring with adjustable gain (0–200%)
 - **Gamepad Support** — full navigation via gamepad
 - **Self-Contained** — zero manual dependency setup
 

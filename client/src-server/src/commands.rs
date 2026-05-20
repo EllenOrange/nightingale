@@ -320,8 +320,8 @@ struct SaveConfigArgs {
 fn save_config_cmd(payload: Value) -> CmdResult {
     let SaveConfigArgs { config } = deserialize(payload)?;
     config.save();
-    // Web mode has no server-side cpal monitor stream, so `mic_mirror_gain`
-    // is consumed entirely by the browser's mirror GainNode.
+    // Web mode has no server-side cpal monitor stream, so `mic_monitor_gain`
+    // is consumed entirely by the browser's monitor GainNode.
     serde_json::to_value(config).map_err(serde_err)
 }
 

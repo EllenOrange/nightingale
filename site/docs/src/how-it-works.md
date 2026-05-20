@@ -11,7 +11,7 @@ flowchart TD
     B --> |"vocals + instrumental"| C["LRCLIB"]
     C --> |"synced lyrics if available"| D["WhisperX (large-v3) or Parakeet v3 (exp.)"]
     D --> |"word-level alignment, CJK readings"| E
-    E --> F["🎤 Plays instrumental + synced lyrics\nwith pitch scoring, key/tempo controls,\nmic mirroring, and audio-reactive backgrounds"]
+    E --> F["🎤 Plays instrumental + synced lyrics\nwith pitch scoring, key/tempo controls,\nmic monitoring, and audio-reactive backgrounds"]
 </pre>
 
 USDX bundles bypass stem separation and transcription entirely — the `.txt` is parsed into a transcript JSON shaped exactly like the analyzer cache, so playback reuses the existing pipeline. See [UltraStar Deluxe](./usdx.md).

@@ -1,5 +1,5 @@
 import { AppConfig } from "@/types/AppConfig";
-import { updateMicMirrorGain } from "./microphone";
+import { updateMicMonitorGain } from "./microphone";
 import { invoke } from "./runtime";
 
 export function getPreloadedConfig(): AppConfig | undefined {
@@ -17,8 +17,8 @@ export const loadConfig = async (): Promise<AppConfig> => {
 export const saveConfig = async (config: AppConfig): Promise<AppConfig> => {
   const saved = await invoke<AppConfig>("save_config", { config });
 
-  if (saved.mic_mirror_gain != null) {
-    updateMicMirrorGain(saved.mic_mirror_gain);
+  if (saved.mic_monitor_gain != null) {
+    updateMicMonitorGain(saved.mic_monitor_gain);
   }
 
   return saved;

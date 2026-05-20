@@ -25,7 +25,7 @@ While a song is playing:
 - **F**: Cycle through Pixabay video flavors (Nature, Underwater, Space, City, Countryside)
 - **M**: Toggle microphone for pitch scoring
 - **N**: Switch to the next available microphone
-- **R**: Toggle mic mirroring (live monitor during playback)
+- **R**: Toggle mic monitoring (live monitor during playback)
 - **F11**: Toggle fullscreen
 
 ## Song List Controls

@@ -24,7 +24,7 @@ The results screen appears at the end of a song whenever your score is above 0. 
 
 - Press `M` to toggle the microphone on/off
 - Press `N` to cycle through available microphones
-- Press `R` to toggle mic mirroring during playback
+- Press `R` to toggle mic monitoring during playback
 - You can also select a preferred microphone in **Settings**
 - The active microphone is shown in the HUD during playback
 

@@ -36,7 +36,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 🧭 **Sidebar + Library Filters** — quick filters, metadata cleanup buckets, artist/album groups, and an **Analyze All** action for bulk analysis
 
-🎙️ **Mic Mirroring** — optionally route your live mic into playback for low-latency practice and monitoring, with an adjustable monitor gain (0–200%) in Settings
+🎙️ **Mic Monitoring** — optionally route your live mic into playback for low-latency practice and monitoring, with an adjustable monitor gain (0–200%) in Settings
 
 🎮 **Gamepad Support** — full navigation and control via gamepad (D-pad, sticks, face buttons)
 
@@ -94,7 +94,7 @@ Audio: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`. Video: `.mp4`, `
 | Cycle video flavor      | F                 | —         |
 | Toggle microphone       | M                 | —         |
 | Next microphone         | N                 | —         |
-| Toggle mic mirroring    | R                 | —         |
+| Toggle mic monitoring   | R                 | —         |
 | Toggle fullscreen       | F11               | —         |
 | Skip Intro / Skip Outro | On-screen buttons | A (South) |
 
@@ -107,7 +107,7 @@ flowchart TD
     B -->|"vocals + instrumental"| C["LRCLIB"]
     C -->|"synced lyrics if available"| D["WhisperX or Parakeet v3 (exp.)"]
     D -->|"word-level alignment, CJK reading"| E
-    E --> F["Plays instrumental + synced lyrics with pitch scoring, key/tempo, mic mirroring, audio-reactive backgrounds"]
+    E --> F["Plays instrumental + synced lyrics with pitch scoring, key/tempo, mic monitoring, audio-reactive backgrounds"]
 ```
 
 The analyzer runs as a persistent local process: Nightingale starts it once and talks to it over a token-authenticated loopback TCP socket using newline-delimited JSON, so per-song startup overhead (model load, CUDA init) is paid only once.

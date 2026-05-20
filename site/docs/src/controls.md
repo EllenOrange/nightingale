@@ -24,7 +24,7 @@ Nightingale supports both keyboard and gamepad input. The UI adapts to your inpu
 | Cycle video flavor | F | — |
 | Toggle microphone | M | — |
 | Next microphone | N | — |
-| Toggle mic mirroring | R | — |
+| Toggle mic monitoring | R | — |
 | Toggle fullscreen | F11 | — |
 | Skip Intro / Skip Outro | On-screen buttons | A (South) |
 

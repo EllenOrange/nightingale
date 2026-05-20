@@ -23,7 +23,7 @@ export function usePlaybackInput(config: AppConfig | null) {
   const { cycleTheme, cycleFlavor } = usePlaybackThemeActions();
   const { firstSegmentStart, lastSegmentEnd, introSkipLeadSec } = usePlaybackTranscriptState();
   const { handleSkipIntro, handleSkipOutro } = usePlaybackTranscriptActions();
-  const { handleToggleMic, handleCycleMic, handleToggleMicMirror } = usePlaybackMicActions();
+  const { handleToggleMic, handleCycleMic, handleToggleMicMonitor } = usePlaybackMicActions();
 
   const persistConfig = usePlaybackConfigPersist(config);
 
@@ -130,7 +130,7 @@ export function usePlaybackInput(config: AppConfig | null) {
 
         case "r":
         case "R":
-          handleToggleMicMirror();
+          handleToggleMicMonitor();
           break;
       }
     };
@@ -148,6 +148,6 @@ export function usePlaybackInput(config: AppConfig | null) {
     handleContinue,
     handleToggleMic,
     handleCycleMic,
-    handleToggleMicMirror,
+    handleToggleMicMonitor,
   ]);
 }

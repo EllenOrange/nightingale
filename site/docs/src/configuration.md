@@ -52,8 +52,8 @@ Toggle between dark and light themes from the sidebar. The theme preference is s
 | `separator` | Stem separation model: `karaoke` (UVR, default) or `demucs`. |
 | `whisper_model` | Whisper model size: `large-v3` (default), `large-v3-turbo`, `medium`, `small`, `base`, `tiny`. Ignored when `asr_engine` is `parakeet`. |
 | `beam_size` / `batch_size` | Decoder beam width and batch size for Whisper. Higher values are more accurate but slower and use more VRAM. |
-| `mic_mirror_gain` | Live monitor gain when mic mirroring is on. Range `0.0`–`2.0` (slider shown as 0–200%). |
-| `mic_active` / `mic_mirroring` / `preferred_mic` | Microphone state and the device chosen for scoring + mirroring. |
+| `mic_monitor_gain` | Live monitor gain when mic monitoring is on. Range `0.0`–`2.0` (slider shown as 0–200%). Configs from older builds that used `mic_mirror_gain` are read transparently and migrated on next save. |
+| `mic_active` / `mic_monitoring` / `preferred_mic` | Microphone state and the device chosen for scoring + monitoring. Older `mic_mirroring` configs are accepted and migrated on next save. |
 | `last_video_flavor` | Index of the last-used Pixabay video flavor (Nature, Underwater, Space, City, Countryside). |
 | `last_theme` | Index of the last-used playback background (shaders → video → source). |
 | `language_overrides` | Per-song forced ASR language, keyed by song hash. Set this from the song-list controls. |

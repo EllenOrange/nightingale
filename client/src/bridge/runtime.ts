@@ -116,9 +116,18 @@ const ensureSocket = (): Promise<WebSocket> => {
 const webInvoke = async <T>(name: string, args?: InvokeArgs): Promise<T> => apiCall<T>(name, args);
 
 const webListen = async <T>(event: string, cb: EventCallback<T>): Promise<UnlistenFn> => {
-  void ensureSocket().catch(() => {
+  // Wait for the WS to actually open before resolving. Server-side events go
+  // out over a `tokio::broadcast` channel that only delivers to clients with
+  // an active outbound task, so anything emitted before this socket finishes
+  // its handshake is gone forever. Awaiting here lets call sites do
+  // `await listen(...); invoke(...)` and trust that the invoke can't race
+  // ahead of the subscription. Failures fall through so the listener is still
+  // registered for a later reconnect attempt.
+  try {
+    await ensureSocket();
+  } catch {
     // Server might be down momentarily; the next attempt re-opens.
-  });
+  }
 
   let subscribers = wsListeners.get(event);
 

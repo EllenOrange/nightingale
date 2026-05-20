@@ -73,7 +73,7 @@ function PlaybackHudImpl({ title, artist }: PlaybackHudProps) {
   const { firstSegmentStart, lastSegmentEnd, introSkipLeadSec, transcriptSource } =
     usePlaybackTranscriptState();
   const { handleSkipIntro, handleSkipOutro } = usePlaybackTranscriptActions();
-  const { pitchScore, micUserEnabled, micName, micMirrorUserEnabled } = usePlaybackMicState();
+  const { pitchScore, micUserEnabled, micName, micMonitorUserEnabled } = usePlaybackMicState();
 
   const lastSecondRef = useRef(-1);
   const timerRef = useRef<HTMLParagraphElement>(null);
@@ -129,7 +129,7 @@ function PlaybackHudImpl({ title, artist }: PlaybackHudProps) {
           </div>
           <HintText>{formatGuideText(guideVolume)}</HintText>
           <HintText>Mic: {micUserEnabled ? micName : "OFF"} [M/N]</HintText>
-          <HintText>Mirror: {micMirrorUserEnabled ? "ON" : "OFF"} [R]</HintText>
+          <HintText>Monitor: {micMonitorUserEnabled ? "ON" : "OFF"} [R]</HintText>
           <HintText>{formatThemeText(themeIndex, videoFlavor)}</HintText>
           <HintText>[ESC] Back</HintText>
         </div>

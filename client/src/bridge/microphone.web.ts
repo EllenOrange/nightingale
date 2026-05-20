@@ -9,8 +9,8 @@ import { dispatchMicFrame, type MicrophoneAdapter, subscribeMicSamples } from ".
  * transport. Smaller chunks lower latency but increase main-thread wakeups.
  */
 const SAMPLE_CHUNK = 512;
-const DEFAULT_MIRROR_GAIN = 0.65;
-const MAX_MIRROR_GAIN = 2.0;
+const DEFAULT_MONITOR_GAIN = 0.65;
+const MAX_MONITOR_GAIN = 2.0;
 
 const WORKLET_SRC = `
 class MicProcessor extends AudioWorkletProcessor {
@@ -46,13 +46,13 @@ interface ActiveCapture {
   source: MediaStreamAudioSourceNode;
   node: AudioWorkletNode;
   stream: MediaStream;
-  mirrorGain: GainNode | null;
+  monitorGain: GainNode | null;
   emitAudio: boolean;
 }
 
 let active: ActiveCapture | null = null;
 let workletUrl: string | null = null;
-let liveMirrorGain = DEFAULT_MIRROR_GAIN;
+let liveMonitorGain = DEFAULT_MONITOR_GAIN;
 
 const ensureWorkletUrl = (): string => {
   if (workletUrl !== null) return workletUrl;
@@ -61,37 +61,37 @@ const ensureWorkletUrl = (): string => {
   return workletUrl;
 };
 
-const initialMirrorGain = (): number => {
-  if (typeof window === "undefined") return DEFAULT_MIRROR_GAIN;
+const initialMonitorGain = (): number => {
+  if (typeof window === "undefined") return DEFAULT_MONITOR_GAIN;
   const cfg = window.__NIGHTINGALE_APP_CONFIG__;
-  const raw = cfg?.mic_mirror_gain;
-  if (raw == null) return DEFAULT_MIRROR_GAIN;
-  return Math.min(Math.max(raw, 0), MAX_MIRROR_GAIN);
+  const raw = cfg?.mic_monitor_gain;
+  if (raw == null) return DEFAULT_MONITOR_GAIN;
+  return Math.min(Math.max(raw, 0), MAX_MONITOR_GAIN);
 };
 
 /**
- * Updates the live mirror gain on an in-flight capture. Web mode applies the
+ * Updates the live monitor gain on an in-flight capture. Web mode applies the
  * config value locally because there is no server-side `cpal` monitor stream
  * to receive it through `save_config`.
  */
-export const setWebMicMirrorGain = (value: number): void => {
-  const clamped = Math.min(Math.max(value, 0), MAX_MIRROR_GAIN);
-  liveMirrorGain = clamped;
-  if (active?.mirrorGain) {
-    active.mirrorGain.gain.value = clamped;
+export const setWebMicMonitorGain = (value: number): void => {
+  const clamped = Math.min(Math.max(value, 0), MAX_MONITOR_GAIN);
+  liveMonitorGain = clamped;
+  if (active?.monitorGain) {
+    active.monitorGain.gain.value = clamped;
   }
 };
 
 const teardown = (): void => {
   if (!active) return;
-  const { context, stream, source, node, mirrorGain } = active;
+  const { context, stream, source, node, monitorGain } = active;
   try {
     source.disconnect();
   } catch {
     // already detached
   }
   try {
-    if (mirrorGain) mirrorGain.disconnect();
+    if (monitorGain) monitorGain.disconnect();
   } catch {
     // already detached
   }
@@ -180,12 +180,12 @@ const startCapture = async (
 
   source.connect(node);
 
-  liveMirrorGain = initialMirrorGain();
-  let mirrorGain: GainNode | null = null;
+  liveMonitorGain = initialMonitorGain();
+  let monitorGain: GainNode | null = null;
   if (options.emit_audio) {
-    mirrorGain = context.createGain();
-    mirrorGain.gain.value = liveMirrorGain;
-    source.connect(mirrorGain).connect(context.destination);
+    monitorGain = context.createGain();
+    monitorGain.gain.value = liveMonitorGain;
+    source.connect(monitorGain).connect(context.destination);
   }
 
   active = {
@@ -193,7 +193,7 @@ const startCapture = async (
     source,
     node,
     stream,
-    mirrorGain,
+    monitorGain,
     emitAudio: options.emit_audio,
   };
 

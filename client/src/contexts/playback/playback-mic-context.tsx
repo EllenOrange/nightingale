@@ -1,6 +1,6 @@
 /**
  * Owns everything mic-shaped during playback: device selection, pitch capture,
- * mirror toggle, reactive shader uniforms, and the pitch-scoring series/score.
+ * monitor toggle, reactive shader uniforms, and the pitch-scoring series/score.
  *
  * Reads playback state (isReady, isPlaying, paused) from the transport context
  * to gate hardware capture, and persists user toggles to the app config.
@@ -30,7 +30,7 @@ import {
 
 export interface PlaybackMicState {
   micUserEnabled: boolean;
-  micMirrorUserEnabled: boolean;
+  micMonitorUserEnabled: boolean;
   selectedMicId: string | null;
   micName: string;
   pitchScore: number | null;
@@ -45,7 +45,7 @@ export interface PlaybackMicActions {
   reactiveRef: MicReactiveRef;
   handleToggleMic: () => void;
   handleCycleMic: () => void;
-  handleToggleMicMirror: () => void;
+  handleToggleMicMonitor: () => void;
 }
 
 const MicStateContext = createContext<PlaybackMicState | null>(null);
@@ -63,16 +63,18 @@ export function PlaybackMicProvider({ config, children }: PlaybackMicProviderPro
   const persistConfig = usePlaybackConfigPersist(config);
 
   const [micUserEnabled, setMicUserEnabled] = useState(config?.mic_active ?? true);
-  const [micMirrorUserEnabled, setMicMirrorUserEnabled] = useState(config?.mic_mirroring ?? false);
+  const [micMonitorUserEnabled, setMicMonitorUserEnabled] = useState(
+    config?.mic_monitoring ?? false,
+  );
   const [selectedMicId, setSelectedMicId] = useState<string | null>(config?.preferred_mic ?? null);
 
   const micDevices = useMicDevices();
 
   const micPitchEnabled = isReady && isPlaying && !paused && micUserEnabled;
-  const micMirrorEnabled = isReady && isPlaying && !paused && micMirrorUserEnabled;
-  const captureEnabled = micPitchEnabled || micMirrorEnabled;
+  const micMonitorEnabled = isReady && isPlaying && !paused && micMonitorUserEnabled;
+  const captureEnabled = micPitchEnabled || micMonitorEnabled;
 
-  const captureOptions = useMemo(() => ({ emit_audio: micMirrorEnabled }), [micMirrorEnabled]);
+  const captureOptions = useMemo(() => ({ emit_audio: micMonitorEnabled }), [micMonitorEnabled]);
 
   const { active: micCaptureActive, error: micCaptureError } = useMicCapture(
     selectedMicId,
@@ -106,15 +108,15 @@ export function PlaybackMicProvider({ config, children }: PlaybackMicProviderPro
   const handleToggleMic = useCallback(() => {
     setMicUserEnabled((prev) => {
       const next = !prev;
-      if (!next && micMirrorUserEnabled) {
-        setMicMirrorUserEnabled(false);
-        persistConfig({ mic_active: false, mic_mirroring: false });
+      if (!next && micMonitorUserEnabled) {
+        setMicMonitorUserEnabled(false);
+        persistConfig({ mic_active: false, mic_monitoring: false });
       } else {
         persistConfig({ mic_active: next });
       }
       return next;
     });
-  }, [persistConfig, micMirrorUserEnabled]);
+  }, [persistConfig, micMonitorUserEnabled]);
 
   const handleCycleMic = useCallback(() => {
     if (micDevices.length <= 1) return;
@@ -125,10 +127,10 @@ export function PlaybackMicProvider({ config, children }: PlaybackMicProviderPro
     persistConfig({ preferred_mic: next.deviceId });
   }, [micDevices, selectedMicId, persistConfig]);
 
-  const handleToggleMicMirror = useCallback(() => {
-    setMicMirrorUserEnabled((prev) => {
+  const handleToggleMicMonitor = useCallback(() => {
+    setMicMonitorUserEnabled((prev) => {
       const next = !prev;
-      persistConfig({ mic_mirroring: next });
+      persistConfig({ mic_monitoring: next });
       if (next && !micUserEnabled) {
         setMicUserEnabled(true);
         persistConfig({ mic_active: true });
@@ -141,7 +143,7 @@ export function PlaybackMicProvider({ config, children }: PlaybackMicProviderPro
     const micReady = micCaptureActive && micPitchActive && micUserEnabled;
     return {
       micUserEnabled,
-      micMirrorUserEnabled,
+      micMonitorUserEnabled,
       selectedMicId,
       micName: selectedMicId ?? "Default",
       pitchScore: micReady ? score : null,
@@ -153,7 +155,7 @@ export function PlaybackMicProvider({ config, children }: PlaybackMicProviderPro
     };
   }, [
     micUserEnabled,
-    micMirrorUserEnabled,
+    micMonitorUserEnabled,
     selectedMicId,
     score,
     series,
@@ -166,9 +168,9 @@ export function PlaybackMicProvider({ config, children }: PlaybackMicProviderPro
       reactiveRef,
       handleToggleMic,
       handleCycleMic,
-      handleToggleMicMirror,
+      handleToggleMicMonitor,
     }),
-    [reactiveRef, handleToggleMic, handleCycleMic, handleToggleMicMirror],
+    [reactiveRef, handleToggleMic, handleCycleMic, handleToggleMicMonitor],
   );
 
   return (

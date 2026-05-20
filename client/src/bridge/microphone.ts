@@ -40,7 +40,7 @@ export const subscribeMicSamples = (cb: MicSamplesCallback): StopListening => {
 
 import { isTauri } from "./runtime";
 import { tauriMicrophoneAdapter } from "./microphone.tauri";
-import { setWebMicMirrorGain, webMicrophoneAdapter } from "./microphone.web";
+import { setWebMicMonitorGain, webMicrophoneAdapter } from "./microphone.web";
 
 export { tauriMicrophoneAdapter, webMicrophoneAdapter };
 
@@ -58,11 +58,11 @@ export const startMicCapture = (
 export const stopMicCapture = (): Promise<void> => microphoneAdapter.stopCapture();
 
 /**
- * Pushes a new mirror gain to the active web capture. In Tauri the same value
+ * Pushes a new monitor gain to the active web capture. In Tauri the same value
  * is applied server-side from `save_config` via `set_monitor_gain`, so this
  * call is a no-op in that build.
  */
-export const updateMicMirrorGain = (value: number): void => {
+export const updateMicMonitorGain = (value: number): void => {
   if (isTauri) return;
-  setWebMicMirrorGain(value);
+  setWebMicMonitorGain(value);
 };

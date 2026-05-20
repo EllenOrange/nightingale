@@ -194,6 +194,8 @@ jobs:
           pnpm build
 
       - name: Build server binary
+        env:
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: cargo build --release --locked -p server --target ${{ matrix.target }}
 
       - name: Package server tarball

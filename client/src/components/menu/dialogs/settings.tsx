@@ -46,11 +46,11 @@ const DEFAULT_SEPARATOR = "karaoke";
 const DEFAULT_ASR_ENGINE = "whisper";
 
 const DEFAULT_BEAM_BATCH_SIZE = 8;
-const DEFAULT_MIC_MIRROR_GAIN = 0.65;
-const MIC_MIRROR_GAIN_STEP = 0.01;
-const MIC_MIRROR_GAIN_MAX = 2;
+const DEFAULT_MIC_MONITOR_GAIN = 0.65;
+const MIC_MONITOR_GAIN_STEP = 0.01;
+const MIC_MONITOR_GAIN_MAX = 2;
 
-const MIC_MIRROR_GAIN_SEGMENT = 2;
+const MIC_MONITOR_GAIN_SEGMENT = 2;
 
 const SETTINGS_STOPS_WHISPER = [2, 1, 1, 1, 1, 1, 16, 16, 2];
 const SETTINGS_STOPS_PARAKEET = [2, 1, 1, 1, 1, 16, 2];
@@ -69,10 +69,10 @@ export const SettingsDialog = () => {
 
   const open = mode === "settings";
 
-  const micMirrorGainRef = useRef(config?.mic_mirror_gain ?? DEFAULT_MIC_MIRROR_GAIN);
+  const micMonitorGainRef = useRef(config?.mic_monitor_gain ?? DEFAULT_MIC_MONITOR_GAIN);
   useEffect(() => {
-    micMirrorGainRef.current = config?.mic_mirror_gain ?? DEFAULT_MIC_MIRROR_GAIN;
-  }, [config?.mic_mirror_gain]);
+    micMonitorGainRef.current = config?.mic_monitor_gain ?? DEFAULT_MIC_MONITOR_GAIN;
+  }, [config?.mic_monitor_gain]);
 
   const asrEngine = config?.asr_engine ?? DEFAULT_ASR_ENGINE;
   const isParakeet = asrEngine === "parakeet";
@@ -88,12 +88,12 @@ export const SettingsDialog = () => {
     onBack: close,
     containerRef,
     onAction: (segment, _slot, action) => {
-      if (segment !== MIC_MIRROR_GAIN_SEGMENT) return false;
+      if (segment !== MIC_MONITOR_GAIN_SEGMENT) return false;
       if (!action.left && !action.right) return false;
-      const delta = action.right ? MIC_MIRROR_GAIN_STEP : -MIC_MIRROR_GAIN_STEP;
-      const next = Math.min(MIC_MIRROR_GAIN_MAX, Math.max(0, micMirrorGainRef.current + delta));
-      micMirrorGainRef.current = next;
-      mutate({ mic_mirror_gain: next });
+      const delta = action.right ? MIC_MONITOR_GAIN_STEP : -MIC_MONITOR_GAIN_STEP;
+      const next = Math.min(MIC_MONITOR_GAIN_MAX, Math.max(0, micMonitorGainRef.current + delta));
+      micMonitorGainRef.current = next;
+      mutate({ mic_monitor_gain: next });
       return true;
     },
   });
@@ -142,7 +142,9 @@ export const SettingsDialog = () => {
 
   const batchSize = config?.batch_size ?? DEFAULT_BEAM_BATCH_SIZE;
   const beamSize = config?.beam_size ?? DEFAULT_BEAM_BATCH_SIZE;
-  const micMirrorGainPct = Math.round((config?.mic_mirror_gain ?? DEFAULT_MIC_MIRROR_GAIN) * 100);
+  const micMonitorGainPct = Math.round(
+    (config?.mic_monitor_gain ?? DEFAULT_MIC_MONITOR_GAIN) * 100,
+  );
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -205,17 +207,17 @@ export const SettingsDialog = () => {
               </Select>
             </Field>
             <Field>
-              <Label>Mic mirror gain</Label>
+              <Label>Mic monitor gain</Label>
               <FieldDescription>
-                Volume of your microphone played back through the speakers when mirroring (
-                {micMirrorGainPct}%)
+                Volume of your microphone played back through the speakers while monitoring (
+                {micMonitorGainPct}%)
               </FieldDescription>
               <Slider
                 min={0}
                 max={200}
                 step={1}
-                value={[micMirrorGainPct]}
-                onValueChange={([pct]) => mutate({ mic_mirror_gain: pct / 100 })}
+                value={[micMonitorGainPct]}
+                onValueChange={([pct]) => mutate({ mic_monitor_gain: pct / 100 })}
                 className={generateRingClassName(2)}
               />
             </Field>
@@ -312,7 +314,7 @@ export const SettingsDialog = () => {
                   whisper_model: DEFAULT_MODEL,
                   beam_size: DEFAULT_BEAM_BATCH_SIZE,
                   batch_size: DEFAULT_BEAM_BATCH_SIZE,
-                  mic_mirror_gain: DEFAULT_MIC_MIRROR_GAIN,
+                  mic_monitor_gain: DEFAULT_MIC_MONITOR_GAIN,
                 })
               }
               className={generateRingClassName(footerSegment, 0)}

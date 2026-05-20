@@ -71,7 +71,15 @@ export function PlaybackTransportProvider({
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
 
+    // Register the listener BEFORE invoking the command. On a page reload the
+    // WS handshake races the `stems-ready` broadcast — if the listener isn't
+    // attached (or the socket isn't open) when the server emits, the event
+    // is gone forever and `stemsReady` stays false, leaving the page stuck
+    // on a black screen. `onStemsReady` awaits the socket open under the
+    // hood, so once its promise resolves we are guaranteed to receive the
+    // event the command triggers.
     onStemsReady((event) => {
       if (event.file_hash !== fileHash) return;
       if (event.error) {
@@ -81,12 +89,16 @@ export function PlaybackTransportProvider({
         setStemsReady(true);
       }
     }).then((fn) => {
+      if (cancelled) {
+        fn();
+        return;
+      }
       unlisten = fn;
+      ensureMp3Stems(fileHash);
     });
 
-    ensureMp3Stems(fileHash);
-
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [fileHash, navigate]);

@@ -201,10 +201,10 @@ export const SongCard = memo(
               {displaySource}
             </Badge>
           </div>
-          {!isUsdx && (
+          {!isUsdx && isReady && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="xs" disabled={!isReady || disabled}>
+                <Button variant="outline" size="xs" disabled={disabled}>
                   <MenuIcon /> Actions
                 </Button>
               </DropdownMenuTrigger>

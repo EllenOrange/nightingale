@@ -151,7 +151,7 @@ pub fn run() {
             let media_endpoint = app_core::media_server::endpoint();
 
             let config = AppConfig::load();
-            set_monitor_gain(config.mic_mirror_gain());
+            set_monitor_gain(config.mic_monitor_gain());
             app.handle()
                 .asset_protocol_scope()
                 .allow_directory(config.effective_data_path(), true)

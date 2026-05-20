@@ -14,8 +14,13 @@ export type AppConfig = {
   fullscreen: boolean | null;
   dark_mode: boolean | null;
   mic_active: boolean | null;
-  mic_mirroring: boolean | null;
-  mic_mirror_gain: number | null;
+  /**
+   * `serde(alias = "mic_mirroring")` keeps configs written by builds that
+   * called this feature "mic mirroring" loading without a manual migration;
+   * the next `save` rewrites them under the new name.
+   */
+  mic_monitoring: boolean | null;
+  mic_monitor_gain: number | null;
   preferred_mic: string | null;
   whisper_model: string | null;
   beam_size: number | null;

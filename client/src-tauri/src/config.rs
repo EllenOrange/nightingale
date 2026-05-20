@@ -10,6 +10,6 @@ pub fn load_config() -> AppConfig {
 #[tauri::command]
 pub fn save_config(config: AppConfig) -> AppConfig {
     config.save();
-    set_monitor_gain(config.mic_mirror_gain());
+    set_monitor_gain(config.mic_monitor_gain());
     config
 }

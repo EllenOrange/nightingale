@@ -292,6 +292,13 @@ impl MediaSource for JellyfinSource {
             let page_count = page.total_record_count.max(0) as usize;
             if page_count > 0 {
                 total_record_count = page_count;
+                // Set the progress-bar denominator as soon as the server tells
+                // us the catalogue size. Otherwise `scan_count` stays at the
+                // 0 that `scanner.rs` reset it to and the UI either hides the
+                // bar entirely or renders one with `max=0`. Final reconciliation
+                // below corrects for any divergence between server count and
+                // actually-seen ids.
+                let _ = library_db::update_library_meta(&folder_label, total_record_count);
             }
             let received = page.items.len();
             if received == 0 {

@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSetAtom } from "jotai";
 import { toast } from "sonner";
 
 import {
@@ -9,6 +10,9 @@ import {
   setLibrarySource,
   triggerScan,
 } from "@/bridge/source";
+import { libraryFilterAtom } from "@/hooks/use-library-filter";
+import { searchAtom } from "@/hooks/use-search";
+import { EMPTY_LIBRARY_FILTER } from "@/lib/library-menu-filter";
 import {
   ANALYSIS_QUEUE,
   CONFIG,
@@ -38,10 +42,24 @@ const useInvalidateLibrary = () => {
   };
 };
 
+/** Drop any library filter / search left over from the previous source so the
+ * new library renders as "all songs" instead of accidentally filtering by an
+ * artist that no longer exists. */
+const useResetLibraryNavigation = () => {
+  const setLibraryFilter = useSetAtom(libraryFilterAtom);
+  const setSearch = useSetAtom(searchAtom);
+
+  return () => {
+    setLibraryFilter(EMPTY_LIBRARY_FILTER);
+    setSearch("");
+  };
+};
+
 /** Pick a folder, persist it as the active source, and kick off a scan. */
 export const useSelectFolderSource = () => {
   const queryClient = useQueryClient();
   const invalidateLibrary = useInvalidateLibrary();
+  const resetNavigation = useResetLibraryNavigation();
 
   return useMutation({
     mutationFn: async (): Promise<AppConfig | null> => {
@@ -56,6 +74,7 @@ export const useSelectFolderSource = () => {
         return;
       }
       queryClient.setQueryData(CONFIG, config);
+      resetNavigation();
       invalidateLibrary();
     },
     onError: (error: Error) => {
@@ -81,11 +100,13 @@ export const useRescan = () => {
 export const useDisconnectSource = () => {
   const queryClient = useQueryClient();
   const invalidateLibrary = useInvalidateLibrary();
+  const resetNavigation = useResetLibraryNavigation();
 
   return useMutation({
     mutationFn: clearLibrarySource,
     onSuccess: (config) => {
       queryClient.setQueryData(CONFIG, config);
+      resetNavigation();
       invalidateLibrary();
     },
     onError: (error: Error) => {
@@ -112,6 +133,7 @@ export const useJellyfinLogin = () =>
 export const useConnectJellyfin = () => {
   const queryClient = useQueryClient();
   const invalidateLibrary = useInvalidateLibrary();
+  const resetNavigation = useResetLibraryNavigation();
 
   return useMutation<
     { config: AppConfig; login: JellyfinLoginResult },
@@ -143,6 +165,7 @@ export const useConnectJellyfin = () => {
         error: undefined,
       });
 
+      resetNavigation();
       invalidateLibrary();
     },
   });
@@ -168,6 +191,7 @@ export const useNavidromeLogin = () =>
 export const useConnectNavidrome = () => {
   const queryClient = useQueryClient();
   const invalidateLibrary = useInvalidateLibrary();
+  const resetNavigation = useResetLibraryNavigation();
 
   return useMutation<
     { config: AppConfig; login: NavidromeLoginResult },
@@ -194,6 +218,7 @@ export const useConnectNavidrome = () => {
         error: undefined,
       });
 
+      resetNavigation();
       invalidateLibrary();
     },
   });

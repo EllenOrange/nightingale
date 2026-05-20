@@ -22,7 +22,7 @@ If song analysis fails:
 ## Microphone Not Detected
 
 - Press `N` to cycle through available microphones
-- Press `R` to toggle mic mirroring if you want live monitor audio
+- Press `R` to toggle mic monitoring if you want live monitor audio
 - Ensure microphone permissions are granted to the application
 - On macOS, check System Settings > Privacy & Security > Microphone
 
