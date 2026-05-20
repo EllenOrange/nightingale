@@ -164,7 +164,7 @@ impl AppConfig {
             return false;
         }
 
-        let Ok((folder, _)) = crate::library_db::read_library_meta() else {
+        let Ok((folder, count)) = crate::library_db::read_library_meta() else {
             return false;
         };
 
@@ -172,9 +172,12 @@ impl AppConfig {
             return false;
         }
 
-        self.library_source = Some(LibrarySource::Folder {
-            path: PathBuf::from(folder),
-        });
+        let path = PathBuf::from(folder);
+        if count == 0 || !path.is_dir() {
+            return false;
+        }
+
+        self.library_source = Some(LibrarySource::Folder { path });
 
         true
     }
@@ -183,15 +186,26 @@ impl AppConfig {
         let path = config_path();
 
         let loaded = if path.is_file() {
-            std::fs::read_to_string(&path)
-                .ok()
-                .and_then(|s| serde_json::from_str::<Self>(&s).ok())
+            std::fs::read_to_string(&path).ok().and_then(|s| {
+                let has_library_source_key = serde_json::from_str::<serde_json::Value>(&s)
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .as_object()
+                            .map(|obj| obj.contains_key("library_source"))
+                    })
+                    .unwrap_or(false);
+
+                serde_json::from_str::<Self>(&s)
+                    .ok()
+                    .map(|config| (config, has_library_source_key))
+            })
         } else {
             None
         };
 
-        let (mut config, mut should_save) = match loaded {
-            Some(mut cfg) => {
+        let (mut config, mut should_save, allow_db_source_migration) = match loaded {
+            Some((mut cfg, has_library_source_key)) => {
                 let had_data_path = cfg.data_path.is_some();
                 let had_library_source = cfg.library_source.is_some();
                 let had_legacy_folder = cfg.last_folder.is_some();
@@ -205,12 +219,12 @@ impl AppConfig {
                 if let Some(src) = cfg.library_source.take() {
                     cfg.library_source = Some(src.map_secret(secret::decrypt_string));
                 }
-                (cfg.with_defaults(), needs_save)
+                (cfg.with_defaults(), needs_save, !has_library_source_key)
             }
-            None => (Self::default().with_defaults(), true),
+            None => (Self::default().with_defaults(), true, false),
         };
 
-        if config.migrate_from_library_db() {
+        if allow_db_source_migration && config.migrate_from_library_db() {
             should_save = true;
         }
 

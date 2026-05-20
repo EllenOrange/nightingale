@@ -30,14 +30,14 @@ export const EmptySongList = () => {
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent className="flex-row justify-center gap-2">
+        <Button variant="outline" onClick={() => setMode("navidrome-connect")} disabled={isPending}>
+          <Disc3Icon /> Connect Navidrome
+        </Button>
         <Button variant="outline" onClick={() => setMode("jellyfin-connect")} disabled={isPending}>
           <JellyfinIcon /> Connect Jellyfin
         </Button>
         <Button variant="outline" onClick={() => selectFolder()} disabled={isPending}>
           <FolderIcon /> Select folder
-        </Button>
-        <Button variant="outline" onClick={() => setMode("navidrome-connect")} disabled={isPending}>
-          <Disc3Icon /> Connect Navidrome
         </Button>
       </EmptyContent>
     </Empty>
