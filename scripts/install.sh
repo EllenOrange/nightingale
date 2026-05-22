@@ -721,7 +721,11 @@ download_binary() {
   sha_url="${url}.sha256"
   sha_file="$tmp/nightingale-server.tar.gz.sha256"
   if curl -fsSL -o "$sha_file" "$sha_url" 2>/dev/null; then
-    (cd "$tmp" && sha256sum -c --strict --status nightingale-server.tar.gz.sha256) \
+    # GitHub's sidecar is generated next to the release asset, so its
+    # filename is `nightingale-server-${target}.tar.gz`. We download to a
+    # stable temp filename; verify the digest while substituting that local
+    # basename so `sha256sum -c` does not try to open the release filename.
+    (cd "$tmp" && awk -v name="$(basename "$tarball")" 'NF { print $1 "  " name; exit }' "$(basename "$sha_file")" | sha256sum -c --strict --status -) \
       || die "sha256 mismatch on downloaded tarball; refusing to install"
     ok "sha256 verified"
   else
