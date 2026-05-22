@@ -852,7 +852,7 @@ resolve_assets_dir() {
   # script (defaults to master; override with NIGHTINGALE_REF=<tag>).
   local ref="${NIGHTINGALE_REF:-master}" tmp path
   tmp="$(mktemp -d)"
-  log "fetching companion assets at ref $ref"
+  log "fetching companion assets at ref $ref" >&2
   mkdir -p "$tmp/units"
   for path in \
       "scripts/Caddyfile" \
