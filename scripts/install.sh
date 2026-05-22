@@ -845,8 +845,8 @@ resolve_assets_dir() {
     die "cannot locate companion assets (Caddyfile, units/) - expected next to this script or under \$NIGHTINGALE_SOURCE/scripts"
   fi
   # Release mode + piped install: fetch from GitHub at the same ref as the
-  # script (defaults to main; override with NIGHTINGALE_REF=<tag>).
-  local ref="${NIGHTINGALE_REF:-main}" tmp path
+  # script (defaults to release/v0.7.0 for this test build; override with NIGHTINGALE_REF=<tag>).
+  local ref="${NIGHTINGALE_REF:-release/v0.7.0}" tmp path
   tmp="$(mktemp -d)"
   log "fetching companion assets at ref $ref"
   mkdir -p "$tmp/units"
