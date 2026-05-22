@@ -67,7 +67,7 @@ DATA_DIR=""
 PROTECT_HOME=""        # systemd ProtectHome= value, derived from DATA_DIR
 
 readonly DEFAULT_REPO="rzru/nightingale"
-readonly DEFAULT_VERSION="latest"
+readonly DEFAULT_VERSION="untagged-dd44db50bebfd6ceb5ea"
 readonly DEFAULT_USER="nightingale"
 readonly DEFAULT_DATA_DIR="/var/lib/nightingale"
 
