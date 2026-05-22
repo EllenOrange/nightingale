@@ -241,11 +241,24 @@ export function useDialogNav({
 
   useNavInput(handleNav);
 
+  const focusSegment = useCallback(
+    (segment: number, slot: number = 0) => {
+      if (!open) return;
+      const nextSegment = Math.min(Math.max(0, segment), Math.max(0, segmentCount - 1));
+      const nextSlots = segmentSizes[nextSegment] ?? 1;
+      setSegmentIndex(nextSegment);
+      setSlotInSegment(Math.min(Math.max(0, slot), nextSlots - 1));
+    },
+    [open, segmentCount, segmentSizes],
+  );
+
   return {
     /** Index into the in-order list of focusables under `containerRef`. */
     focusedIndex: open ? flatFocusedIndex : 0,
     /** For segmented layouts: `isFocused(row, column)` with `stops`-shaped coordinates. */
     isFocused: (segment: number, slot: number = 0): boolean =>
       open && clampedSegmentIndex === segment && clampedSlot === slot,
+    /** Move the virtual focus ring from pointer/focus interactions. */
+    focusSegment,
   };
 }

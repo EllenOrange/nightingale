@@ -101,7 +101,7 @@ export const EditLyricsDialog = () => {
 
   const layout = navLayout(showMatchesTab, activeTab);
 
-  const { isFocused } = useDialogNav({
+  const { isFocused, focusSegment } = useDialogNav({
     open,
     itemCount: layout.stops.reduce((sum, n) => sum + n, 0),
     stops: layout.stops,
@@ -146,6 +146,11 @@ export const EditLyricsDialog = () => {
   }
 
   const editorFocused = layout.editorSegment !== null && isFocused(layout.editorSegment);
+  const focusTab = (slot: number) => {
+    if (layout.headerSegment !== null) {
+      focusSegment(layout.headerSegment, slot);
+    }
+  };
 
   return (
     <Dialog
@@ -174,6 +179,9 @@ export const EditLyricsDialog = () => {
                 <TabsList>
                   <TabsTrigger
                     value="edit"
+                    onMouseEnter={() => focusTab(0)}
+                    onPointerDown={() => focusTab(0)}
+                    onFocus={() => focusTab(0)}
                     className={ringFor(
                       layout.headerSegment !== null && isFocused(layout.headerSegment, 0),
                     )}
@@ -182,6 +190,9 @@ export const EditLyricsDialog = () => {
                   </TabsTrigger>
                   <TabsTrigger
                     value="lrclib"
+                    onMouseEnter={() => focusTab(1)}
+                    onPointerDown={() => focusTab(1)}
+                    onFocus={() => focusTab(1)}
                     className={ringFor(
                       layout.headerSegment !== null && isFocused(layout.headerSegment, 1),
                     )}

@@ -15,7 +15,7 @@ Use plain HTTP for browsing, playback, queues, and most features. Use HTTPS if y
 On the Linux host:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/master/scripts/install.sh | bash
 ```
 
 When system changes start, the installer shows the first `sudo` command, asks for confirmation, then prints each admin command before it runs.
@@ -136,7 +136,7 @@ You can also grant access with normal Unix groups if that fits your setup better
 Run the installer again:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/master/scripts/install.sh | bash
 ```
 
 This replaces the server binary and restarts Nightingale. Your config, library, cache, and music stay in place.
@@ -144,7 +144,7 @@ This replaces the server binary and restarts Nightingale. Your config, library, 
 To install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/main/scripts/install.sh | NIGHTINGALE_VERSION=v0.7.0 bash
+curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/master/scripts/install.sh | NIGHTINGALE_VERSION=v0.7.0 bash
 ```
 
 ## Useful commands
@@ -161,7 +161,7 @@ sudo systemctl restart nightingale
 To use a friendlier URL like `nightingale.local`, follow the setup prompts or use an environmental variable:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/main/scripts/install.sh | NIGHTINGALE_HOSTNAME=nightingale.local bash
+curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/master/scripts/install.sh | NIGHTINGALE_HOSTNAME=nightingale.local bash
 ```
 
 Then open:

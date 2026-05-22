@@ -8,8 +8,10 @@ pub fn load_lyrics(file_hash: String) -> Option<LyricsFile> {
 }
 
 #[tauri::command]
-pub fn search_lrclib_lyrics(file_hash: String) -> Vec<LrclibCandidate> {
-    search_lrclib_for_hash(&file_hash)
+pub async fn search_lrclib_lyrics(file_hash: String) -> Vec<LrclibCandidate> {
+    tauri::async_runtime::spawn_blocking(move || search_lrclib_for_hash(&file_hash))
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
