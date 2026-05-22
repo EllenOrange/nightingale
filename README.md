@@ -8,43 +8,63 @@
 
 ---
 
-Nightingale scans your music folder, separates lead vocals from instrumentals using the [UVR Karaoke model](https://github.com/Anjok07/ultimatevocalremovergui) (or [Demucs](https://github.com/facebookresearch/demucs)), transcribes lyrics with word-level timestamps via [WhisperX](https://github.com/m-bain/whisperX), and plays it all back with synchronized highlighting, pitch scoring, key/tempo controls, profiles, and dynamic backgrounds.
+Nightingale scans your music folder, Jellyfin server, Navidrome server, or self-hosted web library; separates lead vocals from instrumentals using the [UVR Karaoke model](https://github.com/Anjok07/ultimatevocalremovergui) (or [Demucs](https://github.com/facebookresearch/demucs)); transcribes lyrics with word-level timestamps via [WhisperX](https://github.com/m-bain/whisperX); and plays it all back with synchronized highlighting, pitch scoring, key/tempo controls, profiles, and dynamic backgrounds.
 
 Ships as a single binary. No manual installation of Python, ffmpeg, or ML models required — everything is downloaded and bootstrapped automatically on first launch.
 
 ## Features
 
-🎤 **Stem Separation** — isolates lead vocals from instrumentals using the UVR Karaoke model (default) or Demucs, with adjustable guide vocal volume. The karaoke model preserves backing vocals in the instrumental for a more natural sound
+### Library & sources
 
-📝 **Word-Level Lyrics** — automatic transcription with alignment, or fetched from [LRCLIB](https://lrclib.net) when available
+📁 **Folder library** — point at any folder and Nightingale scans supported audio, video, and UltraStar files inside.
 
-🈯 **CJK Lyric Support** — Japanese, Chinese, and Korean songs get per-character forced alignment and romanized readings (Hepburn / pinyin / Revised Romanization) shown above each token
+🎬 **Jellyfin** — play straight from your Jellyfin library. Songs cache locally on first play so karaoke runs the same as a folder library.
 
-🗣️ **Pluggable ASR Engines** — choose Whisper (default, broad language coverage) or **Parakeet v3 (experimental)** for ~25 European languages, with NeMo on CUDA and ONNX Runtime everywhere else
+💿 **Navidrome** — connect to Navidrome for audio libraries. Login details are kept encrypted on disk.
 
-🎼 **UltraStar Deluxe Songs (experimental)** — drop USDX song folders (`.txt` or `.usdx` plus sibling audio/vocals/instrumental/video) into your library; pitch and lyric data come from the file directly, no analyzer pass needed. See [docs/usdx](site/docs/src/usdx.md)
+🌐 **Self-hosted web mode** — run Nightingale on a Linux box on your home network and open it from phones, laptops, tablets, and TVs at `<hostname>.local`. See [docs/self-hosted](site/docs/src/self-hosted.md).
 
-🎯 **Pitch Scoring** — real-time microphone input with pitch detection, star ratings, and per-song scoreboards
+🧭 **Sidebar + library filters** — browse by quick filters, metadata cleanup buckets, artists, and albums. **Analyze All** helps queue your library faster, and the sidebar/song list remember scroll position when you come back.
 
-🎚️ **Key & Tempo Shifts** — adjust song key and tempo after analysis, with cached playback variants for quick retries
+🗂️ **Flexible data folder** — choose where Nightingale stores cache, models, videos, and library data during setup.
 
-👤 **Profiles** — create and switch between player profiles; scores are tracked per profile
+📦 **Self-contained** — ffmpeg, uv, Python, PyTorch, and ML packages are downloaded automatically during setup. Video backgrounds are pre-downloaded so the first session is ready to go.
 
-🎬 **Video Files** — drop video files (`.mp4`, `.mkv`, etc.) into your music folder; vocals are separated from the audio track and the original video plays as a synchronized background
+### Lyrics & audio
 
-🌌 **Audio-Reactive Backgrounds** — 10 GPU shaders that react to your microphone in real time (Plasma, Waves, Nebula, Starfield, Sonar, Voronoi, Vortex, Metaballs, Spectrum, Oscilloscope), Pixabay video loops in 5 flavors (Nature, Underwater, Space, City, Countryside), plus source-video playback for video files
+🎤 **Stem separation** — isolates lead vocals from instrumentals using the UVR Karaoke model (default) or Demucs, with adjustable guide vocal volume. The karaoke model preserves backing vocals in the instrumental for a more natural sound.
 
-🧭 **Sidebar + Library Filters** — quick filters, metadata cleanup buckets, artist/album groups, and an **Analyze All** action for bulk analysis
+📝 **Word-level lyrics** — automatic transcription with alignment, or fetched from [LRCLIB](https://lrclib.net) when available.
 
-🎙️ **Mic Monitoring** — optionally route your live mic into playback for low-latency practice and monitoring, with an adjustable monitor gain (0–200%) in Settings
+✏️ **Lyrics editor with LRCLIB browser** — edit analyzed non-USDX lyrics from a song's Actions button. When LRCLIB has multiple matches, browse them and apply one with a click; saving re-runs alignment.
 
-🎮 **Gamepad Support** — full navigation and control via gamepad (D-pad, sticks, face buttons)
+🈯 **CJK lyric support** — Japanese, Chinese, and Korean songs get per-character forced alignment and romanized readings (Hepburn / pinyin / Revised Romanization) shown above each token.
 
-📺 **Adaptive UI Scaling** — scales to any resolution including 4K TVs
+🗣️ **Pluggable ASR engines** — choose Whisper (default, broad language coverage) or **Parakeet v3 (experimental)** for ~25 European languages, with NeMo on CUDA and ONNX Runtime everywhere else.
 
-📦 **Self-Contained** — ffmpeg, uv, Python, PyTorch, and ML packages are downloaded automatically during setup. Video backgrounds are pre-downloaded so the first session is ready to go
+🎼 **UltraStar Deluxe songs (experimental)** — drop USDX song folders (`.txt` or `.usdx` plus sibling audio/vocals/instrumental/video) into your library; pitch and lyric data come from the file directly, no analyzer pass needed. See [docs/usdx](site/docs/src/usdx.md).
 
-⬆️ **In-App Updates** — on macOS and Windows, auto-checks for new releases at launch, badges the sidebar avatar when one is available, and downloads and installs signed updates with one click. Linux is manual: the **Update** entry opens GitHub Releases for you to grab the new build
+### Playback & visuals
+
+🎯 **Pitch scoring** — real-time microphone input with pitch detection, star ratings, and per-song scoreboards.
+
+🎚️ **Key & tempo shifts** — adjust song key and tempo after analysis, with cached playback variants for quick retries.
+
+🎬 **Video files** — drop video files (`.mp4`, `.mkv`, etc.) into your music folder; vocals are separated from the audio track and the original video plays as a synchronized background.
+
+🌌 **Audio-reactive backgrounds** — 10 GPU shaders that react to your microphone in real time (Plasma, Waves, Nebula, Starfield, Sonar, Voronoi, Vortex, Metaballs, Spectrum, Oscilloscope), Pixabay video loops in 5 flavors (Nature, Underwater, Space, City, Countryside), plus source-video playback for video files.
+
+🎙️ **Mic monitoring** — optionally route your live mic into playback for low-latency practice and monitoring, with an adjustable monitor gain (0–200%) in Settings.
+
+### Quality of life
+
+👤 **Profiles** — create and switch between player profiles; scores are tracked per profile.
+
+🎮 **Gamepad support** — full navigation and control via gamepad (D-pad, sticks, face buttons).
+
+📺 **Adaptive UI scaling** — scales to any resolution including 4K TVs.
+
+⬆️ **In-app updates** — on macOS and Windows, auto-checks for new releases at launch, badges the sidebar avatar when one is available, and downloads and installs signed updates with one click. Linux is manual: the **Update** entry opens GitHub Releases for you to grab the new build.
 
 ## Quick start
 
