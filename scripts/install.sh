@@ -4,7 +4,7 @@
 #
 # Default mode (release): downloads a prebuilt binary from a GitHub Release.
 #
-#   curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/master/scripts/install.sh | bash
 #
 # Source mode (--from-source): compiles the binary from a local checkout.
 # Auto-detected when run from inside a clone; pass --from-source=PATH or set
@@ -67,7 +67,7 @@ DATA_DIR=""
 PROTECT_HOME=""        # systemd ProtectHome= value, derived from DATA_DIR
 
 readonly DEFAULT_REPO="rzru/nightingale"
-readonly DEFAULT_VERSION="untagged-dd44db50bebfd6ceb5ea"
+readonly DEFAULT_VERSION="latest"
 readonly DEFAULT_USER="nightingale"
 readonly DEFAULT_DATA_DIR="/var/lib/nightingale"
 
@@ -845,8 +845,8 @@ resolve_assets_dir() {
     die "cannot locate companion assets (Caddyfile, units/) - expected next to this script or under \$NIGHTINGALE_SOURCE/scripts"
   fi
   # Release mode + piped install: fetch from GitHub at the same ref as the
-  # script (defaults to release/v0.7.0 for this test build; override with NIGHTINGALE_REF=<tag>).
-  local ref="${NIGHTINGALE_REF:-release/v0.7.0}" tmp path
+  # script (defaults to master; override with NIGHTINGALE_REF=<tag>).
+  local ref="${NIGHTINGALE_REF:-master}" tmp path
   tmp="$(mktemp -d)"
   log "fetching companion assets at ref $ref"
   mkdir -p "$tmp/units"
