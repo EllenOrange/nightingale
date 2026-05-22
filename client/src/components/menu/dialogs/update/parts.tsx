@@ -7,7 +7,7 @@ import { version as currentVersion } from "../../../../../package.json";
 
 export const CURRENT_VERSION = currentVersion;
 export const RELEASES_URL = "https://github.com/rzru/nightingale/releases/latest";
-export const SELF_HOSTED_DOCS_URL = "https://nightingale.cafe/docs/self-hosted.html#upgrading";
+export const SELF_HOSTED_DOCS_URL = "https://nightingale.cafe/docs/self-hosted.html#updating";
 export const GENERIC_DESCRIPTION = "Keep Nightingale up to date with the latest improvements.";
 
 const RING = "ring-2 ring-primary";

@@ -1,6 +1,6 @@
 import type { UseMutationResult } from "@tanstack/react-query";
 import { CheckCircle2Icon, Loader2Icon, XCircleIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -19,35 +19,61 @@ import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDialog } from "@/hooks/use-dialog";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
-import { useConnectJellyfin, useJellyfinLogin } from "@/mutations/use-source-mutations";
 import { cn } from "@/lib/utils";
 
 const normaliseUrl = (raw: string) => raw.trim().replace(/\/+$/, "");
 
-type Form = {
+type RemoteSourceForm = {
   baseUrl: string;
   username: string;
   password: string;
 };
 
-const EMPTY_FORM: Form = { baseUrl: "", username: "", password: "" };
+const EMPTY_FORM: RemoteSourceForm = { baseUrl: "", username: "", password: "" };
 
-export const JellyfinConnectDialog = () => {
+type RemoteLoginResult = {
+  server_name?: string | null;
+  server_url: string;
+};
+
+type RemoteSourceConnectDialogProps<TLogin extends RemoteLoginResult> = {
+  mode: "jellyfin-connect" | "navidrome-connect";
+  title: string;
+  description: ReactNode;
+  urlInputId: string;
+  urlPlaceholder: string;
+  usernameInputId: string;
+  passwordInputId: string;
+  useLogin: () => UseMutationResult<TLogin, Error, RemoteSourceForm>;
+  useConnect: () => UseMutationResult<{ login: TLogin }, Error, RemoteSourceForm>;
+};
+
+export const RemoteSourceConnectDialog = <TLogin extends RemoteLoginResult>({
+  mode: dialogMode,
+  title,
+  description,
+  urlInputId,
+  urlPlaceholder,
+  usernameInputId,
+  passwordInputId,
+  useLogin,
+  useConnect,
+}: RemoteSourceConnectDialogProps<TLogin>) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { mode, close } = useDialog();
-  const open = mode === "jellyfin-connect";
+  const open = mode === dialogMode;
 
-  const [form, setForm] = useState<Form>(EMPTY_FORM);
+  const [form, setForm] = useState<RemoteSourceForm>(EMPTY_FORM);
 
-  const testMutation = useJellyfinLogin();
-  const connectMutation = useConnectJellyfin();
+  const testMutation = useLogin();
+  const connectMutation = useConnect();
 
-  // The success/failure icon next to "Test connection" only stays meaningful
-  // while the credentials don't change. Editing any field resets it back to
-  // idle so the user doesn't get a misleading green check on stale input.
+  // Editing any field resets the test pill back to idle so the user doesn't
+  // get a stale green check on credentials that no longer match what they
+  // typed.
   const updateField =
-    <K extends keyof Form>(key: K) =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    <K extends keyof RemoteSourceForm>(key: K) =>
+    (e: ChangeEvent<HTMLInputElement>) => {
       setForm((prev) => ({ ...prev, [key]: e.target.value }));
       if (testMutation.status !== "idle") {
         testMutation.reset();
@@ -76,14 +102,16 @@ export const JellyfinConnectDialog = () => {
 
   const isBusy = testMutation.isPending || connectMutation.isPending;
 
-  type SubmitConfig<TData> = {
-    mutation: UseMutationResult<TData, Error, Form>;
-    onSuccess?: (data: TData) => void;
-    onError?: (error: Error) => void;
-  };
-
   const submit =
-    <TData,>({ mutation, onSuccess, onError }: SubmitConfig<TData>) =>
+    <TData,>({
+      mutation,
+      onSuccess,
+      onError,
+    }: {
+      mutation: UseMutationResult<TData, Error, RemoteSourceForm>;
+      onSuccess?: (data: TData) => void;
+      onError?: (error: Error) => void;
+    }) =>
     () => {
       if (!canSubmit || isBusy) return;
       mutation.mutate(
@@ -113,7 +141,7 @@ export const JellyfinConnectDialog = () => {
   const reachedHost = testMutation.data?.server_name ?? testMutation.data?.server_url;
 
   const testState: {
-    icon: React.ReactNode;
+    icon: ReactNode;
     tooltip: string;
   } = (() => {
     if (testMutation.isPending) {
@@ -142,28 +170,24 @@ export const JellyfinConnectDialog = () => {
       <DialogContent className="sm:max-w-md">
         <div className="contents">
           <DialogHeader>
-            <DialogTitle>Connect to Jellyfin</DialogTitle>
-            <DialogDescription>
-              Point Nightingale at a Jellyfin server. Audio is downloaded to your local cache on
-              first analysis so the rest of the karaoke pipeline keeps working exactly like a folder
-              library.
-            </DialogDescription>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
-              <Label htmlFor="jelly-url">Server URL</Label>
+              <Label htmlFor={urlInputId}>Server URL</Label>
               <Input
-                id="jelly-url"
-                placeholder="https://jellyfin.example.com"
+                id={urlInputId}
+                placeholder={urlPlaceholder}
                 value={form.baseUrl}
                 onChange={updateField("baseUrl")}
                 disabled={isBusy}
               />
             </Field>
             <Field>
-              <Label htmlFor="jelly-user">Username</Label>
+              <Label htmlFor={usernameInputId}>Username</Label>
               <Input
-                id="jelly-user"
+                id={usernameInputId}
                 autoComplete="username"
                 value={form.username}
                 onChange={updateField("username")}
@@ -171,9 +195,9 @@ export const JellyfinConnectDialog = () => {
               />
             </Field>
             <Field>
-              <Label htmlFor="jelly-pass">Password</Label>
+              <Label htmlFor={passwordInputId}>Password</Label>
               <Input
-                id="jelly-pass"
+                id={passwordInputId}
                 type="password"
                 autoComplete="current-password"
                 value={form.password}
@@ -218,30 +242,16 @@ export const JellyfinConnectDialog = () => {
                 </TooltipTrigger>
                 <TooltipContent>{testState.tooltip}</TooltipContent>
               </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {/* Wrapping span so the tooltip still fires while the
-                      Button is disabled (Radix triggers swallow events on
-                      disabled buttons). */}
-                  <span>
-                    <Button
-                      disabled={!canSubmit || isBusy || !testMutation.isSuccess}
-                      onClick={handleConnect}
-                      className={cn(
-                        "focus-visible:ring-0 focus-visible:border-transparent",
-                        focusedIndex === 2 && "ring-2 ring-primary",
-                      )}
-                    >
-                      {connectMutation.isPending ? "Connecting…" : "Connect"}
-                    </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {testMutation.isSuccess
-                    ? "Save these credentials as your library source"
-                    : "Run a successful test first"}
-                </TooltipContent>
-              </Tooltip>
+              <Button
+                disabled={!canSubmit || isBusy || !testMutation.isSuccess}
+                onClick={handleConnect}
+                className={cn(
+                  "focus-visible:ring-0 focus-visible:border-transparent",
+                  focusedIndex === 2 && "ring-2 ring-primary",
+                )}
+              >
+                Connect
+              </Button>
             </div>
           </DialogFooter>
         </div>

@@ -1,100 +1,158 @@
 ---
-const features = [
+const groups = [
   {
-    icon: "🎤",
-    title: "Stem separation",
+    heading: "Library & sources",
     description:
-      "Vocals are isolated from instrumentals using the UVR Karaoke model or Demucs. Guide vocal volume is adjustable.",
+      "Pick where Nightingale reads from — a folder, a Jellyfin or Navidrome server, or the new self-hosted web build that the whole house can use.",
+    items: [
+      {
+        icon: "📁",
+        title: "Folder library",
+        description:
+          "Point at any folder and Nightingale scans the supported audio, video, and UltraStar files inside.",
+      },
+      {
+        icon: "🎬",
+        title: "Jellyfin",
+        description:
+          "Play straight from your Jellyfin library. Songs cache locally on first play so karaoke runs the same as a folder library.",
+      },
+      {
+        icon: "💿",
+        title: "Navidrome",
+        description:
+          "Same idea for Navidrome (audio only). Login details are kept encrypted on disk.",
+      },
+      {
+        icon: "🌐",
+        title: "Self-hosted web mode",
+        description:
+          "Run Nightingale on a Linux box on your home network. Open it from any browser at <hostname>.local — one install script handles the rest.",
+      },
+      {
+        icon: "🧭",
+        title: "Sidebar filters",
+        description:
+          "Browse by quick filters, metadata buckets, artists, and albums. Analyze All helps queue your library faster.",
+      },
+      {
+        icon: "🗂️",
+        title: "Flexible data folder",
+        description:
+          "Choose where Nightingale stores cache, models, videos, and library data during setup.",
+      },
+      {
+        icon: "📦",
+        title: "Single binary",
+        description:
+          "ffmpeg, Python, PyTorch, and the ML models are all bootstrapped on first launch. Nothing to install.",
+      },
+    ],
   },
   {
-    icon: "📝",
-    title: "Word-level lyrics",
+    heading: "Lyrics & audio",
     description:
-      "WhisperX transcribes and aligns every word to the audio. Existing lyrics from LRCLIB are used when available.",
+      "Word-level lyrics, multi-language ASR, CJK forced alignment, and an in-app editor for when the automatic result needs a human pass.",
+    items: [
+      {
+        icon: "🎤",
+        title: "Stem separation",
+        description:
+          "Vocals are isolated from instrumentals using the UVR Karaoke model or Demucs. Guide vocal volume is adjustable.",
+      },
+      {
+        icon: "📝",
+        title: "Word-level lyrics",
+        description:
+          "WhisperX transcribes and aligns every word to the audio. Existing lyrics from LRCLIB are used when available.",
+      },
+      {
+        icon: "🈯",
+        title: "CJK lyrics",
+        description:
+          "Japanese, Chinese, and Korean songs get per-character forced alignment with romanized readings (Hepburn, pinyin, Revised Romanization) shown above each token.",
+      },
+      {
+        icon: "🗣️",
+        title: "Pluggable ASR",
+        description:
+          "Choose Whisper (default, broad coverage) or Parakeet v3 (experimental) for ~25 European languages. NeMo on CUDA, ONNX everywhere else.",
+      },
+      {
+        icon: "🎼",
+        title: "UltraStar songs",
+        description:
+          "Drop USDX song folders into your library — pitch and lyrics come straight from the file, no analyzer pass needed. Experimental.",
+      },
+      {
+        icon: "✏️",
+        title: "Lyrics editor",
+        description:
+          "Use an analyzed non-USDX song's Actions button to edit its lyrics. When LRCLIB has multiple matches, a second tab lets you carousel through them and apply one with a click. Saving re-runs alignment.",
+      },
+    ],
   },
   {
-    icon: "🈯",
-    title: "CJK lyrics",
+    heading: "Playback & visuals",
     description:
-      "Japanese, Chinese, and Korean songs get per-character forced alignment with romanized readings (Hepburn, pinyin, Revised Romanization) shown above each token.",
+      "Pitch scoring, live mic monitoring, key/tempo controls, and 10 audio-reactive shader backgrounds plus video flavors.",
+    items: [
+      {
+        icon: "🎯",
+        title: "Pitch scoring",
+        description:
+          "Sing into your mic and get scored in real-time. Star ratings and per-song scoreboards track your progress.",
+      },
+      {
+        icon: "🎚️",
+        title: "Key and tempo shifts",
+        description:
+          "After analysis, adjust key and tempo from the song list to match your voice and comfort level.",
+      },
+      {
+        icon: "🎬",
+        title: "Video file support",
+        description:
+          "Drop .mp4 or .mkv files into your library. Vocals are separated and the original video plays as the background.",
+      },
+      {
+        icon: "🌌",
+        title: "Audio-reactive backgrounds",
+        description:
+          "10 GPU shaders that react to your mic input in real time, 5 Pixabay video flavors, plus the source video for video files.",
+      },
+      {
+        icon: "🎙️",
+        title: "Mic monitoring",
+        description:
+          "Optional live mic monitor during playback for practice sessions, with an adjustable monitor gain (0–200%).",
+      },
+    ],
   },
   {
-    icon: "🗣️",
-    title: "Pluggable ASR",
+    heading: "Quality of life",
     description:
-      "Choose Whisper (default, broad coverage) or Parakeet v3 (experimental) for ~25 European languages. NeMo on CUDA, ONNX everywhere else.",
-  },
-  {
-    icon: "🎼",
-    title: "UltraStar songs",
-    description:
-      "Drop USDX song folders into your library — pitch and lyrics come straight from the file, no analyzer pass needed. Experimental.",
-  },
-  {
-    icon: "🎯",
-    title: "Pitch scoring",
-    description:
-      "Sing into your mic and get scored in real-time. Star ratings and per-song scoreboards track your progress.",
-  },
-  {
-    icon: "🎚️",
-    title: "Key and tempo shifts",
-    description:
-      "After analysis, adjust key and tempo from the song list to match your voice and comfort level.",
-  },
-  {
-    icon: "👤",
-    title: "Player profiles",
-    description:
-      "Multiple profiles with separate score histories. Switch between singers without losing anyone's records.",
-  },
-  {
-    icon: "🎬",
-    title: "Video file support",
-    description:
-      "Drop .mp4 or .mkv files into your library. Vocals are separated and the original video plays as the background.",
-  },
-  {
-    icon: "🌌",
-    title: "Audio-reactive backgrounds",
-    description:
-      "10 GPU shaders that react to your mic input in real time, 5 Pixabay video flavors, plus the source video for video files.",
-  },
-  {
-    icon: "🧭",
-    title: "Sidebar filters",
-    description:
-      "Browse by quick filters, metadata buckets, artists, and albums. Analyze All helps queue your library faster.",
-  },
-  {
-    icon: "🎙️",
-    title: "Mic monitoring",
-    description:
-      "Optional live mic monitor during playback for practice sessions, with an adjustable monitor gain.",
-  },
-  {
-    icon: "🎮",
-    title: "Gamepad support",
-    description:
-      "Navigate menus, pick songs, and control playback entirely with a controller. D-pad, sticks, face buttons.",
-  },
-  {
-    icon: "📦",
-    title: "Single binary",
-    description:
-      "ffmpeg, Python, PyTorch, and the ML models are all bootstrapped on first launch. Nothing to install.",
-  },
-  {
-    icon: "🗂️",
-    title: "Flexible data folder",
-    description:
-      "Choose where Nightingale stores cache, models, videos, and library data during setup.",
-  },
-  {
-    icon: "⬆️",
-    title: "In-app updates",
-    description:
-      "On macOS and Windows: auto-checks at launch, badges the sidebar avatar when a release is available, and installs signed updates with one click. On Linux the Update entry opens GitHub Releases for a manual download.",
+      "Per-player profiles, full gamepad navigation, and signed in-app updates on macOS and Windows.",
+    items: [
+      {
+        icon: "👤",
+        title: "Player profiles",
+        description:
+          "Multiple profiles with separate score histories. Switch between singers without losing anyone's records.",
+      },
+      {
+        icon: "🎮",
+        title: "Gamepad support",
+        description:
+          "Navigate menus, pick songs, and control playback entirely with a controller. D-pad, sticks, face buttons.",
+      },
+      {
+        icon: "⬆️",
+        title: "In-app updates",
+        description:
+          "On macOS and Windows: auto-checks at launch, badges the sidebar avatar when a release is available, and installs signed updates with one click. On Linux the Update entry opens GitHub Releases for a manual download.",
+      },
+    ],
   },
 ];
 ---
@@ -105,12 +163,25 @@ const features = [
       <h2>Features</h2>
       <a href="/docs/" class="docs-link">Explore docs</a>
     </div>
-    <div class="features-grid">
+
+    <div class="groups">
       {
-        features.map((f) => (
-          <div class="feature-card">
-            <h3><span class="icon">{f.icon}</span> {f.title}</h3>
-            <p>{f.description}</p>
+        groups.map((group) => (
+          <div class="group">
+            <div class="group-header">
+              <h3 class="group-title">{group.heading}</h3>
+              <p class="group-desc">{group.description}</p>
+            </div>
+            <div class="features-grid">
+              {group.items.map((f) => (
+                <div class="feature-card">
+                  <h4>
+                    <span class="icon">{f.icon}</span> {f.title}
+                  </h4>
+                  <p>{f.description}</p>
+                </div>
+              ))}
+            </div>
           </div>
         ))
       }
@@ -138,6 +209,31 @@ const features = [
     color: var(--accent);
   }
 
+  .groups {
+    display: flex;
+    flex-direction: column;
+    gap: 36px;
+  }
+
+  .group-header {
+    margin-bottom: 14px;
+  }
+
+  .group-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0 0 4px;
+    color: var(--accent);
+  }
+
+  .group-desc {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+    max-width: 720px;
+  }
+
   .features-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -147,14 +243,14 @@ const features = [
   .feature-card {
     background: var(--surface);
     border-radius: var(--radius-lg);
-    padding: 24px 20px;
+    padding: 22px 20px;
     border: 1px solid rgba(255, 255, 255, 0.04);
   }
 
-  .feature-card h3 {
+  .feature-card h4 {
     font-size: 0.95rem;
     font-weight: 600;
-    margin-bottom: 6px;
+    margin: 0 0 6px;
     display: flex;
     align-items: flex-start;
     gap: 6px;
@@ -170,5 +266,6 @@ const features = [
     font-size: 0.85rem;
     color: var(--text-secondary);
     line-height: 1.55;
+    margin: 0;
   }
 </style>

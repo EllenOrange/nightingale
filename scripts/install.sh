@@ -4,13 +4,13 @@
 #
 # Default mode (release): downloads a prebuilt binary from a GitHub Release.
 #
-#   curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/main/scripts/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/main/scripts/install.sh | bash
 #
 # Source mode (--from-source): compiles the binary from a local checkout.
 # Auto-detected when run from inside a clone; pass --from-source=PATH or set
 # NIGHTINGALE_SOURCE=/path to point at a different location.
 #
-#   sudo bash scripts/install.sh --from-source
+#   bash scripts/install.sh --from-source
 #
 # Idempotent in either mode: re-running upgrades the binary in place and
 # restarts services only when their config actually changed. No data or
@@ -47,8 +47,9 @@
 #
 # Build prerequisites for source mode (in the *invoking* user's login shell,
 # not root's): cargo, node, pnpm. rustup / fnm / mise / nvm / asdf are all
-# fine - the script re-execs the build through `sudo -u $SUDO_USER -H -- bash
-# -ilc` so both ~/.bash_profile (login) and ~/.bashrc (interactive) load,
+# fine - when launched through sudo, the script re-execs the build through
+# `sudo -u $SUDO_USER -H -- bash -ilc` so both ~/.bash_profile (login)
+# and ~/.bashrc (interactive) load,
 # which is the only way to pick up tool managers gated behind the common
 # `[[ $- != *i* ]] && return` guard at the top of ~/.bashrc.
 
@@ -98,6 +99,7 @@ readonly CADDY_MANAGED_HEADER="# managed-by: nightingale-installer"
 CADDY_DIRTY=0
 AVAHI_DIRTY=0
 NIGHTINGALE_DIRTY=0
+NIGHTINGALE_OWNS_HTTP_PORTS=0
 
 # Set by render_with_overrides() / set_ini_kv() / unset_ini_kv() so callers
 # can fold the change-bit into the right *_DIRTY flag.
@@ -120,6 +122,71 @@ die()  { printf '%serr%s  %s\n' "$C_RED" "$C_RST" "$*" >&2; exit 1; }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+ROOT_CONFIRMED=0
+
+quote_cmd() {
+  local arg out=""
+  for arg in "$@"; do
+    printf -v arg '%q' "$arg"
+    out+=" ${arg}"
+  done
+  printf '%s' "${out# }"
+}
+
+confirm_root_command() {
+  local rendered="$1" ans=""
+  [[ $EUID -eq 0 || $ROOT_CONFIRMED -eq 1 ]] && return
+  if [[ -r /dev/tty ]]; then
+    cat >/dev/tty <<EOF
+
+${C_BOLD}Admin access needed.${C_RST}
+This installer only uses sudo for system changes: package install, /usr/local/bin,
+/etc config, /var/lib data dir, and systemd service commands.
+
+First sudo command:
+  sudo ${rendered}
+
+EOF
+    read -r -p "Continue? [Y/n] " ans </dev/tty || true
+    [[ "$ans" =~ ^[Nn]$ ]] && die "aborted before sudo"
+  else
+    warn "admin access needed; no tty available for confirmation before sudo"
+  fi
+  ROOT_CONFIRMED=1
+}
+
+as_root() {
+  local rendered
+  rendered="$(quote_cmd "$@")"
+  if [[ $EUID -eq 0 ]]; then
+    printf '%s+%s %s\n' "$C_DIM" "$C_RST" "$rendered" >&2
+    "$@"
+  else
+    confirm_root_command "$rendered"
+    printf '%s+%s sudo %s\n' "$C_DIM" "$C_RST" "$rendered" >&2
+    sudo "$@"
+  fi
+}
+
+capture_as_root() {
+  local rendered
+  rendered="$(quote_cmd "$@")"
+  if [[ $EUID -eq 0 ]]; then
+    printf '%s+%s %s\n' "$C_DIM" "$C_RST" "$rendered" >&2
+    "$@"
+  else
+    confirm_root_command "$rendered"
+    printf '%s+%s sudo %s\n' "$C_DIM" "$C_RST" "$rendered" >&2
+    sudo "$@"
+  fi
+}
+
+require_privilege_tool() {
+  if [[ $EUID -ne 0 ]] && ! have_cmd sudo; then
+    die "sudo not found; install sudo or run this installer as root"
+  fi
+}
+
 # ── Arg parsing ────────────────────────────────────────────────────────
 
 usage() {
@@ -127,7 +194,7 @@ usage() {
 Nightingale self-hosted web installer.
 
 Usage:
-  sudo bash $(basename "${BASH_SOURCE[0]:-$0}") [--from-source[=PATH]] [--release] [-h]
+  bash $(basename "${BASH_SOURCE[0]:-$0}") [--from-source[=PATH]] [--release] [-h]
 
 Default: download a prebuilt binary from a GitHub Release.
 With --from-source (or when run from inside a Nightingale clone): compile locally.
@@ -236,7 +303,7 @@ print_plan() {
 #
 # When ENV_OVERRIDE_NAME is already set we use that value verbatim and skip
 # the prompt. Otherwise we read from /dev/tty (not stdin, because under
-# `curl | sudo bash` stdin is the curl pipe and would silently EOF). If
+# `curl | bash` stdin is the curl pipe and would silently EOF). If
 # /dev/tty isn't readable either (truly headless), we fall back to the
 # default and announce it so the run log shows what was used.
 prompt() {
@@ -373,12 +440,6 @@ configure() {
 
 # ── Environment checks ─────────────────────────────────────────────────
 
-require_root() {
-  if [[ $EUID -ne 0 ]]; then
-    die "must run as root (try: sudo bash $0)"
-  fi
-}
-
 require_systemd() {
   if ! command -v systemctl >/dev/null 2>&1; then
     die "systemctl not found; this installer needs a systemd-based distro"
@@ -426,48 +487,51 @@ apt_add_caddy_repo() {
     return
   fi
   log "adding Caddy APT repo (cloudsmith)"
-  apt-get update -y >/dev/null
-  apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gnupg >/dev/null
-  curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-    > /etc/apt/sources.list.d/caddy-stable.list
-  apt-get update -y >/dev/null
+  as_root apt-get update -y >/dev/null
+  as_root apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gnupg >/dev/null
+  local tmp
+  tmp="$(mktemp -d)"
+  curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' -o "$tmp/caddy.gpg.key"
+  as_root gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg "$tmp/caddy.gpg.key"
+  curl -fsSL 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' -o "$tmp/caddy-stable.list"
+  as_root install -m 0644 -o root -g root "$tmp/caddy-stable.list" /etc/apt/sources.list.d/caddy-stable.list
+  rm -rf "$tmp"
+  as_root apt-get update -y >/dev/null
 }
 
 install_packages_apt() {
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -y >/dev/null
-  apt-get install -y --no-install-recommends ca-certificates curl tar avahi-daemon >/dev/null
+  as_root apt-get update -y >/dev/null
+  as_root apt-get install -y --no-install-recommends ca-certificates curl tar avahi-daemon >/dev/null
   if have_cmd caddy; then return; fi
   # Prefer the distro-shipped caddy when it's actually packaged. Adding
   # the Cloudsmith apt source is a one-way change to the operator's apt
   # state, so we only do it when the distro genuinely doesn't ship caddy.
   if apt-cache show caddy 2>/dev/null | grep -q '^Package: caddy$'; then
-    apt-get install -y caddy >/dev/null
+    as_root apt-get install -y caddy >/dev/null
     return
   fi
   apt_add_caddy_repo
-  apt-get install -y caddy >/dev/null
+  as_root apt-get install -y caddy >/dev/null
 }
 
 install_packages_dnf() {
-  dnf install -y --setopt=install_weak_deps=False ca-certificates curl tar caddy avahi >/dev/null
+  as_root dnf install -y --setopt=install_weak_deps=False ca-certificates curl tar caddy avahi >/dev/null
 }
 
 install_packages_pacman() {
-  pacman -Sy --needed --noconfirm ca-certificates curl tar caddy avahi >/dev/null
+  as_root pacman -Sy --needed --noconfirm ca-certificates curl tar caddy avahi >/dev/null
 }
 
 install_packages_zypper() {
-  zypper --non-interactive install --no-recommends ca-certificates curl tar caddy avahi >/dev/null
+  as_root zypper --non-interactive install --no-recommends ca-certificates curl tar caddy avahi >/dev/null
 }
 
 install_packages_apk() {
   # `shadow` ships useradd/groupadd; stock Alpine only has BusyBox's
   # adduser, which we don't drive. Cheaper to pull shadow on the apk
   # path than to grow a second user-creation code path.
-  apk add --no-cache ca-certificates curl tar shadow caddy avahi >/dev/null
+  as_root apk add --no-cache ca-certificates curl tar shadow caddy avahi >/dev/null
 }
 
 print_manual_install_help() {
@@ -586,7 +650,7 @@ build_from_source() {
     die "cargo finished but $built is missing; check the build log above"
   fi
 
-  install -m 0755 -o root -g root "$built" "$BIN_PATH"
+  as_root install -m 0755 -o root -g root "$built" "$BIN_PATH"
   # Source builds embed timestamps, so the on-disk binary will differ from
   # a previous run even when no source changed. Treat every successful
   # build as "binary changed" rather than running cmp against a multi-MB
@@ -595,7 +659,7 @@ build_from_source() {
   # Wipe any stale ETag from a prior release-mode install so the next
   # release-mode rerun doesn't think this source build is the cached
   # version of some github asset.
-  rm -f "$BIN_ETAG_PATH" "$BIN_VERSION_LEGACY_PATH"
+  as_root rm -f "$BIN_ETAG_PATH" "$BIN_VERSION_LEGACY_PATH"
   ok "installed $BIN_PATH (from source $src)"
 }
 
@@ -669,7 +733,7 @@ download_binary() {
     die "tarball did not contain a 'nightingale' executable"
   fi
 
-  install -m 0755 -o root -g root "$tmp/nightingale" "$BIN_PATH"
+  as_root install -m 0755 -o root -g root "$tmp/nightingale" "$BIN_PATH"
   NIGHTINGALE_DIRTY=1
   # Record the ETag of the artifact we just installed (atomic write via a
   # tempfile + install). No ETag on the response (rare) -> wipe any stale
@@ -680,14 +744,14 @@ download_binary() {
   if [[ -n "$new_etag" ]]; then
     etag_tmp="$(mktemp)"
     printf '%s\n' "$new_etag" > "$etag_tmp"
-    install -m 0644 -o root -g root "$etag_tmp" "$BIN_ETAG_PATH"
+    as_root install -m 0644 -o root -g root "$etag_tmp" "$BIN_ETAG_PATH"
     rm -f "$etag_tmp"
   else
-    rm -f "$BIN_ETAG_PATH"
+    as_root rm -f "$BIN_ETAG_PATH"
   fi
   # Drop the legacy `.version` sentinel from older installs so re-runs
   # leave a clean state.
-  rm -f "$BIN_VERSION_LEGACY_PATH"
+  as_root rm -f "$BIN_VERSION_LEGACY_PATH"
   rm -rf "$tmp"
   ok "installed $BIN_PATH (from release ${VERSION})"
 }
@@ -735,7 +799,7 @@ ensure_user() {
   for nologin in /usr/sbin/nologin /sbin/nologin /bin/false; do
     [[ -x "$nologin" ]] && break
   done
-  useradd --system --home-dir "$DATA_DIR" --no-create-home \
+  as_root useradd --system --home-dir "$DATA_DIR" --no-create-home \
           --shell "$nologin" --comment "Nightingale karaoke server" \
           "$SERVICE_USER"
   NIGHTINGALE_DIRTY=1
@@ -743,12 +807,12 @@ ensure_user() {
 
 ensure_data_dir() {
   if [[ ! -d "$DATA_DIR" ]]; then
-    install -d -m 0755 -o "$SERVICE_USER" -g "$SERVICE_USER" "$DATA_DIR"
+    as_root install -d -m 0755 -o "$SERVICE_USER" -g "$SERVICE_USER" "$DATA_DIR"
     NIGHTINGALE_DIRTY=1
   else
     # Fix ownership in case the operator changed NIGHTINGALE_USER between
     # runs. Files inside are left alone - a -R chown would surprise.
-    chown "$SERVICE_USER":"$SERVICE_USER" "$DATA_DIR" 2>/dev/null || true
+    as_root chown "$SERVICE_USER":"$SERVICE_USER" "$DATA_DIR" || true
   fi
   # No caddy-traversability check here anymore: the trust root lives
   # under /etc/caddy/ (which caddy reads by definition), so DATA_DIR
@@ -803,7 +867,7 @@ resolve_assets_dir() {
 backup_once() {
   local path="$1"
   if [[ -f "$path" && ! -f "${path}.nightingale.bak" ]]; then
-    cp -a "$path" "${path}.nightingale.bak"
+    as_root cp -a "$path" "${path}.nightingale.bak"
     warn "backed up existing ${path} to ${path}.nightingale.bak"
   fi
 }
@@ -826,7 +890,7 @@ render_with_overrides() {
     rm -f "$tmp"
     return
   fi
-  install -m "$mode" -o root -g root "$tmp" "$dst"
+  as_root install -m "$mode" -o root -g root "$tmp" "$dst"
   rm -f "$tmp"
   RENDERED_CHANGED=1
 }
@@ -836,7 +900,7 @@ drop_systemd_unit() {
   render_with_overrides "$assets/units/nightingale.service" "$UNIT_PATH" 0644
   if (( RENDERED_CHANGED )); then
     NIGHTINGALE_DIRTY=1
-    systemctl daemon-reload
+    as_root systemctl daemon-reload
   fi
 }
 
@@ -922,16 +986,16 @@ caddy_collision_files() {
 drop_caddy_config() {
   local assets="$1"
   local force_takeover="${NIGHTINGALE_FORCE_CADDYFILE:-0}"
-  install -d -m 0755 /etc/caddy
+  as_root install -d -m 0755 /etc/caddy
 
   if caddyfile_is_user_owned && [[ "$force_takeover" != "1" ]]; then
     log "existing $CADDYFILE_PATH is user-owned; installing nightingale snippet as an additive import"
-    install -d -m 0755 "$CADDYFILE_DROPIN_DIR"
+    as_root install -d -m 0755 "$CADDYFILE_DROPIN_DIR"
     render_with_overrides "$assets/Caddyfile" "$CADDYFILE_DROPIN_PATH" 0644
     if (( RENDERED_CHANGED )); then CADDY_DIRTY=1; fi
     if ! grep -qE '^[[:space:]]*import[[:space:]]+Caddyfile\.d/' "$CADDYFILE_PATH"; then
       backup_once "$CADDYFILE_PATH"
-      printf '\n# Added by nightingale-installer\nimport Caddyfile.d/*.caddy\n' >> "$CADDYFILE_PATH"
+      printf '\n# Added by nightingale-installer\nimport Caddyfile.d/*.caddy\n' | as_root tee -a "$CADDYFILE_PATH" >/dev/null
       log "appended 'import Caddyfile.d/*.caddy' to $CADDYFILE_PATH"
       CADDY_DIRTY=1
     fi
@@ -973,7 +1037,7 @@ drop_caddy_config() {
   # if a previous re-run dropped one before we knew the main file was
   # safe to overwrite.
   if [[ -f "$CADDYFILE_DROPIN_PATH" ]] && caddy_file_is_managed "$CADDYFILE_DROPIN_PATH"; then
-    rm -f "$CADDYFILE_DROPIN_PATH"
+    as_root rm -f "$CADDYFILE_DROPIN_PATH"
     log "removed redundant managed snippet $CADDYFILE_DROPIN_PATH (main Caddyfile now holds the same config)"
     CADDY_DIRTY=1
   fi
@@ -986,11 +1050,11 @@ drop_caddy_config() {
 
 drop_avahi_service() {
   local assets="$1" src="$assets/units/avahi-nightingale.service"
-  install -d -m 0755 /etc/avahi/services
+  as_root install -d -m 0755 /etc/avahi/services
   if [[ -f "$AVAHI_SERVICE_PATH" ]] && cmp -s "$src" "$AVAHI_SERVICE_PATH"; then
     return
   fi
-  install -m 0644 -o root -g root "$src" "$AVAHI_SERVICE_PATH"
+  as_root install -m 0644 -o root -g root "$src" "$AVAHI_SERVICE_PATH"
   AVAHI_DIRTY=1
 }
 
@@ -1008,13 +1072,13 @@ set_ini_kv() {
     return
   fi
   if grep -qE "^[[:space:]]*${key}=" "$file"; then
-    sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
+    as_root sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
   elif grep -qE "^[[:space:]]*#${key}=" "$file"; then
-    sed -i "0,/^[[:space:]]*#${key}=.*/{s|^[[:space:]]*#${key}=.*|${key}=${value}|}" "$file"
+    as_root sed -i "0,/^[[:space:]]*#${key}=.*/{s|^[[:space:]]*#${key}=.*|${key}=${value}|}" "$file"
   elif grep -q "^\[${section}\]" "$file"; then
-    sed -i "/^\[${section}\]/a ${key}=${value}" "$file"
+    as_root sed -i "/^\[${section}\]/a ${key}=${value}" "$file"
   else
-    printf '\n[%s]\n%s=%s\n' "$section" "$key" "$value" >> "$file"
+    printf '\n[%s]\n%s=%s\n' "$section" "$key" "$value" | as_root tee -a "$file" >/dev/null
   fi
   INI_KV_CHANGED=1
 }
@@ -1027,7 +1091,7 @@ unset_ini_kv() {
   if ! grep -qE "^[[:space:]]*${key}=" "$file"; then
     return
   fi
-  sed -i "s|^\([[:space:]]*\)${key}=|\1#${key}=|" "$file"
+  as_root sed -i "s|^\([[:space:]]*\)${key}=|\1#${key}=|" "$file"
   INI_KV_CHANGED=1
 }
 
@@ -1147,7 +1211,9 @@ configure_avahi_interfaces() {
 # Caddy listens on :80 and :443. If something else (nginx, apache, another
 # service entirely) already owns those ports, the `systemctl restart caddy`
 # below will fail in a way that's noisy but unhelpful. Probe the bound
-# listeners up front and abort with a single clear message.
+# listeners up front and abort with a single clear message. A prior
+# nightingale.service binding those ports is OK: upgrades stop it before
+# restarting caddy.
 check_port_conflicts() {
   local probe_cmd=""
   if   command -v ss   >/dev/null 2>&1; then probe_cmd="ss"
@@ -1160,28 +1226,37 @@ check_port_conflicts() {
   local conflicts=() port lines
   for port in 80 443; do
     if [[ "$probe_cmd" == "ss" ]]; then
-      lines="$(ss -tlnpH 2>/dev/null | awk -v p=":${port}\$" '$4 ~ p')"
+      lines="$(capture_as_root ss -tlnpH 2>/dev/null | awk -v p=":${port}\$" '$4 ~ p')"
     else
-      lines="$(lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | tail -n +2)"
+      lines="$(capture_as_root lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | tail -n +2)"
     fi
     [[ -z "$lines" ]] && continue
 
     # Caddy itself on either port is fine - that's our own listener from
     # a prior run (or another caddy site we'll share via Caddyfile.d).
-    # Match the exact program name, not a substring of the full row, so
-    # a process whose path or argv happens to contain "caddy" doesn't
+    # Nightingale itself is also fine: older/self-host runs may be the
+    # thing currently occupying the public ports, and this installer will
+    # stop it before restarting caddy.
+    # Match program names exactly, not as substrings of the full row, so
+    # an unrelated argv/path containing "caddy" or "nightingale" doesn't
     # get a free pass.
-    local listener_is_caddy=0
+    local listener_is_ours=0 listener_is_nightingale=0
     if [[ "$probe_cmd" == "ss" ]]; then
-      grep -qE 'users:\(\("caddy",' <<<"$lines" && listener_is_caddy=1
+      grep -qE 'users:\(\("caddy",' <<<"$lines" && listener_is_ours=1
+      grep -qE 'users:\(\("nightingale",' <<<"$lines" && listener_is_nightingale=1
     else
-      awk '{print $1}' <<<"$lines" | grep -qx caddy && listener_is_caddy=1
+      awk '{print $1}' <<<"$lines" | grep -qx caddy && listener_is_ours=1
+      awk '{print $1}' <<<"$lines" | grep -qx nightingale && listener_is_nightingale=1
     fi
-    if (( listener_is_caddy )); then
+    if (( listener_is_nightingale )); then
+      NIGHTINGALE_OWNS_HTTP_PORTS=1
+      listener_is_ours=1
+    fi
+    if (( listener_is_ours )); then
       continue
     fi
 
-    warn "port ${port} is bound by a non-caddy process:"
+    warn "port ${port} is bound by a non-caddy/non-nightingale process:"
     while IFS= read -r row; do
       [[ -z "$row" ]] && continue
       warn "  $row"
@@ -1216,25 +1291,29 @@ caddy_validate_or_die() {
 start_services() {
   log "enabling and starting services"
 
-  systemctl enable avahi-daemon >/dev/null 2>&1 || true
+  as_root systemctl enable avahi-daemon || true
   if (( AVAHI_DIRTY )) || ! systemctl is-active --quiet avahi-daemon; then
-    systemctl restart avahi-daemon \
+    as_root systemctl restart avahi-daemon \
       || warn "avahi-daemon failed to start (mDNS .local resolution will not work)"
   else
     ok "avahi-daemon config unchanged; not restarting"
   fi
 
-  systemctl enable caddy >/dev/null 2>&1 || true
+  as_root systemctl enable caddy || true
   if (( CADDY_DIRTY )) || ! systemctl is-active --quiet caddy; then
+    if (( NIGHTINGALE_OWNS_HTTP_PORTS )) && systemctl is-active --quiet nightingale; then
+      log "stopping existing nightingale listener on ports 80/443 before restarting caddy"
+      as_root systemctl stop nightingale || true
+    fi
     caddy_validate_or_die
-    systemctl restart caddy
+    as_root systemctl restart caddy
   else
     ok "caddy config unchanged; not restarting"
   fi
 
-  systemctl enable nightingale >/dev/null 2>&1 || true
+  as_root systemctl enable nightingale || true
   if (( NIGHTINGALE_DIRTY )) || ! systemctl is-active --quiet nightingale; then
-    systemctl restart nightingale
+    as_root systemctl restart nightingale
   else
     ok "nightingale unchanged; not restarting"
   fi
@@ -1282,7 +1361,7 @@ publish_root_cert() {
 
   pem_tmp="$(mktemp)"
   printf '%s' "$pem" > "$pem_tmp"
-  install -m 0644 -o root -g root "$pem_tmp" "$ROOT_CRT_PATH"
+  as_root install -m 0644 -o root -g root "$pem_tmp" "$ROOT_CRT_PATH"
   rm -f "$pem_tmp"
   ok "published trust root at $ROOT_CRT_PATH (served at http://<host>/root.crt)"
 }
@@ -1367,8 +1446,8 @@ build_steps() {
 
 main() {
   parse_args "$@"
-  require_root
   require_systemd
+  require_privilege_tool
 
   # 1) Resolve every var from env overrides / defaults / unit introspection
   # so the plan we print is honest about what'll happen on Enter-through.

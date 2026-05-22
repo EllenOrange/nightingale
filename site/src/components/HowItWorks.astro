@@ -1,9 +1,14 @@
 ---
 const steps = [
   {
+    title: "Source",
+    description:
+      "Pick a library: a local folder, a Jellyfin or Navidrome server, or the self-hosted web build that any device in the house can open.",
+  },
+  {
     title: "Separate",
     description:
-      "UVR Karaoke or Demucs splits the track into vocals and instrumental. Audio is extracted from video files automatically.",
+      "UVR Karaoke or Demucs splits the track into vocals and instrumental. Audio is extracted from video files automatically; songs from a server are cached locally on first play.",
   },
   {
     title: "Transcribe",
@@ -59,7 +64,7 @@ const steps = [
 
   .steps {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 16px;
   }
 
@@ -83,7 +88,13 @@ const steps = [
     line-height: 1.55;
   }
 
-  @media (max-width: 640px) {
+  @media (max-width: 960px) {
+    .steps {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 540px) {
     .steps {
       grid-template-columns: 1fr;
     }

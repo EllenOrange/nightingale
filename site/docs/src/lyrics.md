@@ -59,6 +59,15 @@ For all three languages, every word is annotated with a romanized **reading** th
 
 Heavy CJK modules are imported lazily on first use, so non-CJK songs don't pay the startup cost.
 
+## Editing Lyrics
+
+When the automatic transcript needs a human pass, use a ready non-USDX song's **Actions** button and choose **Edit lyrics**. The dialog has two halves:
+
+- **Edit tab** — a textarea seeded with the current transcript, one karaoke line per row. Saving re-runs alignment with your edits, so timing stays accurate to the audio. Dirty state is tracked; closing without saving discards the edit.
+- **LRCLIB matches tab** — visible when [LRCLIB](https://lrclib.net) returns more than one candidate for the song's metadata. Each candidate shows its track / artist / album / duration and the lyric body; arrows above the card let you carousel through them, and **Use these** copies the candidate's lines into the editor. Save to commit them with realignment.
+
+Saved lyrics replace the cached transcript for that song's blake3 hash, so subsequent plays pick up the edit immediately. CJK alignment paths are skipped on edits — the editor saves a flat per-line transcript and lets the alignment stage re-derive per-character timings on the next analyzer pass.
+
 ## Highlighting
 
 During playback, lyrics are displayed with word-by-word highlighting:

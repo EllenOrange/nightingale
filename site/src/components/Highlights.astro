@@ -1,29 +1,37 @@
 ---
-const highlights = [
+const flagship = [
   {
-    title: "CJK lyric support",
+    title: "Self-hosted web mode",
     description:
-      "Japanese, Chinese, and Korean lyrics get per-character forced alignment with romanized readings (Hepburn, pinyin, Revised Romanization) shown above each token.",
+      "Run Nightingale on a Linux box on your home network. Phones, laptops, tablets, and TVs open the app in any browser. One install script sets up everything you need to reach it at <hostname>.local — no DNS or port forwarding.",
   },
   {
-    title: "Parakeet v3 ASR (experimental)",
+    title: "Jellyfin and Navidrome",
     description:
-      "Alternative to Whisper for ~25 European languages. NeMo on CUDA, ONNX Runtime on CPU and Apple Silicon. Pick it from Settings.",
+      "Point the library at a Jellyfin or Navidrome server and play straight from your existing collection. Songs download to the local cache on first play so the karaoke pipeline works the same as a folder library. Credentials are kept safe.",
   },
   {
-    title: "UltraStar Deluxe songs (experimental)",
+    title: "Lyrics editor with LRCLIB browser",
     description:
-      "Drop USDX song folders into your library and play them with their built-in pitch and lyric data. No analyzer pass needed.",
+      "Use an analyzed non-USDX song's Actions button to edit its lyrics. When there are multiple matches online, flip through them and apply one with a click. Saving realigns the new lyrics to the audio so the timing stays accurate.",
+  },
+];
+
+const alsoNew = [
+  {
+    title: "Refreshed sidebar",
+    description:
+      "Library, cache, and theme moved out of the avatar menu into their own row with live connection status for remote sources.",
   },
   {
-    title: "Audio-reactive shaders",
+    title: "Scroll memory",
     description:
-      "Ten GPU backgrounds (five new) react to your microphone in real time \u2014 louder vocals push the visuals harder.",
+      "The sidebar and song list remember where you were when you navigate away and come back.",
   },
   {
-    title: "Built-in updater",
+    title: "Smoother updates",
     description:
-      "On macOS and Windows, Nightingale checks for new releases on launch, badges the sidebar avatar when one is ready, and installs signed updates with one click. Linux ships without the updater — the Update entry opens GitHub Releases for a manual download.",
+      "The in-app updater is more reliable across launches and ships the right install behavior on each platform.",
   },
 ];
 ---
@@ -31,14 +39,26 @@ const highlights = [
 <section id="highlights">
   <div class="container">
     <div class="header">
-      <h2>What&apos;s new in v0.6</h2>
+      <h2>What&apos;s new in v0.7</h2>
       <a href="/docs/" class="docs-link">See full docs</a>
     </div>
-    <div class="highlights-grid">
+
+    <div class="flagship-row">
       {
-        highlights.map((item) => (
-          <article class="highlight-card">
+        flagship.map((item) => (
+          <article class="highlight-card flagship">
             <h3>{item.title}</h3>
+            <p>{item.description}</p>
+          </article>
+        ))
+      }
+    </div>
+
+    <div class="dense-row">
+      {
+        alsoNew.map((item) => (
+          <article class="highlight-card dense">
+            <h4>{item.title}</h4>
             <p>{item.description}</p>
           </article>
         ))
@@ -67,34 +87,65 @@ const highlights = [
     color: var(--accent);
   }
 
-  .highlights-grid {
+  .flagship-row {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px;
+    margin-bottom: 14px;
+  }
+
+  .dense-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .highlight-card {
     background: var(--surface);
     border-radius: var(--radius-lg);
     border: 1px solid rgba(255, 255, 255, 0.04);
-    padding: 18px;
+  }
+
+  .highlight-card.flagship {
+    padding: 22px;
+  }
+
+  .highlight-card.dense {
+    padding: 14px;
   }
 
   .highlight-card h3 {
-    margin: 0 0 6px;
-    font-size: 0.95rem;
+    margin: 0 0 8px;
+    font-size: 1.05rem;
     font-weight: 600;
   }
 
-  .highlight-card p {
-    margin: 0;
+  .highlight-card h4 {
+    margin: 0 0 6px;
     font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .highlight-card.flagship p {
+    margin: 0;
+    font-size: 0.9rem;
     color: var(--text-secondary);
     line-height: 1.55;
   }
 
+  .highlight-card.dense p {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
   @media (max-width: 720px) {
-    .highlights-grid {
+    .flagship-row {
+      grid-template-columns: 1fr;
+    }
+
+    .dense-row {
       grid-template-columns: 1fr;
     }
   }
