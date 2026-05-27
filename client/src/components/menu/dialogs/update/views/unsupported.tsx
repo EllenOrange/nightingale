@@ -76,8 +76,7 @@ const selfHostedWebView = ({ ctx, onClose, onOpenSelfHostedDocs }: SelfHostedArg
         installer. Your data folder, library database, and config are preserved across upgrades.
       </InfoLine>
       <pre className="rounded-md bg-muted px-3 py-2 text-[0.7rem] font-mono leading-relaxed whitespace-pre-wrap break-all">
-        curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/main/scripts/install.sh | sudo
-        bash
+        curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/main/scripts/install.sh | bash
       </pre>
     </div>
   ),

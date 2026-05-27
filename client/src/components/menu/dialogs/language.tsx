@@ -20,9 +20,9 @@ import {
 } from "@/components/ui/select";
 import { DialogMode, useDialog } from "@/hooks/use-dialog";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { reanalyzeTranscript } from "@/bridge/analysis";
+import { realign, reanalyzeTranscript } from "@/bridge/analysis";
 import { Song } from "@/types/Song";
 
 const LANGUAGES = [
@@ -58,13 +58,19 @@ export const SelectLanguageDialog = () => {
 
   const languageDialog = isLanguageDialogMode(mode) ? mode : null;
   const open = languageDialog !== null;
-  const currentLanguage = languageDialog?.song.language;
+  const currentLanguage = languageDialog?.song.language ?? undefined;
 
-  const [language, setLanguage] = useState(currentLanguage);
+  const [language, setLanguage] = useState<string | undefined>(currentLanguage);
+  const [analysisMode, setAnalysisMode] = useState<"force" | "realign">("force");
+
+  useEffect(() => {
+    setLanguage(currentLanguage);
+    setAnalysisMode("force");
+  }, [currentLanguage, open]);
 
   const { focusedIndex } = useDialogNav({
     open,
-    itemCount: 3,
+    itemCount: 4,
     onBack: close,
     containerRef,
   });
@@ -88,26 +94,49 @@ export const SelectLanguageDialog = () => {
           </DialogHeader>
           <FieldGroup>
             <Field>
-              <Label htmlFor="model-1">Language</Label>
-              <Select
-                onValueChange={(language) => setLanguage(language)}
-                defaultValue={song.language}
-              >
+              <Label htmlFor="language-select">Language</Label>
+              <Select value={language} onValueChange={(language) => setLanguage(language)}>
                 <SelectTrigger
-                  id="model-1"
+                  id="language-select"
                   className={cn(
                     "focus-visible:ring-0 focus-visible:border-transparent",
                     focusedIndex === 0 && "ring-2 ring-primary",
                   )}
                 >
-                  <SelectValue placeholder="Select a profile" />
+                  <SelectValue placeholder="Select language" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectLabel>Profile</SelectLabel>
+                    <SelectLabel>Language</SelectLabel>
                     {LANGUAGES.map(([value, label]) => (
-                      <SelectItem value={value}>{label}</SelectItem>
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
                     ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <Label htmlFor="analysis-mode-select">Mode</Label>
+              <Select
+                value={analysisMode}
+                onValueChange={(mode) => setAnalysisMode(mode as "force" | "realign")}
+              >
+                <SelectTrigger
+                  id="analysis-mode-select"
+                  className={cn(
+                    "focus-visible:ring-0 focus-visible:border-transparent",
+                    focusedIndex === 1 && "ring-2 ring-primary",
+                  )}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Mode</SelectLabel>
+                    <SelectItem value="force">Force transcript</SelectItem>
+                    <SelectItem value="realign">Realign saved lyrics</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -120,24 +149,28 @@ export const SelectLanguageDialog = () => {
                 onClick={close}
                 className={cn(
                   "focus-visible:ring-0 focus-visible:border-transparent",
-                  focusedIndex === 1 && "ring-2 ring-primary",
+                  focusedIndex === 2 && "ring-2 ring-primary",
                 )}
               >
                 Cancel
               </Button>
             </DialogClose>
             <Button
-              disabled={language === song.language}
+              disabled={!language || (language === song.language && analysisMode === "force")}
               onClick={() => {
                 if (language) {
-                  reanalyzeTranscript(song.file_hash, language);
+                  if (analysisMode === "realign") {
+                    realign(song.file_hash, language);
+                  } else {
+                    reanalyzeTranscript(song.file_hash, language);
+                  }
                 }
 
                 close();
               }}
               className={cn(
                 "focus-visible:ring-0 focus-visible:border-transparent",
-                focusedIndex === 2 && "ring-2 ring-primary",
+                focusedIndex === 3 && "ring-2 ring-primary",
               )}
             >
               Select

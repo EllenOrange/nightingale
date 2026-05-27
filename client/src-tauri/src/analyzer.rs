@@ -33,8 +33,8 @@ pub fn reanalyze_full(file_hash: String) {
 }
 
 #[tauri::command]
-pub fn realign(file_hash: String) {
-    core_realign(&file_hash);
+pub fn realign(file_hash: String, language: Option<String>) {
+    core_realign(&file_hash, language);
 }
 
 #[tauri::command]

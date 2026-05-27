@@ -277,7 +277,7 @@ fn mime_for_path(path: &Path) -> &'static str {
         .unwrap_or("")
         .to_ascii_lowercase();
     match ext.as_str() {
-        "ogg" | "oga" => "audio/ogg",
+        "ogg" | "oga" | "opus" => "audio/ogg",
         "mp3" => "audio/mpeg",
         "wav" => "audio/wav",
         "flac" => "audio/flac",

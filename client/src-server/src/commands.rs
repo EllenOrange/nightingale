@@ -221,8 +221,15 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
             Ok(Value::Null)
         }
         "realign" => {
-            let args: FileHashArgs = deserialize(payload)?;
-            app_core::realign(&args.file_hash);
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                file_hash: String,
+                #[serde(default)]
+                language: Option<String>,
+            }
+            let args: Args = deserialize(payload)?;
+            app_core::realign(&args.file_hash, args.language);
             Ok(Value::Null)
         }
         "reanalyze_force_transcribe" => {

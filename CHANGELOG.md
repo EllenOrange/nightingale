@@ -11,6 +11,20 @@ GitHub Release body. If a section is missing the release is still created
 with a fallback body, but ideally every tagged version has its own entry
 below.
 
+## [0.7.1] - 2026-05-27
+
+### Fixes
+
+- Folder libraries now detect `.opus` audio files and serve them with an Ogg audio MIME type for browser playback.
+- Changing a song's language can now realign existing lyrics without forcing a fresh transcription, and the selected language is preserved for the alignment pass.
+- Edited lyrics keep the song's previous language hint when re-running alignment, avoiding accidental language resets.
+- The self-hosted update/install command no longer pipes the installer through `sudo`, matching the script's own privilege handling.
+
+### Improvements
+
+- Polished the language-selection dialog with explicit force-transcribe vs realign choices and controlled selection state.
+- Tightened the library sidebar scroll/layout behavior around the main navigation list.
+
 ## [0.7.0] - 2026-05-20
 
 ### Highlights

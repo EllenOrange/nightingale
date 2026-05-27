@@ -136,13 +136,17 @@ pub fn save_lyrics_and_realign(file_hash: &str, lines: Vec<String>) -> Result<()
     }
 
     let cache = CacheDir::new();
+    let previous_language = library_db::load_song_by_hash(file_hash)
+        .ok()
+        .flatten()
+        .and_then(|song| song.language);
     write_lyrics_file(&cache, file_hash, &normalized)
         .map_err(|e| format!("Failed to write lyrics file: {e}"))?;
 
     let _ = std::fs::remove_file(cache.transcript_path(file_hash));
     cache.delete_transcript_variants(file_hash);
 
-    update_song_analyzed(file_hash, false, None, None, None, None);
+    update_song_analyzed(file_hash, false, previous_language, None, None, None);
     enqueue_one(file_hash);
     Ok(())
 }

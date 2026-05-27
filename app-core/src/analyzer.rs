@@ -480,16 +480,26 @@ pub fn reanalyze_full(file_hash: &str) {
     reanalyze(file_hash, true);
 }
 
-pub fn realign(file_hash: &str) {
+pub fn realign(file_hash: &str, language: Option<String>) {
     if is_usdx_song(file_hash) {
         return;
     }
 
+    if let Some(lang) = language.as_ref().filter(|lang| !lang.is_empty()) {
+        let mut config = AppConfig::load();
+        config.set_language_override(file_hash.to_string(), lang.clone());
+        config.save();
+    }
+
     let cache = CacheDir::new();
+    let previous_language = library_db::load_song_by_hash(file_hash)
+        .ok()
+        .flatten()
+        .and_then(|song| song.language);
     materialize_lyrics_from_transcript(&cache, file_hash);
     let _ = std::fs::remove_file(cache.transcript_path(file_hash));
     cache.delete_transcript_variants(file_hash);
-    update_song_analyzed(file_hash, false, None, None, None, None);
+    update_song_analyzed(file_hash, false, language.or(previous_language), None, None, None);
     enqueue_one(file_hash);
 }
 
@@ -641,7 +651,11 @@ fn process_song(initial_hash: &str, cache: &CacheDir) {
     if let Some(ref lp) = lyrics_path {
         cmd_json["lyrics"] = serde_json::json!(lp.to_string_lossy());
     }
-    if let Some(lang) = config.language_override(file_hash) {
+    let language_hint = config
+        .language_override(file_hash)
+        .map(str::to_string)
+        .or_else(|| lyrics_path.as_ref().and_then(|_| song.language.clone()));
+    if let Some(lang) = language_hint {
         cmd_json["language"] = serde_json::json!(lang);
     }
 

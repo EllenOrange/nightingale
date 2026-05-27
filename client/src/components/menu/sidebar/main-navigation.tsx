@@ -246,42 +246,47 @@ export const MainNavigation = ({
   const showEmptyPlaceholder = !menu || visibleSections.length === 0;
 
   return (
-    <SidebarContent ref={setScrollContainer}>
+    <SidebarContent className="overflow-hidden">
       <FolderActions
         focusedSidebarIndex={folderFocusedSidebarIndex}
         registerCallback={registerFolderCallback}
       />
-      <SidebarGroup>
-        <SidebarMenu>
-          {showEmptyPlaceholder ? (
-            <SidebarMenuItem className="px-1 py-2">
-              <div className="space-y-1">
-                <SidebarMenuSkeleton showIcon />
-                <SidebarMenuSkeleton showIcon />
-                <SidebarMenuSkeleton showIcon />
-              </div>
-            </SidebarMenuItem>
-          ) : (
-            <SidebarNavProvider rows={rows} baseIndex={baseIndex}>
-              {visibleSections.map((config) => (
-                <LibraryNavSection
-                  key={config.section}
-                  section={config.section}
-                  label={config.label}
-                  icon={config.icon}
-                  items={config.visibleItems}
-                  filter={filter}
-                  open={openBySection[config.section]}
-                  onToggleOpen={(open) => {
-                    setOpenBySection((prev) => ({ ...prev, [config.section]: open }));
-                  }}
-                  onSelectItem={selectMenuItem}
-                />
-              ))}
-            </SidebarNavProvider>
-          )}
-        </SidebarMenu>
-      </SidebarGroup>
+      <div
+        ref={setScrollContainer}
+        className="no-scrollbar min-h-0 flex-1 overflow-auto overscroll-contain"
+      >
+        <SidebarGroup>
+          <SidebarMenu>
+            {showEmptyPlaceholder ? (
+              <SidebarMenuItem className="px-1 py-2">
+                <div className="space-y-1">
+                  <SidebarMenuSkeleton showIcon />
+                  <SidebarMenuSkeleton showIcon />
+                  <SidebarMenuSkeleton showIcon />
+                </div>
+              </SidebarMenuItem>
+            ) : (
+              <SidebarNavProvider rows={rows} baseIndex={baseIndex}>
+                {visibleSections.map((config) => (
+                  <LibraryNavSection
+                    key={config.section}
+                    section={config.section}
+                    label={config.label}
+                    icon={config.icon}
+                    items={config.visibleItems}
+                    filter={filter}
+                    open={openBySection[config.section]}
+                    onToggleOpen={(open) => {
+                      setOpenBySection((prev) => ({ ...prev, [config.section]: open }));
+                    }}
+                    onSelectItem={selectMenuItem}
+                  />
+                ))}
+              </SidebarNavProvider>
+            )}
+          </SidebarMenu>
+        </SidebarGroup>
+      </div>
     </SidebarContent>
   );
 };
