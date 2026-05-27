@@ -16,7 +16,7 @@ If song analysis fails:
 ## No Sound
 
 - Verify your audio output device is correctly configured
-- Check that the audio file format is supported (`.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`)
+- Check that the audio file format is supported (`.mp3`, `.flac`, `.ogg`, `.opus`, `.wav`, `.m4a`, `.aac`, `.wma`)
 - Try a different audio file to rule out file-specific issues
 
 ## Microphone Not Detected

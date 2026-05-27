@@ -12,7 +12,7 @@
 
 Download the latest version from the [Releases](https://github.com/rzru/nightingale/releases) page.
 
-Supported audio formats: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`.
+Supported audio formats: `.mp3`, `.flac`, `.ogg`, `.opus`, `.wav`, `.m4a`, `.aac`, `.wma`.
 
 Supported video formats: `.mp4`, `.mkv`, `.avi`, `.webm`, `.mov`, `.m4v`.
 

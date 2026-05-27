@@ -88,7 +88,7 @@ xattr -cr /Applications/Nightingale.app
 
 ### Supported formats
 
-Audio: `.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, `.wma`. Video: `.mp4`, `.mkv`, `.avi`, `.webm`, `.mov`, `.m4v`. UltraStar: `.usdx`, plus `.txt` files whose contents look like USDX.
+Audio: `.mp3`, `.flac`, `.ogg`, `.opus`, `.wav`, `.m4a`, `.aac`, `.wma`. Video: `.mp4`, `.mkv`, `.avi`, `.webm`, `.mov`, `.m4v`. UltraStar: `.usdx`, plus `.txt` files whose contents look like USDX.
 
 ## Controls
 
