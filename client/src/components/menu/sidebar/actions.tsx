@@ -13,17 +13,19 @@ import { EXIT_SUPPORTED } from "@/bridge/exit";
 import { useMenuFocus } from "@/contexts/menu-focus-context";
 import { useCurrentProfile } from "@/hooks/use-current-profile";
 import { useDialog } from "@/hooks/use-dialog";
+import { useDonationSeen } from "@/hooks/use-donation-seen";
 import { useShouldRunSetup } from "@/hooks/use-should-run-setup";
 import {
   ChevronsUpDownIcon,
   CogIcon,
   DoorOpenIcon,
   DownloadIcon,
+  HeartIcon,
   InfoIcon,
   RefreshCcwDotIcon,
   UserIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavInput } from "@/hooks/navigation/use-nav-input";
 import { useUpdate } from "@/queries/use-update";
 
@@ -40,6 +42,27 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
 
   const update = useUpdate();
   const updateAvailable = update.status === "available";
+
+  const { seen: donationSeen } = useDonationSeen();
+  const showDonationBadge = !donationSeen;
+  const showDonationAvatarBadge = showDonationBadge && !updateAvailable;
+
+  let avatarBadge: ReactNode = null;
+  if (updateAvailable) {
+    avatarBadge = (
+      <span
+        aria-label="Update available"
+        className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-chart-3 ring-2 ring-sidebar"
+      />
+    );
+  } else if (showDonationAvatarBadge) {
+    avatarBadge = (
+      <span
+        aria-label="Support Nightingale"
+        className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-pink-500 ring-2 ring-sidebar"
+      />
+    );
+  }
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownOpenRef = useRef(false);
@@ -125,12 +148,7 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
                     {profile ? profile.slice(0, 2).toLocaleUpperCase() : "NP"}
                   </AvatarFallback>
                 </Avatar>
-                {updateAvailable && (
-                  <span
-                    aria-label="Update available"
-                    className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-chart-3 ring-2 ring-sidebar"
-                  />
-                )}
+                {avatarBadge}
               </div>
               <span className="truncate font-medium">{profile ?? "No Selected Profile"}</span>
               <ChevronsUpDownIcon className="ml-auto size-4" />
@@ -170,6 +188,16 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
                   <span
                     aria-label="Update available"
                     className="ml-auto size-2 rounded-full bg-chart-3"
+                  />
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMode("donate")}>
+                <HeartIcon />
+                <span>Donate</span>
+                {showDonationBadge && (
+                  <span
+                    aria-label="Support Nightingale"
+                    className="ml-auto size-2 rounded-full bg-pink-500"
                   />
                 )}
               </DropdownMenuItem>

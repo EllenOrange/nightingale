@@ -10,6 +10,7 @@ export type DialogMode =
   | "settings"
   | "about"
   | "update"
+  | "donate"
   | "jellyfin-connect"
   | "navidrome-connect"
   | { mode: "language"; song: Song }

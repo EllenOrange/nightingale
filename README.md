@@ -6,6 +6,14 @@
   Karaoke from any song in your music library, powered by neural networks.
 </p>
 
+<p align="center">
+  <a href="https://github.com/rzru/nightingale/actions/workflows/release.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/rzru/nightingale/release.yml?style=flat-square&label=build"></a>
+  <a href="https://github.com/rzru/nightingale/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/rzru/nightingale?style=flat-square"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/rzru/nightingale?style=flat-square"></a>
+  <a href="https://www.patreon.com/cw/nightingalekaraoke"><img alt="Patreon" src="https://img.shields.io/badge/Patreon-Support-FF424D?style=flat-square&logo=patreon&logoColor=white"></a>
+  <a href="https://ko-fi.com/nightingalekaraoke"><img alt="Ko-fi" src="https://img.shields.io/badge/Ko--fi-Buy_a_coffee-FF5E5B?style=flat-square&logo=ko-fi&logoColor=white"></a>
+</p>
+
 ---
 
 Nightingale scans your music folder, Jellyfin server, Navidrome server, or self-hosted web library; separates lead vocals from instrumentals using the [UVR Karaoke model](https://github.com/Anjok07/ultimatevocalremovergui) (or [Demucs](https://github.com/facebookresearch/demucs)); transcribes lyrics with word-level timestamps via [WhisperX](https://github.com/m-bain/whisperX); and plays it all back with synchronized highlighting, pitch scoring, key/tempo controls, profiles, and dynamic backgrounds.
@@ -249,6 +257,15 @@ Required repository secrets:
 | `TAURI_SIGNING_PRIVATE_KEY`           | Minisign private key whose public counterpart is the `pubkey` in [`tauri.conf.json`](client/src-tauri/tauri.conf.json). Generate once with `pnpm tauri signer generate`. |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`  | Password for the signing key. Omit the secret entirely if the key was generated passwordless — GitHub rejects empty-string secrets, and a missing one resolves to empty at workflow runtime, which is what `minisign` expects. |
 | `PIXABAY_API_KEY`                     | Embedded at compile time so release builds can fetch video backgrounds.                                                            |
+
+## Support the project
+
+Nightingale is open-source, free, and built by one person in their spare time. If it brings you joy and you want to help keep development going, you can chip in:
+
+- [Patreon](https://www.patreon.com/cw/nightingalekaraoke) — recurring monthly support.
+- [Ko-fi](https://ko-fi.com/nightingalekaraoke) — one-off tip, no account required.
+
+Every bit helps cover site hosting, hardware for testing, and the time spent shipping new features. Thank you.
 
 ## License
 

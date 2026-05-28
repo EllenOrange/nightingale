@@ -1,4 +1,5 @@
 import { ClearCacheDialog } from "@/components/menu/dialogs/clear-cache";
+import { DonateDialog } from "@/components/menu/dialogs/donate";
 import { EditLyricsDialog } from "@/components/menu/dialogs/edit-lyrics";
 import { ExitDialog } from "@/components/menu/dialogs/exit";
 import { InfoDialog } from "@/components/menu/dialogs/info";
@@ -63,6 +64,7 @@ export const Menu = () => {
       <SelectProfileDialog />
       <InfoDialog />
       <UpdateDialog />
+      <DonateDialog />
       <SelectLanguageDialog />
       <EditLyricsDialog />
       <ClearCacheDialog />
