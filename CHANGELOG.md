@@ -11,6 +11,12 @@ GitHub Release body. If a section is missing the release is still created
 with a fallback body, but ideally every tagged version has its own entry
 below.
 
+## [0.7.2] - 2026-05-28
+
+### Highlights
+
+- Donations — Nightingale is open-source, free, and built by one person. You can now support development with recurring monthly backing on [Patreon](https://www.patreon.com/cw/nightingalekaraoke) or a one-off tip on [Ko-fi](https://ko-fi.com/nightingalekaraoke). A new **Donate** entry under the sidebar avatar (heart icon) opens a dialog with both options. Until it's opened once, the avatar shows a pink badge — the existing green update dot still takes priority. The marketing site also gained a matching `Support Nightingale` section and `Donate` nav link.
+
 ## [0.7.1] - 2026-05-27
 
 ### Fixes
