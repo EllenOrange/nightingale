@@ -48,7 +48,7 @@ export const Filters = () => {
         onClick={enqueueAll}
         data-analyze-all-focus="true"
         className={cn(
-          "size-7 px-0 focus-visible:ring-0 focus-visible:border-transparent hover:ring-primary sm:size-auto sm:px-2",
+          "w-7 px-0 focus-visible:ring-0 focus-visible:border-transparent hover:ring-primary sm:w-auto sm:min-w-28 sm:px-3",
           isAnalyzeAllFocused && "ring-2 ring-primary",
         )}
       >
