@@ -148,7 +148,7 @@ export const SongCard = memo(
         role="listitem"
         data-song-index={index}
         className={cn(
-          "flex gap-2 cursor-pointer bg-card transition-colors hover:ring-primary focus-visible:ring-0 focus-visible:border-border",
+          "flex flex-nowrap cursor-pointer items-start gap-2 bg-card transition-colors hover:ring-primary focus-visible:ring-0 focus-visible:border-border sm:items-center",
           isFocused && "ring-2 ring-primary bg-muted",
           disabled && "bd-muted",
         )}
@@ -164,7 +164,7 @@ export const SongCard = memo(
           enqueueOne(song.file_hash);
         }}
       >
-        <ItemMedia variant="image" className="size-16">
+        <ItemMedia variant="image" className="size-14 sm:size-16">
           {song.album_art_path ? (
             <img
               src={convertFileSrc(song.album_art_path)}
@@ -177,7 +177,7 @@ export const SongCard = memo(
           )}
         </ItemMedia>
 
-        <ItemContent>
+        <ItemContent className="min-w-0">
           {song.is_video && (
             <Badge variant="outline">
               <VideoIcon /> Video
@@ -193,7 +193,7 @@ export const SongCard = memo(
           </ItemDescription>
         </ItemContent>
 
-        <ItemContent className="flex flex-col items-end gap-1">
+        <ItemContent className="min-w-0 flex-none flex-col items-end gap-1">
           <div className="flex items-center gap-1">
             <Badge variant={variant} className={className}>
               {isAnalyzing && <LoaderCircleIcon className="size-3 animate-spin" />}

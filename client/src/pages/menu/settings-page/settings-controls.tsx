@@ -67,7 +67,7 @@ export function NumberButtonGroup({
   onChange,
 }: NumberButtonGroupProps) {
   return (
-    <ButtonGroup>
+    <ButtonGroup className="scrollbar-hide w-full max-w-full justify-start overflow-x-auto">
       {Array.from({ length: NUMBER_PICKER_SIZE }, (_, index) => {
         const option = index + 1;
 
@@ -89,7 +89,7 @@ export function NumberButtonGroup({
 export function PageHeader() {
   return (
     <div className="space-y-1">
-      <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+      <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
       <p className="text-sm text-muted-foreground">
         Tune display, microphone, stem separation, transcript engine, and model parameters.
       </p>

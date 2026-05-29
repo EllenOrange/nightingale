@@ -18,7 +18,7 @@ export const EmptySongList = () => {
   const { setMode } = useDialog();
 
   return (
-    <Empty>
+    <Empty className="px-4 pt-16 md:pt-6">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <MusicIcon />
@@ -29,7 +29,7 @@ export const EmptySongList = () => {
           your karaoke!
         </EmptyDescription>
       </EmptyHeader>
-      <EmptyContent className="flex-row justify-center gap-2">
+      <EmptyContent className="max-w-md flex-col justify-center gap-2 sm:flex-row sm:flex-wrap">
         <Button variant="outline" onClick={() => setMode("navidrome-connect")} disabled={isPending}>
           <Disc3Icon /> Connect Navidrome
         </Button>

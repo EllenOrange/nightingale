@@ -96,7 +96,7 @@ export const SettingsPage = () => {
   return (
     <div
       ref={containerRef}
-      className="h-full overflow-y-auto px-6 py-5 lg:px-8"
+      className="h-full overflow-y-auto px-4 pb-5 pt-14 sm:px-6 md:pt-5 lg:px-8"
       onMouseMoveCapture={(event) => syncFocusFromElement(event.target)}
       onFocusCapture={(event) => syncFocusFromElement(event.target)}
     >
@@ -104,7 +104,7 @@ export const SettingsPage = () => {
         <PageHeader />
 
         <Tabs value={tab} onValueChange={(value) => setTab(value as SettingsTab)}>
-          <TabsList className="w-fit">
+          <TabsList className="scrollbar-hide max-w-full overflow-x-auto overflow-y-hidden sm:w-fit">
             {SETTINGS_TABS.map((settingsTab, slot) => (
               <TabsTrigger
                 key={settingsTab.value}
@@ -252,7 +252,7 @@ export const SettingsPage = () => {
           </TabsContent>
         </Tabs>
 
-        <div className="flex justify-end gap-2 border-t pt-4">
+        <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:justify-end">
           <Button
             variant="ghost"
             onClick={resetDefaults}

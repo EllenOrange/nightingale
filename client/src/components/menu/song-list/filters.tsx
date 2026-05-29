@@ -5,6 +5,7 @@ import { useAnalysis } from "@/hooks/use-analysis";
 import { useSearch } from "@/hooks/use-search";
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { AudioLinesIcon } from "lucide-react";
 
 const DEBOUNCE_MS = 500;
 
@@ -34,7 +35,7 @@ export const Filters = () => {
   const isAnalyzeAllFocused = focus.active && focus.panel === "songList" && focus.analyzeAllFocused;
 
   return (
-    <div className="flex w-full items-center gap-4">
+    <div className="flex w-full items-center gap-2 pl-8 sm:gap-4 sm:pl-0">
       <Input
         defaultValue={search}
         onChange={({ target: { value } }) => handleChange(value)}
@@ -47,11 +48,12 @@ export const Filters = () => {
         onClick={enqueueAll}
         data-analyze-all-focus="true"
         className={cn(
-          "focus-visible:ring-0 focus-visible:border-transparent hover:ring-primary",
+          "size-7 px-0 focus-visible:ring-0 focus-visible:border-transparent hover:ring-primary sm:size-auto sm:px-2",
           isAnalyzeAllFocused && "ring-2 ring-primary",
         )}
       >
-        Analyze All
+        <AudioLinesIcon />
+        <span className="sr-only sm:not-sr-only">Analyze All</span>
       </Button>
     </div>
   );

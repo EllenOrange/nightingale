@@ -238,22 +238,22 @@ function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
   const nextHasReading = nextSeg?.words.some((w) => w.reading) ?? false;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-[60px] z-10 flex flex-col items-center gap-2 px-10">
+    <div className="pointer-events-none absolute inset-x-0 top-[8rem] bottom-[calc(2rem+env(safe-area-inset-bottom))] z-10 flex flex-col items-center justify-end gap-2 overflow-hidden px-3 sm:bottom-[60px] sm:px-10">
       <div
         ref={containerRef}
-        className="relative max-w-full rounded-lg bg-black/40 px-5 py-2.5"
+        className="relative max-w-full rounded-lg bg-black/40 px-3 py-2 sm:px-5 sm:py-2.5"
         style={{ display: "none" }}
       >
         <span
           ref={countdownRef}
-          className="absolute -left-9 -top-9 z-10 flex size-10 items-center justify-center rounded-full bg-black/40 text-[1rem] font-bold text-white"
+          className="absolute -top-12 left-2 z-10 flex size-10 items-center justify-center rounded-full bg-black/40 text-[1rem] font-bold text-white sm:-left-9 sm:-top-9"
           style={{ display: "none" }}
         />
         {seg.words.length > 0 && (
           <p
             className={lineClass(
               segHasReading,
-              "text-[2.5rem] leading-tight font-bold",
+              "text-[clamp(1.35rem,7svh,2.5rem)] leading-tight font-bold",
               "gap-x-3 gap-y-1",
             )}
           >
@@ -263,7 +263,7 @@ function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
                 word={word}
                 hasReading={segHasReading}
                 isLast={wi === seg.words.length - 1}
-                readingClass="text-[1rem]"
+                readingClass="text-[clamp(0.65rem,3svh,1rem)]"
                 refSetter={(el) => {
                   wordRefs.current[wi] = el;
                 }}
@@ -277,13 +277,13 @@ function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
       {nextSeg && (
         <div
           ref={nextContainerRef}
-          className="max-w-full rounded-md bg-black/25 px-4 py-1.5"
+          className="max-w-full rounded-md bg-black/25 px-3 py-1.5 sm:px-4"
           style={{ display: "none" }}
         >
           <p
             className={lineClass(
               nextHasReading,
-              "text-[1.5rem] leading-tight",
+              "text-[clamp(0.9rem,4.5svh,1.5rem)] leading-tight",
               "gap-x-2 gap-y-0.5",
             )}
           >
@@ -293,7 +293,7 @@ function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
                 word={word}
                 hasReading={nextHasReading}
                 isLast={wi === nextSeg.words.length - 1}
-                readingClass="text-[0.7rem]"
+                readingClass="text-[clamp(0.55rem,2.25svh,0.7rem)]"
                 style={nextLineStyle(word)}
               />
             ))}

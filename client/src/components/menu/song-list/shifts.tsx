@@ -135,7 +135,7 @@ export const Shifts = ({ song, status, onSuccess, onError, onStart }: Props) => 
   ];
 
   return (
-    <div className="flex gap-1">
+    <div className="flex shrink-0 gap-1">
       {stepperConfigs.map(({ shiftType, label, tooltip, onPlus, onMinus, disabled }) => (
         <Stepper
           key={shiftType}

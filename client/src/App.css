@@ -150,6 +150,12 @@
     font-size: clamp(20px, 1vw, 64px);
   }
 
+  @media (max-width: 767px) {
+    html {
+      font-size: 16px;
+    }
+  }
+
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
   [role="menuitem"],

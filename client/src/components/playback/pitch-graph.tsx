@@ -50,9 +50,9 @@ function displayScale(windowHeight: number): number {
   return Math.max(MIN_DISPLAY_SCALE, windowHeight / REFERENCE_HEIGHT);
 }
 
-function computeLayout(windowHeight: number): CanvasLayout {
+function computeLayout(windowHeight: number, windowWidth: number): CanvasLayout {
   const scale = displayScale(windowHeight);
-  const width = BASE_DISPLAY_WIDTH * scale;
+  const width = Math.min(BASE_DISPLAY_WIDTH * scale, Math.max(240, windowWidth - 32));
   const height = BASE_DISPLAY_HEIGHT * scale;
   const paddingX = 8 * scale;
   const paddingY = 6 * scale;
@@ -272,17 +272,20 @@ function drawPitchSeries(
   }
 }
 
-function useWindowHeight(): number {
-  const [height, setHeight] = useState(() => window.innerHeight);
+function useWindowSize(): { height: number; width: number } {
+  const [size, setSize] = useState(() => ({
+    height: window.innerHeight,
+    width: window.innerWidth,
+  }));
 
   useEffect(() => {
-    const onResize = () => setHeight(window.innerHeight);
+    const onResize = () => setSize({ height: window.innerHeight, width: window.innerWidth });
 
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  return height;
+  return size;
 }
 
 interface PitchGraphProps {
@@ -292,7 +295,7 @@ interface PitchGraphProps {
 export function PitchGraph({ series }: PitchGraphProps) {
   const { micReady: visible } = usePlaybackMicState();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const windowHeight = useWindowHeight();
+  const { height: windowHeight, width: windowWidth } = useWindowSize();
 
   useEffect(() => {
     if (!visible) return;
@@ -301,16 +304,16 @@ export function PitchGraph({ series }: PitchGraphProps) {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
 
-    const layout = computeLayout(windowHeight);
+    const layout = computeLayout(windowHeight, windowWidth);
 
     setupCanvas(canvas, ctx, layout);
     drawPitchSeries(ctx, layout, series);
-  }, [series, visible, windowHeight]);
+  }, [series, visible, windowHeight, windowWidth]);
 
   if (!visible) return null;
 
   return (
-    <div className="pointer-events-none top-3 absolute left-1/2 z-20 -translate-x-1/2 rounded-sm border-white/15 bg-black/40 p-1">
+    <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-sm border-white/15 bg-black/40 p-1 sm:top-3">
       <canvas ref={canvasRef} className="block" />
     </div>
   );

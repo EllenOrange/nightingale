@@ -7,6 +7,7 @@ import {
   SidebarMenuItem,
   SidebarMenuSub,
   SidebarMenuSubItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import {
@@ -38,6 +39,7 @@ import {
 } from "@/contexts/sidebar-nav-context";
 import { FolderActions } from "./folder-actions";
 import { useNavigate } from "react-router";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 
 type NavSectionConfig = {
   section: LibraryMenuSection;
@@ -168,6 +170,8 @@ export const MainNavigation = ({
   registerFolderCallback,
 }: MainNavigationProps) => {
   const { data: menu } = useLibraryMenuItems();
+  const { setOpen } = useSidebar();
+  const isMobile = useIsMobile();
   const { setLibraryFilter, ...filter } = useLibraryFilter();
   const { focus } = useMenuFocus();
   const navigate = useNavigate();
@@ -177,9 +181,12 @@ export const MainNavigation = ({
   const selectMenuItem = useCallback(
     (section: LibraryMenuSection, item: LibraryMenuItem) => {
       setLibraryFilter(libraryFilterFromMenuSelection(section, item));
+      if (isMobile) {
+        setOpen(false);
+      }
       navigate("/");
     },
-    [navigate, setLibraryFilter],
+    [isMobile, navigate, setLibraryFilter, setOpen],
   );
 
   const visibleSections = useMemo(() => {

@@ -110,11 +110,15 @@ function PlaybackHudImpl({ title, artist }: PlaybackHudProps) {
 
   return (
     <>
-      <div className="pointer-events-auto absolute inset-x-0 top-3 z-20 flex justify-between px-4">
-        <div className="max-w-[40%] overflow-hidden">
-          <h1 className="truncate text-[1.375rem] text-white">{title}</h1>
-          <p className="truncate text-base text-white/70">{artist}</p>
-          <p ref={timerRef} className="text-base text-white/70">
+      <div className="pointer-events-auto absolute inset-x-0 top-[4.25rem] z-20 flex items-start justify-between gap-3 px-3 md:top-3 md:px-4">
+        <div className="min-w-0 max-w-[58%] overflow-hidden sm:max-w-[34%] lg:max-w-[40%]">
+          <h1 className="line-clamp-2 [overflow-wrap:anywhere] text-base leading-tight text-white md:text-[1.375rem]">
+            {title}
+          </h1>
+          <p className="line-clamp-1 [overflow-wrap:anywhere] text-sm text-white/70 md:text-base">
+            {artist}
+          </p>
+          <p ref={timerRef} className="text-sm text-white/70 md:text-base">
             0:00 / {formatTime(duration)}
           </p>
           <div className="mt-2 flex gap-2">
@@ -123,15 +127,17 @@ function PlaybackHudImpl({ title, artist }: PlaybackHudProps) {
           </div>
         </div>
 
-        <div className="flex flex-col items-end">
-          <div className={`text-lg text-white${pitchScore ? "" : "/50"}`}>
+        <div className="flex min-w-0 flex-col items-end">
+          <div className={`text-base md:text-lg ${pitchScore ? "text-white" : "text-white/50"}`}>
             Score: {pitchScore ?? "--"}
           </div>
-          <HintText>{formatGuideText(guideVolume)}</HintText>
-          <HintText>Mic: {micUserEnabled ? micName : "OFF"} [M/N]</HintText>
-          <HintText>Monitor: {micMonitorUserEnabled ? "ON" : "OFF"} [R]</HintText>
-          <HintText>{formatThemeText(themeIndex, videoFlavor)}</HintText>
-          <HintText>[ESC] Back</HintText>
+          <div className="hidden flex-col items-end sm:flex">
+            <HintText>{formatGuideText(guideVolume)}</HintText>
+            <HintText>Mic: {micUserEnabled ? micName : "OFF"} [M/N]</HintText>
+            <HintText>Monitor: {micMonitorUserEnabled ? "ON" : "OFF"} [R]</HintText>
+            <HintText>{formatThemeText(themeIndex, videoFlavor)}</HintText>
+            <HintText>[ESC] Back</HintText>
+          </div>
         </div>
       </div>
 

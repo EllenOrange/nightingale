@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { PanelLeftIcon } from "lucide-react";
+import { PanelLeftIcon, XIcon } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -51,7 +52,13 @@ function SidebarProvider({
 }) {
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
-  const [_open, _setOpen] = React.useState(defaultOpen);
+  const [_open, _setOpen] = React.useState(() => {
+    if (typeof window === "undefined") {
+      return defaultOpen;
+    }
+
+    return window.matchMedia("(min-width: 768px)").matches ? defaultOpen : false;
+  });
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
@@ -67,6 +74,16 @@ function SidebarProvider({
     },
     [setOpenProp, open],
   );
+
+  const isMobile = useIsMobile();
+  const wasMobileRef = React.useRef(isMobile);
+
+  React.useEffect(() => {
+    if (wasMobileRef.current && !isMobile) {
+      setOpen(true);
+    }
+    wasMobileRef.current = isMobile;
+  }, [isMobile, setOpen]);
 
   const toggleSidebar = React.useCallback(() => {
     setOpen((open) => !open);
@@ -134,7 +151,8 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset";
   collapsible?: "offcanvas" | "icon" | "none";
 }) {
-  const { state } = useSidebar();
+  const { state, open, setOpen } = useSidebar();
+  const isMobile = useIsMobile();
 
   if (collapsible === "none") {
     return (
@@ -152,48 +170,90 @@ function Sidebar({
   }
 
   return (
-    <div
-      className="group peer hidden text-sidebar-foreground md:block"
-      data-state={state}
-      data-collapsible={state === "collapsed" ? collapsible : ""}
-      data-variant={variant}
-      data-side={side}
-      data-slot="sidebar"
-    >
-      {/* This is what handles the sidebar gap on desktop */}
-      <div
-        data-slot="sidebar-gap"
-        className={cn(
-          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
-          "group-data-[collapsible=offcanvas]:w-0",
-          "group-data-[side=right]:rotate-180",
-          variant === "floating" || variant === "inset"
-            ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
-        )}
-      />
-      <div
-        data-slot="sidebar-container"
-        data-side={side}
-        className={cn(
-          "fixed top-[var(--titlebar-offset)] bottom-0 z-10 hidden w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
-          // Adjust the padding for floating and inset variants.
-          variant === "floating" || variant === "inset"
-            ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
-            : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
-          className,
-        )}
-        {...props}
-      >
+    <>
+      {isMobile && (
         <div
-          data-sidebar="sidebar"
-          data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          className={cn(
+            "fixed inset-0 z-40 flex text-sidebar-foreground transition-[visibility] duration-200",
+            open ? "pointer-events-auto visible" : "pointer-events-none invisible",
+          )}
         >
-          {children}
+          <button
+            type="button"
+            aria-label="Close sidebar"
+            className={cn(
+              "absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity duration-200",
+              open ? "opacity-100" : "opacity-0",
+            )}
+            onClick={() => setOpen(false)}
+          />
+          <div
+            data-sidebar="sidebar"
+            data-slot="sidebar-mobile"
+            className={cn(
+              "relative flex h-full w-[min(85vw,var(--sidebar-width))] flex-col border-r border-sidebar-border bg-sidebar shadow-xl transition-transform duration-200 ease-out",
+              open ? "translate-x-0" : "-translate-x-full",
+            )}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute top-3 -right-8 z-10 bg-sidebar/90 shadow-sm hover:bg-sidebar-accent"
+              onClick={() => setOpen(false)}
+            >
+              <XIcon />
+              <span className="sr-only">Close Sidebar</span>
+            </Button>
+            {children}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+      {!isMobile && (
+        <div
+          className="group peer text-sidebar-foreground"
+          data-state={state}
+          data-collapsible={state === "collapsed" ? collapsible : ""}
+          data-variant={variant}
+          data-side={side}
+          data-slot="sidebar"
+        >
+          {/* This is what handles the sidebar gap on desktop */}
+          <div
+            data-slot="sidebar-gap"
+            className={cn(
+              "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+              "group-data-[collapsible=offcanvas]:w-0",
+              "group-data-[side=right]:rotate-180",
+              variant === "floating" || variant === "inset"
+                ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
+                : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+            )}
+          />
+          <div
+            data-slot="sidebar-container"
+            data-side={side}
+            className={cn(
+              "fixed top-[var(--titlebar-offset)] bottom-0 z-10 hidden w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+              // Adjust the padding for floating and inset variants.
+              variant === "floating" || variant === "inset"
+                ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
+                : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
+              className,
+            )}
+            {...props}
+          >
+            <div
+              data-sidebar="sidebar"
+              data-slot="sidebar-inner"
+              className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+            >
+              {children}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -244,7 +304,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   );
 }
 
-function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+function SidebarInset({ className, children, ...props }: React.ComponentProps<"main">) {
   return (
     <main
       data-slot="sidebar-inset"
@@ -253,7 +313,10 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
         className,
       )}
       {...props}
-    />
+    >
+      <SidebarTrigger className="absolute top-3 left-3 z-30 size-7 md:hidden" />
+      {children}
+    </main>
   );
 }
 

@@ -8,7 +8,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { EXIT_SUPPORTED } from "@/bridge/exit";
 import { useMenuFocus } from "@/contexts/menu-focus-context";
 import { useCurrentProfile } from "@/hooks/use-current-profile";
@@ -29,6 +34,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useNavInput } from "@/hooks/navigation/use-nav-input";
 import { useUpdate } from "@/queries/use-update";
 import { useNavigate } from "react-router";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 
 interface ActionsProps {
   registerCallback: (callback: (() => void) | null) => void;
@@ -37,6 +43,7 @@ interface ActionsProps {
 
 export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps) => {
   const { setMode } = useDialog();
+  const { setOpen } = useSidebar();
   const navigate = useNavigate();
   const profile = useCurrentProfile();
   const { focus, actionsRef } = useMenuFocus();
@@ -67,6 +74,7 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
   }
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const isMobile = useIsMobile();
   const dropdownOpenRef = useRef(false);
 
   dropdownOpenRef.current = dropdownOpen;
@@ -156,7 +164,12 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
               <ChevronsUpDownIcon className="ml-auto size-4" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="right" align="end" className="min-w-56">
+          <DropdownMenuContent
+            side={isMobile ? "top" : "right"}
+            align={isMobile ? "start" : "end"}
+            collisionPadding={8}
+            className="min-w-56"
+          >
             <DropdownMenuLabel>Setup</DropdownMenuLabel>
             <DropdownMenuGroup>
               <DropdownMenuItem onClick={() => setShouldRunSetup(true)}>
@@ -179,7 +192,15 @@ export const Actions = ({ registerCallback, focusedSidebarIndex }: ActionsProps)
                 <UserIcon />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/settings")}>
+              <DropdownMenuItem
+                onClick={() => {
+                  setDropdownOpen(false);
+                  if (isMobile) {
+                    setOpen(false);
+                  }
+                  navigate("/settings");
+                }}
+              >
                 <CogIcon />
                 Settings
               </DropdownMenuItem>

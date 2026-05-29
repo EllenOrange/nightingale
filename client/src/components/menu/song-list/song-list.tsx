@@ -92,13 +92,13 @@ export const SongList = () => {
 
   return (
     <div className="flex min-h-0 w-full flex-1 justify-center">
-      <div className="flex min-h-0 w-full flex-col gap-4 p-4 md:w-11/12 lg:w-4/5 xl:w-3/5">
+      <div className="flex min-h-0 w-full flex-col gap-3 p-3 sm:gap-4 sm:p-4 md:w-11/12 lg:w-4/5 xl:w-3/5">
         <Filters />
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           <Progress />
           <div
             ref={setScrollContainer}
-            className="no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-1"
+            className="no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
             role="list"
           >
             {songs.map((song, index) => (
