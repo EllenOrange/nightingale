@@ -8,7 +8,7 @@ import { NavidromeConnectDialog } from "@/components/menu/dialogs/remote-source/
 import { SelectLanguageDialog } from "@/components/menu/dialogs/language";
 import { CreateProfileDialog } from "@/components/menu/dialogs/profile/create";
 import { SelectProfileDialog } from "@/components/menu/dialogs/profile/select";
-import { SettingsDialog } from "@/components/menu/dialogs/settings";
+import { Setup } from "@/components/menu/dialogs/setup";
 import { UpdateDialog } from "@/components/menu/dialogs/update";
 import { Sidebar } from "@/components/menu/sidebar/sidebar";
 import { EmptySongList } from "@/components/menu/song-list/empty-song-list";
@@ -19,14 +19,30 @@ import { useMenuNav } from "@/hooks/navigation/use-menu-nav";
 import { useDialog } from "@/hooks/use-dialog";
 import { useShouldRunSetup } from "@/hooks/use-should-run-setup";
 import { useSongsMeta } from "@/queries/use-songs";
-import { ReactElement, useCallback } from "react";
+import { useCallback } from "react";
+import { Outlet, useLocation } from "react-router";
 
-export const Menu = () => {
+export const MenuIndex = () => {
   const { data: meta, isLoading: isLoadingMeta } = useSongsMeta();
+
+  if (isLoadingMeta) {
+    return null;
+  }
+
+  if (meta?.folder) {
+    return <SongList />;
+  }
+
+  return <EmptySongList />;
+};
+
+export const MenuLayout = () => {
   const { mode, setMode } = useDialog();
   const { shouldRunSetup } = useShouldRunSetup();
+  const location = useLocation();
 
-  const overlayOpen = mode !== null || shouldRunSetup;
+  const isContentPage = location.pathname !== "/";
+  const overlayOpen = isContentPage || mode !== null || shouldRunSetup;
 
   const onBack = useCallback(() => {
     setMode((prev) => {
@@ -46,20 +62,9 @@ export const Menu = () => {
 
   useMenuNav({ overlayOpen, onBack });
 
-  let content: ReactElement | null = <EmptySongList />;
-
-  if (meta?.folder) {
-    content = <SongList />;
-  }
-
-  if (isLoadingMeta) {
-    content = null;
-  }
-
   return (
     <Sidebar>
       {EXIT_SUPPORTED && <ExitDialog />}
-      <SettingsDialog />
       <CreateProfileDialog />
       <SelectProfileDialog />
       <InfoDialog />
@@ -70,7 +75,10 @@ export const Menu = () => {
       <ClearCacheDialog />
       <JellyfinConnectDialog />
       <NavidromeConnectDialog />
-      <SidebarInset>{content}</SidebarInset>
+      <Setup />
+      <SidebarInset>
+        <Outlet />
+      </SidebarInset>
     </Sidebar>
   );
 };

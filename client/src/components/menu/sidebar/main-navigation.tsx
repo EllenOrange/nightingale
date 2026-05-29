@@ -37,6 +37,7 @@ import {
   type SidebarNavRow,
 } from "@/contexts/sidebar-nav-context";
 import { FolderActions } from "./folder-actions";
+import { useNavigate } from "react-router";
 
 type NavSectionConfig = {
   section: LibraryMenuSection;
@@ -169,14 +170,16 @@ export const MainNavigation = ({
   const { data: menu } = useLibraryMenuItems();
   const { setLibraryFilter, ...filter } = useLibraryFilter();
   const { focus } = useMenuFocus();
+  const navigate = useNavigate();
   const { setScrollContainer } = usePersistentScroll("sidebar");
   const [openBySection, setOpenBySection] = useSidebarSectionsOpen();
 
   const selectMenuItem = useCallback(
     (section: LibraryMenuSection, item: LibraryMenuItem) => {
       setLibraryFilter(libraryFilterFromMenuSelection(section, item));
+      navigate("/");
     },
-    [setLibraryFilter],
+    [navigate, setLibraryFilter],
   );
 
   const visibleSections = useMemo(() => {
