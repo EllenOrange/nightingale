@@ -1,13 +1,17 @@
 import {
+  usePlaybackMicActions,
   usePlaybackMicState,
+  usePlaybackThemeActions,
   usePlaybackThemeState,
   usePlaybackTranscriptActions,
   usePlaybackTranscriptState,
   usePlaybackTransportActions,
   usePlaybackTransportState,
 } from "@/contexts/playback";
+import { usePlaybackConfigPersist } from "@/hooks/playback/use-playback-config-persist";
 import type { VideoFlavor } from "@/lib/playback/video-flavor";
-import { forwardRef, memo, useEffect, useRef } from "react";
+import type { AppConfig } from "@/types/AppConfig";
+import { forwardRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import { isPixabayTheme, themeName } from "./background";
 
 function formatTime(seconds: number): string {
@@ -43,6 +47,164 @@ function HintText({ children, fontSize = "sm" }: { children: React.ReactNode; fo
 }
 
 const FOOTER_NOTE_CLASS = `pointer-events-none absolute bottom-2 z-20 text-[0.6rem] text-white/30`;
+const TOUCH_QUERIES = ["(pointer: coarse)", "(any-pointer: coarse)"];
+
+function hasTouchInput(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    (navigator.maxTouchPoints > 0 ||
+      TOUCH_QUERIES.some((query) => window.matchMedia(query).matches))
+  );
+}
+
+function useHasTouchInput(): boolean {
+  const [enabled, setEnabled] = useState(hasTouchInput);
+
+  useEffect(() => {
+    const media = TOUCH_QUERIES.map((query) => window.matchMedia(query));
+    const sync = () => setEnabled(hasTouchInput());
+
+    sync();
+    media.forEach((item) => item.addEventListener("change", sync));
+    return () => media.forEach((item) => item.removeEventListener("change", sync));
+  }, []);
+
+  return enabled;
+}
+
+function TouchButton({
+  label,
+  onClick,
+  disabled = false,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="pointer-events-auto rounded-sm border-2 border-white/70 bg-black/10 px-2.5 py-1 text-sm text-white/90 transition-colors hover:bg-black/20 active:bg-black/30 disabled:opacity-35"
+    >
+      {label}
+    </button>
+  );
+}
+
+function SettingsInfo({
+  guideVolume,
+  micUserEnabled,
+  micName,
+  micMonitorUserEnabled,
+  themeIndex,
+  videoFlavor,
+  showShortcuts,
+}: {
+  guideVolume: number;
+  micUserEnabled: boolean;
+  micName: string;
+  micMonitorUserEnabled: boolean;
+  themeIndex: number;
+  videoFlavor: VideoFlavor;
+  showShortcuts: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-end">
+      <HintText>
+        {showShortcuts ? formatGuideText(guideVolume) : `Guide: ${Math.round(guideVolume * 100)}%`}
+      </HintText>
+      <HintText>
+        Mic: {micUserEnabled ? micName : "OFF"}
+        {showShortcuts ? " [M/N]" : ""}
+      </HintText>
+      <HintText>
+        Monitor: {micMonitorUserEnabled ? "ON" : "OFF"}
+        {showShortcuts ? " [R]" : ""}
+      </HintText>
+      <HintText>
+        {showShortcuts
+          ? formatThemeText(themeIndex, videoFlavor)
+          : `Theme: ${themeName(themeIndex, videoFlavor)}`}
+      </HintText>
+      {showShortcuts && <HintText>[ESC] Back</HintText>}
+    </div>
+  );
+}
+
+function TouchControls({ config, hasTouch }: { config: AppConfig | null; hasTouch: boolean }) {
+  const [open, setOpen] = useState(false);
+  const { guideVolume } = usePlaybackTransportState();
+  const { setGuideVolume, handlePause } = usePlaybackTransportActions();
+  const { micUserEnabled, micName, micMonitorUserEnabled } = usePlaybackMicState();
+  const { handleToggleMic, handleCycleMic, handleToggleMicMonitor } = usePlaybackMicActions();
+  const { themeIndex, videoFlavor } = usePlaybackThemeState();
+  const { cycleTheme, cycleFlavor } = usePlaybackThemeActions();
+  const persistConfig = usePlaybackConfigPersist(config);
+
+  const setPersistedGuideVolume = useCallback(
+    (volume: number) => {
+      const next = Math.max(0, Math.min(1, volume));
+      setGuideVolume(next);
+      persistConfig({ guide_volume: next });
+    },
+    [persistConfig, setGuideVolume],
+  );
+
+  if (!hasTouch) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex w-[min(18rem,80vw)] flex-col items-end gap-2">
+      <div className="sm:hidden">
+        <SettingsInfo
+          guideVolume={guideVolume}
+          micUserEnabled={micUserEnabled}
+          micName={micName}
+          micMonitorUserEnabled={micMonitorUserEnabled}
+          themeIndex={themeIndex}
+          videoFlavor={videoFlavor}
+          showShortcuts={false}
+        />
+      </div>
+
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+        className="pointer-events-auto rounded-sm border-2 border-white/70 bg-black/10 px-2.5 py-1 text-sm text-white/90 transition-colors hover:bg-black/20 active:bg-black/30"
+      >
+        {open ? "Hide controls" : "Playback controls"}
+      </button>
+
+      {open && (
+        <div className="grid w-full grid-cols-3 gap-2 text-center">
+          <TouchButton label="Pause" onClick={handlePause} />
+          <TouchButton
+            label={guideVolume === 0 ? "Guide On" : "Guide Off"}
+            onClick={() => setPersistedGuideVolume(guideVolume > 0 ? 0 : 0.3)}
+          />
+          <TouchButton label="Guide +" onClick={() => setPersistedGuideVolume(guideVolume + 0.1)} />
+          <TouchButton label="Guide -" onClick={() => setPersistedGuideVolume(guideVolume - 0.1)} />
+          <TouchButton label={micUserEnabled ? "Mic Off" : "Mic On"} onClick={handleToggleMic} />
+          <TouchButton label="Mic Select" onClick={handleCycleMic} />
+          <TouchButton
+            label={micMonitorUserEnabled ? "Monitor Off" : "Monitor On"}
+            onClick={handleToggleMicMonitor}
+          />
+          <TouchButton label="Theme" onClick={cycleTheme} />
+          <TouchButton
+            label="Flavor"
+            onClick={cycleFlavor}
+            disabled={!isPixabayTheme(themeIndex)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Disclaimer({ source }: { source: string }) {
   if (source === "usdx") {
@@ -64,9 +226,10 @@ function Disclaimer({ source }: { source: string }) {
 interface PlaybackHudProps {
   title: string;
   artist: string;
+  config: AppConfig | null;
 }
 
-function PlaybackHudImpl({ title, artist }: PlaybackHudProps) {
+function PlaybackHudImpl({ title, artist, config }: PlaybackHudProps) {
   const { duration, guideVolume } = usePlaybackTransportState();
   const { subscribe, getCurrentTime } = usePlaybackTransportActions();
   const { themeIndex, videoFlavor } = usePlaybackThemeState();
@@ -81,6 +244,7 @@ function PlaybackHudImpl({ title, artist }: PlaybackHudProps) {
   const skipOutroRef = useRef<HTMLButtonElement>(null);
 
   const showPixabayCredit = isPixabayTheme(themeIndex);
+  const hasTouch = useHasTouchInput();
 
   // Updates the timer text and skip-button visibility via direct DOM mutation
   // (rAF subscriber), only triggering a text update when the displayed second changes.
@@ -131,13 +295,18 @@ function PlaybackHudImpl({ title, artist }: PlaybackHudProps) {
           <div className={`text-base md:text-lg ${pitchScore ? "text-white" : "text-white/50"}`}>
             Score: {pitchScore ?? "--"}
           </div>
-          <div className="hidden flex-col items-end sm:flex">
-            <HintText>{formatGuideText(guideVolume)}</HintText>
-            <HintText>Mic: {micUserEnabled ? micName : "OFF"} [M/N]</HintText>
-            <HintText>Monitor: {micMonitorUserEnabled ? "ON" : "OFF"} [R]</HintText>
-            <HintText>{formatThemeText(themeIndex, videoFlavor)}</HintText>
-            <HintText>[ESC] Back</HintText>
+          <div className="hidden sm:block">
+            <SettingsInfo
+              guideVolume={guideVolume}
+              micUserEnabled={micUserEnabled}
+              micName={micName}
+              micMonitorUserEnabled={micMonitorUserEnabled}
+              themeIndex={themeIndex}
+              videoFlavor={videoFlavor}
+              showShortcuts={!hasTouch}
+            />
           </div>
+          <TouchControls config={config} hasTouch={hasTouch} />
         </div>
       </div>
 
