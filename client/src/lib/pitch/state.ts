@@ -1,5 +1,4 @@
 import {
-  MIC_LATENCY_COMPENSATION_SEC,
   PITCH_BUFFER_SIZE,
   PITCH_WINDOW_SAMPLES,
   PUSH_INTERVAL_SEC,
@@ -146,12 +145,13 @@ export function sampleVocalsWindow(
   vocals: AudioBuffer | null,
   timeSec: number,
   out: Float32Array,
+  latencyCompensationSec: number,
 ): boolean {
   if (!vocals || out.length !== PITCH_WINDOW_SAMPLES) {
     return false;
   }
   const sr = vocals.sampleRate;
-  const start = Math.floor(Math.max(0, timeSec - MIC_LATENCY_COMPENSATION_SEC) * sr);
+  const start = Math.floor(Math.max(0, timeSec - latencyCompensationSec) * sr);
   const ch = vocals.numberOfChannels > 0 ? vocals.getChannelData(0) : null;
   if (!ch || start + out.length > ch.length) {
     return false;

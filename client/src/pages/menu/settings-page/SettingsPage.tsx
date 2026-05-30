@@ -20,6 +20,7 @@ import {
   getBatchSizeSegment,
   type SettingsTab,
 } from "./constants";
+import { MicLatencyField } from "./mic-latency-field";
 import { Hint, NumberButtonGroup, PageHeader, SettingsSelect } from "./settings-controls";
 import { useSettingsNavigation } from "./use-settings-navigation";
 
@@ -36,6 +37,9 @@ export const SettingsPage = () => {
   const [isFullScreen, setIsFullScreen] = useState<boolean | null | undefined>(config?.fullscreen);
   const [micMonitorGain, setMicMonitorGain] = useState(
     config?.mic_monitor_gain ?? DEFAULTS.mic_monitor_gain,
+  );
+  const [micLatencySec, setMicLatencySec] = useState(
+    config?.mic_latency_compensation_sec ?? DEFAULTS.mic_latency_compensation_sec,
   );
 
   const close = () => navigate("/");
@@ -60,6 +64,10 @@ export const SettingsPage = () => {
   }, [config?.mic_monitor_gain]);
 
   useEffect(() => {
+    setMicLatencySec(config?.mic_latency_compensation_sec ?? DEFAULTS.mic_latency_compensation_sec);
+  }, [config?.mic_latency_compensation_sec]);
+
+  useEffect(() => {
     const updateIsFullScreen = async () => {
       setIsFullScreen(await tauriIsFullScreen());
     };
@@ -72,6 +80,11 @@ export const SettingsPage = () => {
     mutate({ mic_monitor_gain: gain });
   };
 
+  const updateMicLatency = (latencySec: number) => {
+    setMicLatencySec(latencySec);
+    mutate({ mic_latency_compensation_sec: latencySec });
+  };
+
   const toggleWindowMode = (fullscreen: boolean) => {
     setIsFullScreen(fullscreen);
     setFullScreen(fullscreen);
@@ -81,6 +94,7 @@ export const SettingsPage = () => {
   const resetDefaults = () => {
     mutate(DEFAULTS);
     setMicMonitorGain(DEFAULTS.mic_monitor_gain);
+    setMicLatencySec(DEFAULTS.mic_latency_compensation_sec);
   };
 
   const { footerSegment, getFocusClassName, syncFocusFromElement } = useSettingsNavigation({
@@ -88,9 +102,11 @@ export const SettingsPage = () => {
     tab,
     isParakeet,
     micMonitorGain,
+    micLatencySec,
     onBack: close,
     onTabChange: setTab,
     onMicMonitorGainChange: updateMicMonitorGain,
+    onMicLatencyChange: updateMicLatency,
   });
 
   return (
@@ -171,6 +187,14 @@ export const SettingsPage = () => {
                   className={getFocusClassName(NAV.general.micMonitorGain)}
                 />
               </Field>
+
+              <MicLatencyField
+                selectedMicId={config?.preferred_mic ?? null}
+                latencySec={micLatencySec}
+                sliderClassName={getFocusClassName(NAV.general.micLatency, 0)}
+                buttonClassName={getFocusClassName(NAV.general.micLatency, 1)}
+                onLatencyChange={updateMicLatency}
+              />
             </FieldGroup>
           </TabsContent>
 

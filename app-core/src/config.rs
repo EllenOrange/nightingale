@@ -96,6 +96,7 @@ pub struct AppConfig {
     pub mic_monitoring: Option<bool>,
     #[serde(alias = "mic_mirror_gain")]
     pub mic_monitor_gain: Option<f64>,
+    pub mic_latency_compensation_sec: Option<f64>,
     pub preferred_mic: Option<String>,
     pub whisper_model: Option<String>,
     pub beam_size: Option<u32>,
@@ -124,6 +125,7 @@ impl Default for AppConfig {
             mic_active: None,
             mic_monitoring: None,
             mic_monitor_gain: None,
+            mic_latency_compensation_sec: None,
             preferred_mic: None,
             whisper_model: None,
             beam_size: None,
@@ -285,6 +287,13 @@ impl AppConfig {
             .map(|v| v as f32)
             .unwrap_or(0.65)
             .clamp(0.0, 2.0)
+    }
+
+    pub fn mic_latency_compensation_sec(&self) -> f32 {
+        self.mic_latency_compensation_sec
+            .map(|v| v as f32)
+            .unwrap_or(0.08)
+            .clamp(0.0, 0.5)
     }
 
     pub fn language_override(&self, file_hash: &str) -> Option<&str> {

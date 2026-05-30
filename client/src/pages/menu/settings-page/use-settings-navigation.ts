@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils";
 import type { RefObject } from "react";
 import { useMemo } from "react";
 import {
+  MIC_LATENCY_MAX,
+  MIC_LATENCY_STEP,
   MIC_MONITOR_GAIN_MAX,
   MIC_MONITOR_GAIN_STEP,
   NAV,
@@ -38,9 +40,11 @@ interface UseSettingsNavigationOptions {
   tab: SettingsTab;
   isParakeet: boolean;
   micMonitorGain: number;
+  micLatencySec: number;
   onBack: () => void;
   onTabChange: (tab: SettingsTab) => void;
   onMicMonitorGainChange: (gain: number) => void;
+  onMicLatencyChange: (latencySec: number) => void;
 }
 
 export function useSettingsNavigation({
@@ -48,9 +52,11 @@ export function useSettingsNavigation({
   tab,
   isParakeet,
   micMonitorGain,
+  micLatencySec,
   onBack,
   onTabChange,
   onMicMonitorGainChange,
+  onMicLatencyChange,
 }: UseSettingsNavigationOptions) {
   const stops = useMemo(() => getSettingsStops(tab, isParakeet), [tab, isParakeet]);
   const itemCount = useMemo(() => stops.reduce((sum, size) => sum + size, 0), [stops]);
@@ -68,13 +74,23 @@ export function useSettingsNavigation({
         return true;
       }
 
-      if (tab !== "general" || segment !== NAV.general.micMonitorGain) return false;
-      if (!action.left && !action.right) return false;
+      if (tab !== "general" || (!action.left && !action.right)) return false;
 
-      const delta = action.right ? MIC_MONITOR_GAIN_STEP : -MIC_MONITOR_GAIN_STEP;
-      const next = Math.min(MIC_MONITOR_GAIN_MAX, Math.max(0, micMonitorGain + delta));
-      onMicMonitorGainChange(next);
-      return true;
+      if (segment === NAV.general.micMonitorGain) {
+        const delta = action.right ? MIC_MONITOR_GAIN_STEP : -MIC_MONITOR_GAIN_STEP;
+        const next = Math.min(MIC_MONITOR_GAIN_MAX, Math.max(0, micMonitorGain + delta));
+        onMicMonitorGainChange(next);
+        return true;
+      }
+
+      if (segment === NAV.general.micLatency) {
+        const delta = action.right ? MIC_LATENCY_STEP : -MIC_LATENCY_STEP;
+        const next = Math.min(MIC_LATENCY_MAX, Math.max(0, micLatencySec + delta));
+        onMicLatencyChange(next);
+        return true;
+      }
+
+      return false;
     },
   });
 

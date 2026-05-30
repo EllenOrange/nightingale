@@ -1,5 +1,10 @@
 import type { TimeSubscriber } from "@/hooks/use-audio-player";
-import { PITCH_WINDOW_SAMPLES } from "@/lib/pitch/constants";
+import {
+  DEFAULT_MIC_LATENCY_COMPENSATION_SEC,
+  MAX_MIC_LATENCY_COMPENSATION_SEC,
+  MIN_MIC_LATENCY_COMPENSATION_SEC,
+  PITCH_WINDOW_SAMPLES,
+} from "@/lib/pitch/constants";
 import { createPitchDetector, detectPitchFromSamplesRef } from "@/lib/pitch/detect";
 import {
   computeSingableTime,
@@ -21,12 +26,14 @@ export interface PitchScoringSource {
 export function usePitchScoring(
   { isReady, duration, getVocalsBuffer, subscribe }: PitchScoringSource,
   micPitch: number | null,
+  latencyCompensationSec = DEFAULT_MIC_LATENCY_COMPENSATION_SEC,
 ) {
   const refDetector = useRef(createPitchDetector());
   const scratchRef = useRef(new Float32Array(PITCH_WINDOW_SAMPLES));
   const bufferRef = useRef(new PitchStateBuffer());
   const scoringRef = useRef(new PitchScoring(1));
   const micPitchRef = useRef(micPitch);
+  const latencyRef = useRef(latencyCompensationSec);
   const singableRef = useRef<number | null>(null);
   const [series, setSeries] = useState<PitchSeries>({
     refPitches: [],
@@ -36,6 +43,10 @@ export function usePitchScoring(
   const [score, setScore] = useState(0);
 
   micPitchRef.current = micPitch;
+  latencyRef.current = Math.min(
+    MAX_MIC_LATENCY_COMPENSATION_SEC,
+    Math.max(MIN_MIC_LATENCY_COMPENSATION_SEC, latencyCompensationSec),
+  );
 
   useEffect(() => {
     if (!isReady || duration <= 0) {
@@ -65,7 +76,7 @@ export function usePitchScoring(
       const vocals = getVocalsBuffer();
       const mp = micPitchRef.current;
 
-      if (!vocals || !sampleVocalsWindow(vocals, t, scratchRef.current)) {
+      if (!vocals || !sampleVocalsWindow(vocals, t, scratchRef.current, latencyRef.current)) {
         bufferRef.current.tryPush(null, mp, 0, t);
       } else {
         const refHz = detectPitchFromSamplesRef(

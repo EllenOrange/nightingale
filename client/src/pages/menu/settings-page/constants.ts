@@ -1,3 +1,7 @@
+import {
+  DEFAULT_MIC_LATENCY_COMPENSATION_SEC,
+  MAX_MIC_LATENCY_COMPENSATION_SEC,
+} from "@/lib/pitch/constants";
 import type { AppConfig } from "@/types/AppConfig";
 
 export type SettingsTab = "general" | "analysis";
@@ -27,6 +31,7 @@ export const DEFAULTS = {
   beam_size: 8,
   batch_size: 8,
   mic_monitor_gain: 0.65,
+  mic_latency_compensation_sec: DEFAULT_MIC_LATENCY_COMPENSATION_SEC,
   auto_analyze: false,
 } satisfies Pick<
   AppConfig,
@@ -36,11 +41,14 @@ export const DEFAULTS = {
   | "beam_size"
   | "batch_size"
   | "mic_monitor_gain"
+  | "mic_latency_compensation_sec"
   | "auto_analyze"
 >;
 
 export const MIC_MONITOR_GAIN_STEP = 0.01;
 export const MIC_MONITOR_GAIN_MAX = 2;
+export const MIC_LATENCY_STEP = 0.005;
+export const MIC_LATENCY_MAX = MAX_MIC_LATENCY_COMPENSATION_SEC;
 export const NUMBER_PICKER_SIZE = 16;
 
 export const NAV = {
@@ -49,6 +57,7 @@ export const NAV = {
     window: 1,
     microphone: 2,
     micMonitorGain: 3,
+    micLatency: 4,
   },
   analysis: {
     separator: 1,
@@ -63,7 +72,7 @@ export const NAV = {
 
 export function getSettingsStops(tab: SettingsTab, isParakeet: boolean) {
   if (tab === "general") {
-    return [2, 2, 1, 1, 2];
+    return [2, 2, 1, 1, 2, 2];
   }
 
   return isParakeet

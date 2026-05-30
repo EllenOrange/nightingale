@@ -21,6 +21,7 @@ export type AppConfig = {
    */
   mic_monitoring: boolean | null;
   mic_monitor_gain: number | null;
+  mic_latency_compensation_sec: number | null;
   preferred_mic: string | null;
   whisper_model: string | null;
   beam_size: number | null;
