@@ -1,6 +1,6 @@
 use app_core::{
-    AnalysisQueue, AppConfig, JellyfinHealth, JellyfinLoginResult, LibraryMenuItems,
-    LibrarySource, LoadSongsParams, NavidromeHealth, NavidromeLoginResult, SongsMeta, SongsStore,
+    AnalysisQueue, AppConfig, JellyfinHealth, JellyfinLoginResult, LibraryMenuItems, LibrarySource,
+    LoadSongsParams, NavidromeHealth, NavidromeLoginResult, SongsMeta, SongsStore,
 };
 
 #[tauri::command]
@@ -33,8 +33,7 @@ pub fn jellyfin_login(
     username: String,
     password: String,
 ) -> Result<JellyfinLoginResult, String> {
-    app_core::jellyfin_login(&base_url, &username, &password, None)
-        .map_err(|e| e.to_string())
+    app_core::jellyfin_login(&base_url, &username, &password, None).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

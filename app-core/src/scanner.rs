@@ -84,7 +84,9 @@ pub fn start_scan() {
             return;
         }
 
-        if library_db::scan_generation_is_current(scan_generation) && AppConfig::load().auto_analyze() {
+        if library_db::scan_generation_is_current(scan_generation)
+            && AppConfig::load().auto_analyze()
+        {
             analyzer::enqueue_all(&LibraryMenuFilters::default());
         }
     });

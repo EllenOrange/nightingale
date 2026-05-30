@@ -11,9 +11,7 @@ use crate::library_menu::{LibraryMenuItem, LibraryMenuItems};
 use crate::library_model::{LibraryMenuFilters, LoadSongsParams, SongsMeta, SongsStore};
 
 use super::connection::with_conn;
-use super::migrations::{
-    is_song_migration_in_progress, song_migration_done, song_migration_total,
-};
+use super::migrations::{is_song_migration_in_progress, song_migration_done, song_migration_total};
 use super::songs::load_song_from_payload_column;
 
 pub fn load_meta_sql() -> rusqlite::Result<SongsMeta> {

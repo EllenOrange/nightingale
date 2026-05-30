@@ -1,4 +1,6 @@
 import { usePlaybackTransportActions, usePlaybackTransportState } from "@/contexts/playback";
+import { cn } from "@/lib/utils";
+import type { AppConfig } from "@/types/AppConfig";
 import type { Segment, Word } from "@/types/Transcript";
 import { memo, useEffect, useRef, useState } from "react";
 
@@ -152,16 +154,54 @@ function WordToken({ word, hasReading, isLast, readingClass, refSetter, style }:
   );
 }
 
-const lineClass = (hasReading: boolean, base: string, gap: string) =>
-  hasReading ? `flex flex-wrap items-end justify-center ${gap} ${base}` : `text-center ${base}`;
+type LyricsVerticalPosition = NonNullable<AppConfig["lyrics_vertical_position"]>;
+
+type LyricsHorizontalPosition = NonNullable<AppConfig["lyrics_horizontal_position"]>;
+
+const verticalClass: Record<LyricsVerticalPosition, string> = {
+  bottom: "top-[8rem] bottom-[calc(2rem+env(safe-area-inset-bottom))] justify-end sm:bottom-[60px]",
+  center: "inset-y-[6rem] justify-center",
+  top: "top-[calc(2rem+env(safe-area-inset-top))] bottom-[8rem] justify-start overflow-visible sm:top-[60px]",
+};
+
+const horizontalItemsClass: Record<LyricsHorizontalPosition, string> = {
+  left: "items-start",
+  center: "items-center",
+  right: "items-end",
+};
+
+const horizontalTextClass: Record<LyricsHorizontalPosition, string> = {
+  left: "text-left justify-start",
+  center: "text-center justify-center",
+  right: "text-right justify-end",
+};
+
+const COUNTDOWN_CLASS =
+  "absolute -top-12 left-2 z-10 flex size-10 items-center justify-center rounded-full bg-black/40 text-[1rem] font-bold text-white sm:-left-9 sm:-top-9";
+
+const lineClass = (
+  hasReading: boolean,
+  base: string,
+  gap: string,
+  horizontalPosition: LyricsHorizontalPosition,
+) =>
+  hasReading
+    ? `flex flex-wrap items-end ${horizontalTextClass[horizontalPosition]} ${gap} ${base}`
+    : `${horizontalTextClass[horizontalPosition]} ${base}`;
 
 // --- Component ---
 
 interface LyricsDisplayProps {
   segments: Segment[];
+  verticalPosition?: LyricsVerticalPosition | null;
+  horizontalPosition?: LyricsHorizontalPosition | null;
 }
 
-function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
+function LyricsDisplayImpl({
+  segments,
+  verticalPosition = "bottom",
+  horizontalPosition = "center",
+}: LyricsDisplayProps) {
   const { isPlaying, paused } = usePlaybackTransportState();
   const { subscribe, getCurrentTime } = usePlaybackTransportActions();
   const animate = isPlaying && !paused;
@@ -237,24 +277,30 @@ function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
   const segHasReading = seg.words.some((w) => w.reading);
   const nextHasReading = nextSeg?.words.some((w) => w.reading) ?? false;
 
+  const vertical = verticalPosition ?? "bottom";
+  const horizontal = horizontalPosition ?? "center";
+
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[8rem] bottom-[calc(2rem+env(safe-area-inset-bottom))] z-10 flex flex-col items-center justify-end gap-2 overflow-hidden px-3 sm:bottom-[60px] sm:px-10">
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-x-0 z-10 flex flex-col gap-2 overflow-hidden px-3 sm:px-10",
+        verticalClass[vertical],
+        horizontalItemsClass[horizontal],
+      )}
+    >
       <div
         ref={containerRef}
         className="relative max-w-full rounded-lg bg-black/40 px-3 py-2 sm:px-5 sm:py-2.5"
         style={{ display: "none" }}
       >
-        <span
-          ref={countdownRef}
-          className="absolute -top-12 left-2 z-10 flex size-10 items-center justify-center rounded-full bg-black/40 text-[1rem] font-bold text-white sm:-left-9 sm:-top-9"
-          style={{ display: "none" }}
-        />
+        <span ref={countdownRef} className={COUNTDOWN_CLASS} style={{ display: "none" }} />
         {seg.words.length > 0 && (
           <p
             className={lineClass(
               segHasReading,
               "text-[clamp(1.35rem,7svh,2.5rem)] leading-tight font-bold",
               "gap-x-3 gap-y-1",
+              horizontal,
             )}
           >
             {seg.words.map((word, wi) => (
@@ -285,6 +331,7 @@ function LyricsDisplayImpl({ segments }: LyricsDisplayProps) {
               nextHasReading,
               "text-[clamp(0.9rem,4.5svh,1.5rem)] leading-tight",
               "gap-x-2 gap-y-0.5",
+              horizontal,
             )}
           >
             {nextSeg.words.map((word, wi) => (

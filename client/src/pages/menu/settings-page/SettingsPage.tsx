@@ -8,11 +8,14 @@ import { setFullScreen, isFullScreen as tauriIsFullScreen } from "@/bridge/fullS
 import { useMicDevices } from "@/hooks/use-mic-pitch";
 import { useConfigMutation } from "@/mutations/use-config-mutation";
 import { useConfig } from "@/queries/use-config";
+import type { AppConfig } from "@/types/AppConfig";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   ASR_ENGINES,
   DEFAULTS,
+  LYRICS_HORIZONTAL_POSITIONS,
+  LYRICS_VERTICAL_POSITIONS,
   MODELS,
   NAV,
   SEPARATORS,
@@ -195,6 +198,44 @@ export const SettingsPage = () => {
                 buttonClassName={getFocusClassName(NAV.general.micLatency, 1)}
                 onLatencyChange={updateMicLatency}
               />
+
+              <Field>
+                <Label htmlFor="lyrics-vertical-position-1">Lyrics vertical position</Label>
+                <Hint>Top moves playback HUD and pitch graph to the bottom</Hint>
+                <SettingsSelect
+                  id="lyrics-vertical-position-1"
+                  label="Lyrics vertical position"
+                  placeholder="Select vertical position"
+                  value={config?.lyrics_vertical_position ?? DEFAULTS.lyrics_vertical_position}
+                  options={LYRICS_VERTICAL_POSITIONS}
+                  triggerClassName={getFocusClassName(NAV.general.lyricsVerticalPosition)}
+                  onValueChange={(lyrics_vertical_position) =>
+                    mutate({
+                      lyrics_vertical_position:
+                        lyrics_vertical_position as AppConfig["lyrics_vertical_position"],
+                    })
+                  }
+                />
+              </Field>
+
+              <Field>
+                <Label htmlFor="lyrics-horizontal-position-1">Lyrics horizontal position</Label>
+                <Hint>Align lyrics left, center, or right during playback</Hint>
+                <SettingsSelect
+                  id="lyrics-horizontal-position-1"
+                  label="Lyrics horizontal position"
+                  placeholder="Select horizontal position"
+                  value={config?.lyrics_horizontal_position ?? DEFAULTS.lyrics_horizontal_position}
+                  options={LYRICS_HORIZONTAL_POSITIONS}
+                  triggerClassName={getFocusClassName(NAV.general.lyricsHorizontalPosition)}
+                  onValueChange={(lyrics_horizontal_position) =>
+                    mutate({
+                      lyrics_horizontal_position:
+                        lyrics_horizontal_position as AppConfig["lyrics_horizontal_position"],
+                    })
+                  }
+                />
+              </Field>
             </FieldGroup>
           </TabsContent>
 

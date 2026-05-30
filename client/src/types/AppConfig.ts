@@ -27,6 +27,8 @@ export type AppConfig = {
   beam_size: number | null;
   batch_size: number | null;
   last_video_flavor: number | null;
+  lyrics_vertical_position: string | null;
+  lyrics_horizontal_position: string | null;
   separator: string | null;
   asr_engine: string | null;
   auto_analyze: boolean | null;

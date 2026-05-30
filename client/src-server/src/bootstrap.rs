@@ -17,8 +17,5 @@ pub struct Bootstrap {
 pub async fn handle(State(_state): State<AppState>) -> Json<Bootstrap> {
     let config = AppConfig::load();
     let songs_meta = SongsStore::load_meta();
-    Json(Bootstrap {
-        config,
-        songs_meta,
-    })
+    Json(Bootstrap { config, songs_meta })
 }

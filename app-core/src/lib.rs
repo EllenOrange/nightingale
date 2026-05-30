@@ -26,10 +26,23 @@ pub use cache::{
     default_nightingale_dir, nightingale_dir, normalized_target_path, same_path,
 };
 pub use config::{AppConfig, LibrarySource};
-pub use media_server::MediaEndpoint;
 pub use library_db::{init_library, library_db_path};
 pub use library_menu::{LibraryMenuItem, LibraryMenuItems, load_library_menu_items};
 pub use library_model::{LibraryMenuFilters, LoadSongsParams, SongsMeta, SongsStore};
+pub use lyrics::{
+    LrclibCandidate, LyricsFile, load_lyrics_file, save_lyrics_and_realign, search_lrclib_for_hash,
+};
+pub use media_server::MediaEndpoint;
+pub use playback::{
+    AudioPaths, PixabayVideoDownloaded, ShiftDone, ShiftResult, StemsReady,
+    download_pixabay_videos, ensure_mp3_stems, ensure_mp3_stems_ready_payload,
+    ensure_playable_source_video, get_audio_paths, get_cached_pixabay_videos, load_transcript,
+    prefetch_one_per_flavor, shift_key, shift_key_done_payload, shift_tempo,
+    shift_tempo_done_payload,
+};
+pub use profile::ProfileStore;
+pub use scanner::start_scan;
+pub use song::SongOrigin;
 pub use source::{
     JellyfinAuth, JellyfinSource, MediaSource, NavidromeAuth, NavidromeSource, SourceKind,
     active_source,
@@ -42,19 +55,6 @@ pub use source::{
         ping_current as navidrome_ping_current,
     },
 };
-pub use lyrics::{
-    LrclibCandidate, LyricsFile, load_lyrics_file, save_lyrics_and_realign, search_lrclib_for_hash,
-};
-pub use playback::{
-    AudioPaths, PixabayVideoDownloaded, ShiftDone, ShiftResult, StemsReady,
-    download_pixabay_videos, ensure_mp3_stems, ensure_mp3_stems_ready_payload,
-    ensure_playable_source_video, get_audio_paths, get_cached_pixabay_videos, load_transcript,
-    prefetch_one_per_flavor, shift_key, shift_key_done_payload, shift_tempo,
-    shift_tempo_done_payload,
-};
-pub use profile::ProfileStore;
-pub use scanner::start_scan;
-pub use song::SongOrigin;
 pub use vendor::{
     SetupProgress, SetupStep, clear_vendor_dir, is_ready, mark_ready,
     refresh_analyzer_scripts_if_ready, resolve_data_path_input, run_vendor_setup, step_create_venv,

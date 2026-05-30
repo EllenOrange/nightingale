@@ -1,5 +1,5 @@
 use app_core::{
-    LrclibCandidate, LyricsFile, load_lyrics_file, save_lyrics_and_realign, search_lrclib_for_hash,
+    load_lyrics_file, save_lyrics_and_realign, search_lrclib_for_hash, LrclibCandidate, LyricsFile,
 };
 
 #[tauri::command]

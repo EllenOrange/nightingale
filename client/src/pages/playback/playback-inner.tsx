@@ -38,6 +38,9 @@ function PlaybackLayout({ song, config }: PlaybackLayoutProps) {
   const { handleContinue, handleExit } = usePlaybackTransportActions();
   const { segments } = usePlaybackTranscriptState();
   const { series } = usePlaybackMicState();
+  const lyricsVerticalPosition = config?.lyrics_vertical_position ?? "bottom";
+  const lyricsHorizontalPosition = config?.lyrics_horizontal_position ?? "center";
+  const hudPosition = lyricsVerticalPosition === "top" ? "bottom" : "top";
 
   usePlaybackInput(config);
   const result = usePlaybackResult(song);
@@ -48,9 +51,18 @@ function PlaybackLayout({ song, config }: PlaybackLayoutProps) {
 
       {isReady && (
         <>
-          <PlaybackHud title={song.title} artist={song.artist} config={config} />
-          <PitchGraph series={series} />
-          <LyricsDisplay segments={segments} />
+          <PlaybackHud
+            title={song.title}
+            artist={song.artist}
+            config={config}
+            position={hudPosition}
+          />
+          <PitchGraph series={series} position={hudPosition} />
+          <LyricsDisplay
+            segments={segments}
+            verticalPosition={lyricsVerticalPosition}
+            horizontalPosition={lyricsHorizontalPosition}
+          />
         </>
       )}
 

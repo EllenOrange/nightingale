@@ -11,13 +11,13 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use ts_rs::TS;
 
-use crate::cache::{models_dir, CacheDir};
+use crate::cache::{CacheDir, models_dir};
 use crate::config::AppConfig;
 use crate::error::NightingaleError;
 use crate::library_db;
 use crate::library_model::LibraryMenuFilters;
 use crate::lyrics::{fetch_lrclib_lyrics, write_lyrics_file};
-use crate::song::{compute_file_hash, read_transcript_meta, Song, SongOrigin, TranscriptSource};
+use crate::song::{Song, SongOrigin, TranscriptSource, compute_file_hash, read_transcript_meta};
 use crate::source::active_source;
 
 // ─── Analysis queue (persisted to disk) ──────────────────────────────
@@ -62,7 +62,9 @@ impl AnalysisQueue {
             .iter()
             .map(|(k, v)| match v {
                 QueuedStatus::Queued => (k.clone(), "queued".to_string(), None, None),
-                QueuedStatus::Analyzing(p) => (k.clone(), "analyzing".to_string(), Some(*p as i64), None),
+                QueuedStatus::Analyzing(p) => {
+                    (k.clone(), "analyzing".to_string(), Some(*p as i64), None)
+                }
                 QueuedStatus::Failed(s) => (k.clone(), "failed".to_string(), None, Some(s.clone())),
             })
             .collect();
@@ -100,8 +102,7 @@ impl Drop for ServerProcess {
     }
 }
 
-static ANALYZER_SERVER: LazyLock<Mutex<Option<ServerProcess>>> =
-    LazyLock::new(|| Mutex::new(None));
+static ANALYZER_SERVER: LazyLock<Mutex<Option<ServerProcess>>> = LazyLock::new(|| Mutex::new(None));
 
 #[derive(Debug, Deserialize)]
 struct ReadyHandshake {
@@ -168,9 +169,9 @@ fn connect_and_authenticate(
     stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT))?;
     stream.set_write_timeout(Some(HANDSHAKE_TIMEOUT))?;
 
-    let writer_stream = stream.try_clone().map_err(|e| {
-        NightingaleError::Other(format!("Failed to clone analyzer socket: {e}"))
-    })?;
+    let writer_stream = stream
+        .try_clone()
+        .map_err(|e| NightingaleError::Other(format!("Failed to clone analyzer socket: {e}")))?;
     let mut reader = BufReader::new(stream);
     let mut writer = BufWriter::new(writer_stream);
 
@@ -232,9 +233,9 @@ fn spawn_server() -> Result<ServerProcess, NightingaleError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| {
-        NightingaleError::Other(format!("Failed to start analyzer server: {e}"))
-    })?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| NightingaleError::Other(format!("Failed to start analyzer server: {e}")))?;
     let pid = child.id();
     SERVER_PID.store(pid, Ordering::SeqCst);
     info!("[analyzer] Server process spawned (pid={pid})");
@@ -401,7 +402,8 @@ pub fn enqueue_all(filters: &LibraryMenuFilters) {
     let queue = AnalysisQueue::load();
     let mut state = ANALYZER.lock().unwrap();
 
-    let pending_hashes = library_db::iter_file_hashes_filtered_not_analyzed(filters).unwrap_or_default();
+    let pending_hashes =
+        library_db::iter_file_hashes_filtered_not_analyzed(filters).unwrap_or_default();
 
     let mut newly_queued = Vec::new();
     for file_hash in pending_hashes {
@@ -499,7 +501,14 @@ pub fn realign(file_hash: &str, language: Option<String>) {
     materialize_lyrics_from_transcript(&cache, file_hash);
     let _ = std::fs::remove_file(cache.transcript_path(file_hash));
     cache.delete_transcript_variants(file_hash);
-    update_song_analyzed(file_hash, false, language.or(previous_language), None, None, None);
+    update_song_analyzed(
+        file_hash,
+        false,
+        language.or(previous_language),
+        None,
+        None,
+        None,
+    );
     enqueue_one(file_hash);
 }
 
@@ -512,7 +521,7 @@ pub fn reanalyze_force_transcribe(file_hash: &str) {
         .lock()
         .unwrap()
         .insert(file_hash.to_string());
-        
+
     reanalyze(file_hash, false);
 }
 
@@ -687,10 +696,7 @@ fn process_song(initial_hash: &str, cache: &CacheDir) {
                     update_queue_status(file_hash, QueuedStatus::Analyzing(0));
                     continue;
                 }
-                update_queue_status(
-                    file_hash,
-                    QueuedStatus::Failed("CUDA out of memory".into()),
-                );
+                update_queue_status(file_hash, QueuedStatus::Failed("CUDA out of memory".into()));
                 return;
             }
             Ok(SongResult::Error(msg)) => {
@@ -754,9 +760,7 @@ fn prepare_audio_for_analysis(
     cache: &CacheDir,
 ) -> Result<(Song, PathBuf, String), NightingaleError> {
     match &song.origin {
-        SongOrigin::LocalFile => {
-            Ok((song.clone(), song.path.clone(), song.file_hash.clone()))
-        }
+        SongOrigin::LocalFile => Ok((song.clone(), song.path.clone(), song.file_hash.clone())),
         // Both remote origins go through the active source's
         // `ensure_local_media` and then get rekeyed to the true Blake3 hash.
         SongOrigin::Jellyfin { .. } | SongOrigin::Navidrome { .. } => {
@@ -773,8 +777,10 @@ fn prepare_audio_for_analysis(
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("bin");
-            let new_source_path =
-                cache.path.join("sources").join(format!("{real_hash}.{ext}"));
+            let new_source_path = cache
+                .path
+                .join("sources")
+                .join(format!("{real_hash}.{ext}"));
 
             if new_source_path != downloaded_path {
                 if let Some(parent) = new_source_path.parent() {
@@ -884,4 +890,3 @@ fn send_and_monitor(
         }
     }
 }
-

@@ -84,7 +84,11 @@ pub fn lrclib_candidates(song: &Song) -> Vec<LrclibCandidate> {
 
     let album_lower = song.album.to_lowercase();
     with_lyrics.sort_by_key(|r| {
-        let album_bonus: i64 = if r.album_name.to_lowercase() == album_lower { 0 } else { 5_000 };
+        let album_bonus: i64 = if r.album_name.to_lowercase() == album_lower {
+            0
+        } else {
+            5_000
+        };
         let duration_penalty = ((r.duration_secs - song.duration_secs).abs() * 10.0) as i64;
         album_bonus + duration_penalty
     });

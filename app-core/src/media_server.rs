@@ -20,8 +20,8 @@
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::thread;
 
 use base64::Engine;
@@ -169,9 +169,10 @@ fn handle_local_file(request: Request, path_segment: &str) {
         .unwrap_or_else(|_| path_segment.to_string());
 
     let cleaned = if cfg!(windows)
-        && decoded.get(1..3).is_some_and(|s| {
-            s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':'
-        }) {
+        && decoded
+            .get(1..3)
+            .is_some_and(|s| s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':')
+    {
         decoded[1..].to_string()
     } else {
         decoded
@@ -244,8 +245,7 @@ fn serve_file(request: Request, file_path: &Path) {
             return;
         }
         let content_range =
-            Header::from_bytes("Content-Range", format!("bytes {start}-{end}/{file_len}"))
-                .unwrap();
+            Header::from_bytes("Content-Range", format!("bytes {start}-{end}/{file_len}")).unwrap();
         let resp = Response::from_data(buf)
             .with_status_code(StatusCode(206))
             .with_header(content_type)
@@ -365,8 +365,7 @@ fn handle_remote_song(request: Request, file_hash: &str) {
         Err(e) => {
             warn!("[media_server] remote stream failed: {e}");
             let _ = request.respond(with_cors(
-                Response::from_string("upstream request failed")
-                    .with_status_code(StatusCode(502)),
+                Response::from_string("upstream request failed").with_status_code(StatusCode(502)),
             ));
             return;
         }
@@ -392,10 +391,7 @@ fn sanitize_file_hash(raw: &str) -> Option<String> {
     }
 }
 
-fn write_stream_response<W: Write>(
-    mut writer: W,
-    stream: StreamResponse,
-) -> std::io::Result<()> {
+fn write_stream_response<W: Write>(mut writer: W, stream: StreamResponse) -> std::io::Result<()> {
     let status_line = format!("HTTP/1.1 {} OK\r\n", stream.status);
     writer.write_all(status_line.as_bytes())?;
     if let Some(ct) = stream.content_type {

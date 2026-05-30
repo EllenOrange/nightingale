@@ -161,10 +161,7 @@ static MIC_OP_LOCK: once_cell::sync::Lazy<Mutex<()>> =
     once_cell::sync::Lazy::new(|| Mutex::new(()));
 
 fn take_mic_thread() -> Option<JoinHandle<()>> {
-    MIC_THREAD
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .take()
+    MIC_THREAD.lock().unwrap_or_else(|p| p.into_inner()).take()
 }
 
 fn stop_internal() {
@@ -501,7 +498,9 @@ fn run_mic_loop(device: cpal::Device, name: &str, shutdown: Arc<AtomicBool>) {
     };
     let monitor_stream = cpal::default_host()
         .default_output_device()
-        .and_then(|output_device| try_build_output_stream(&output_device, Arc::clone(&audio_shared)));
+        .and_then(|output_device| {
+            try_build_output_stream(&output_device, Arc::clone(&audio_shared))
+        });
     if monitor_stream.is_none() {
         warn!("[mic] no output monitoring stream available");
     }

@@ -256,8 +256,7 @@ impl MediaSource for NavidromeSource {
                 break;
             }
 
-            let page_song_count: usize =
-                albums.iter().map(|a| a.song_count as usize).sum();
+            let page_song_count: usize = albums.iter().map(|a| a.song_count as usize).sum();
             if page_song_count > 0 {
                 song_count_target += page_song_count;
                 let _ = library_db::update_library_meta(&folder_label, song_count_target);
@@ -273,10 +272,7 @@ impl MediaSource for NavidromeSource {
                 let album_detail = match self.fetch_album(&album_summary.id) {
                     Ok(a) => a,
                     Err(e) => {
-                        tracing::warn!(
-                            "[navidrome] skipping album {}: {e}",
-                            album_summary.id
-                        );
+                        tracing::warn!("[navidrome] skipping album {}: {e}", album_summary.id);
                         continue;
                     }
                 };
@@ -291,8 +287,7 @@ impl MediaSource for NavidromeSource {
                     seen_ids.push(item.id.clone());
 
                     if known.contains(&item.id) {
-                        let upstream_tag =
-                            item.cover_art.clone().filter(|s| !s.is_empty());
+                        let upstream_tag = item.cover_art.clone().filter(|s| !s.is_empty());
                         let cached_tag = known_covers.get(&item.id).cloned().flatten();
                         if upstream_tag != cached_tag {
                             let _ = library_db::remote::refresh_remote_cover_for_item(
@@ -328,10 +323,7 @@ impl MediaSource for NavidromeSource {
 
         flush_batch(&mut batch, ctx.generation);
 
-        info!(
-            "[navidrome] Sync done — saw {} songs",
-            seen_ids.len()
-        );
+        info!("[navidrome] Sync done — saw {} songs", seen_ids.len());
 
         let _ = library_db::update_library_meta(&folder_label, seen_ids.len());
         let _ = library_db::remote::delete_remote_songs_not_in_item_ids(ORIGIN_KIND, &seen_ids);
@@ -455,7 +447,10 @@ impl NavidromeHealth {
 /// poll on a slow interval and serves as a smoke test for "is the server up
 /// and the credentials still valid".
 pub fn ping(auth: &NavidromeAuth) -> NavidromeHealth {
-    match auth.client().get_json::<PingPayload>("ping", "/rest/ping", &[]) {
+    match auth
+        .client()
+        .get_json::<PingPayload>("ping", "/rest/ping", &[])
+    {
         Ok(info) => NavidromeHealth {
             reachable: true,
             server_name: info.server_name(),

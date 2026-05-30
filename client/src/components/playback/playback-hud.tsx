@@ -46,7 +46,7 @@ function HintText({ children, fontSize = "sm" }: { children: React.ReactNode; fo
   return <p className={`text-${fontSize} text-white/50`}>{children}</p>;
 }
 
-const FOOTER_NOTE_CLASS = `pointer-events-none absolute bottom-2 z-20 text-[0.6rem] text-white/30`;
+const NOTE_BASE_CLASS = `pointer-events-none absolute z-20 text-[0.6rem] text-white/30`;
 const TOUCH_QUERIES = ["(pointer: coarse)", "(any-pointer: coarse)"];
 
 function hasTouchInput(): boolean {
@@ -133,7 +133,15 @@ function SettingsInfo({
   );
 }
 
-function TouchControls({ config, hasTouch }: { config: AppConfig | null; hasTouch: boolean }) {
+function TouchControls({
+  config,
+  hasTouch,
+  position,
+}: {
+  config: AppConfig | null;
+  hasTouch: boolean;
+  position: PlaybackHudPosition;
+}) {
   const [open, setOpen] = useState(false);
   const { guideVolume } = usePlaybackTransportState();
   const { setGuideVolume, handlePause } = usePlaybackTransportActions();
@@ -156,8 +164,10 @@ function TouchControls({ config, hasTouch }: { config: AppConfig | null; hasTouc
     return null;
   }
 
+  const touchLayoutClass = position === "bottom" ? "mb-2 flex-col-reverse" : "mt-2 flex-col";
+
   return (
-    <div className="mt-2 flex w-[min(18rem,80vw)] flex-col items-end gap-2">
+    <div className={`flex w-[min(18rem,80vw)] items-end gap-2 ${touchLayoutClass}`}>
       <div className="sm:hidden">
         <SettingsInfo
           guideVolume={guideVolume}
@@ -206,7 +216,9 @@ function TouchControls({ config, hasTouch }: { config: AppConfig | null; hasTouc
   );
 }
 
-function Disclaimer({ source }: { source: string }) {
+type PlaybackHudPosition = "top" | "bottom";
+
+function Disclaimer({ source, position }: { source: string; position: PlaybackHudPosition }) {
   if (source === "usdx") {
     return null;
   }
@@ -217,19 +229,26 @@ function Disclaimer({ source }: { source: string }) {
       : "Lyrics and timing are AI-generated and may not be perfectly accurate";
 
   return (
-    <p className={`${FOOTER_NOTE_CLASS} left-1/2 -translate-x-1/2 whitespace-nowrap text-center`}>
+    <p
+      className={`${NOTE_BASE_CLASS} ${notePositionClass(position)} left-1/2 -translate-x-1/2 whitespace-nowrap text-center`}
+    >
       {text}
     </p>
   );
+}
+
+function notePositionClass(hudPosition: PlaybackHudPosition): string {
+  return hudPosition === "bottom" ? "top-2" : "bottom-2";
 }
 
 interface PlaybackHudProps {
   title: string;
   artist: string;
   config: AppConfig | null;
+  position?: PlaybackHudPosition;
 }
 
-function PlaybackHudImpl({ title, artist, config }: PlaybackHudProps) {
+function PlaybackHudImpl({ title, artist, config, position = "top" }: PlaybackHudProps) {
   const { duration, guideVolume } = usePlaybackTransportState();
   const { subscribe, getCurrentTime } = usePlaybackTransportActions();
   const { themeIndex, videoFlavor } = usePlaybackThemeState();
@@ -272,10 +291,21 @@ function PlaybackHudImpl({ title, artist, config }: PlaybackHudProps) {
     });
   }, [subscribe, getCurrentTime, duration, firstSegmentStart, introSkipLeadSec, lastSegmentEnd]);
 
+  const hudPositionClass =
+    position === "bottom"
+      ? "bottom-[calc(2rem+env(safe-area-inset-bottom))] items-end md:bottom-3"
+      : "top-[4.25rem] items-start md:top-3";
+  const hudFlowClass = position === "bottom" ? "flex-col-reverse" : "flex-col";
+  const skipButtonsClass = position === "bottom" ? "mb-2" : "mt-2";
+
   return (
     <>
-      <div className="pointer-events-auto absolute inset-x-0 top-[4.25rem] z-20 flex items-start justify-between gap-3 px-3 md:top-3 md:px-4">
-        <div className="min-w-0 max-w-[58%] overflow-hidden sm:max-w-[34%] lg:max-w-[40%]">
+      <div
+        className={`pointer-events-auto absolute inset-x-0 z-20 flex justify-between gap-3 px-3 md:px-4 ${hudPositionClass}`}
+      >
+        <div
+          className={`flex min-w-0 max-w-[58%] overflow-hidden sm:max-w-[34%] lg:max-w-[40%] ${hudFlowClass}`}
+        >
           <h1 className="line-clamp-2 [overflow-wrap:anywhere] text-base leading-tight text-white md:text-[1.375rem]">
             {title}
           </h1>
@@ -285,13 +315,13 @@ function PlaybackHudImpl({ title, artist, config }: PlaybackHudProps) {
           <p ref={timerRef} className="text-sm text-white/70 md:text-base">
             0:00 / {formatTime(duration)}
           </p>
-          <div className="mt-2 flex gap-2">
+          <div className={`flex gap-2 ${skipButtonsClass}`}>
             <SkipButton ref={skipIntroRef} label="Skip Intro" onClick={handleSkipIntro} />
             <SkipButton ref={skipOutroRef} label="Skip Outro" onClick={handleSkipOutro} />
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-col items-end">
+        <div className={`flex min-w-0 items-end ${hudFlowClass}`}>
           <div className={`text-base md:text-lg ${pitchScore ? "text-white" : "text-white/50"}`}>
             Score: {pitchScore ?? "--"}
           </div>
@@ -306,13 +336,17 @@ function PlaybackHudImpl({ title, artist, config }: PlaybackHudProps) {
               showShortcuts={!hasTouch}
             />
           </div>
-          <TouchControls config={config} hasTouch={hasTouch} />
+          <TouchControls config={config} hasTouch={hasTouch} position={position} />
         </div>
       </div>
 
-      {showPixabayCredit && <p className={`${FOOTER_NOTE_CLASS} right-4`}>Videos by Pixabay</p>}
+      {showPixabayCredit && (
+        <p className={`${NOTE_BASE_CLASS} ${notePositionClass(position)} right-4`}>
+          Videos by Pixabay
+        </p>
+      )}
 
-      <Disclaimer source={transcriptSource} />
+      <Disclaimer source={transcriptSource} position={position} />
     </>
   );
 }

@@ -112,7 +112,11 @@ impl JellyfinClient {
         format!("{}/{}", self.base_url, trimmed)
     }
 
-    fn authed_get(&self, path: &str, query: &[(&str, &str)]) -> ureq::RequestBuilder<ureq::typestate::WithoutBody> {
+    fn authed_get(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> ureq::RequestBuilder<ureq::typestate::WithoutBody> {
         let mut req = self
             .agent
             .get(self.endpoint(path))

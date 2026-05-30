@@ -39,7 +39,8 @@ pub use client::{AuthHeaders, JellyfinClient, trim_base_url};
 const PAGE_SIZE: usize = 200;
 const COVER_FILL_WIDTH: u32 = 300;
 const VIDEO_TYPES: &[&str] = &["MusicVideo", "Movie", "Episode"];
-const ITEM_FIELDS: &str = "MediaSources,RunTimeTicks,Path,Container,ProductionYear,Genres,ImageTags";
+const ITEM_FIELDS: &str =
+    "MediaSources,RunTimeTicks,Path,Container,ProductionYear,Genres,ImageTags";
 const INCLUDE_ITEM_TYPES: &str = "Audio,MusicVideo,Movie,Video,Episode";
 /// `origin.kind` discriminator stored in each song's JSON payload. Shared
 /// with `library_db::remote::*` so the SQL helpers can find our rows.
@@ -143,9 +144,11 @@ impl JellyfinSource {
 
         let title = pick_string(item.name.as_deref(), "Unknown");
         let artist = pick_string(
-            item.album_artist
-                .as_deref()
-                .or_else(|| item.artists.as_ref().and_then(|v| v.first().map(|s| s.as_str()))),
+            item.album_artist.as_deref().or_else(|| {
+                item.artists
+                    .as_ref()
+                    .and_then(|v| v.first().map(|s| s.as_str()))
+            }),
             "Unknown Artist",
         );
         let album = pick_string(item.album.as_deref(), "Unknown Album");
@@ -210,11 +213,7 @@ impl JellyfinSource {
             .download_to_vec(
                 "download cover",
                 &path,
-                &[
-                    ("fillWidth", &width),
-                    ("fillHeight", &width),
-                    ("tag", tag),
-                ],
+                &[("fillWidth", &width), ("fillHeight", &width), ("tag", tag)],
             )
             .ok()?;
         if bytes.is_empty() {
@@ -358,10 +357,8 @@ impl MediaSource for JellyfinSource {
             total_record_count
         );
 
-        let _ = library_db::update_library_meta(
-            &folder_label,
-            total_record_count.max(seen_ids.len()),
-        );
+        let _ =
+            library_db::update_library_meta(&folder_label, total_record_count.max(seen_ids.len()));
         let _ = library_db::remote::delete_remote_songs_not_in_item_ids(ORIGIN_KIND, &seen_ids);
 
         Ok(())
@@ -438,10 +435,7 @@ pub fn login(
     let server_url = trim_base_url(base_url);
     let device_id = device_id.unwrap_or_else(generate_device_id);
 
-    let anon_client = JellyfinClient::new(
-        &server_url,
-        AuthHeaders::anonymous(device_id.clone()),
-    );
+    let anon_client = JellyfinClient::new(&server_url, AuthHeaders::anonymous(device_id.clone()));
 
     #[derive(Serialize)]
     struct Body<'a> {
@@ -454,7 +448,10 @@ pub fn login(
     let auth: AuthByNameResponse = anon_client.post_json(
         "login",
         "/Users/AuthenticateByName",
-        &Body { username, pw: password },
+        &Body {
+            username,
+            pw: password,
+        },
     )?;
 
     let user_id = auth
@@ -473,7 +470,9 @@ pub fn login(
         &server_url,
         AuthHeaders::for_token(auth.access_token.clone(), device_id.clone()),
     );
-    let server_name = fetch_public_info(&authed_client).ok().and_then(|i| i.server_name);
+    let server_name = fetch_public_info(&authed_client)
+        .ok()
+        .and_then(|i| i.server_name);
 
     Ok(JellyfinLoginResult {
         server_url,

@@ -24,16 +24,11 @@ impl std::io::Write for LogFileWriter {
 pub fn init() {
     #[cfg(debug_assertions)]
     {
-        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            EnvFilter::new("info,app_core=debug,client_lib=debug")
-        });
+        let filter = EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new("info,app_core=debug,client_lib=debug"));
         let _ = tracing_subscriber::registry()
             .with(filter)
-            .with(
-                fmt::layer()
-                    .with_target(true)
-                    .with_writer(std::io::stdout),
-            )
+            .with(fmt::layer().with_target(true).with_writer(std::io::stdout))
             .try_init();
     }
 
@@ -66,10 +61,7 @@ pub fn init() {
 
         redirect_stderr(&log_path);
 
-        let _ = writeln!(
-            shared.lock().unwrap(),
-            "--- Nightingale log started ---"
-        );
+        let _ = writeln!(shared.lock().unwrap(), "--- Nightingale log started ---");
     }
 }
 

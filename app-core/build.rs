@@ -8,7 +8,8 @@ use std::path::PathBuf;
 const FORWARDED_KEYS: &[&str] = &["PIXABAY_API_KEY"];
 
 fn main() {
-    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let manifest_dir =
+        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let dotenv_path = manifest_dir
         .parent()
         .map(|p| p.join(".env"))
@@ -16,7 +17,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={}", dotenv_path.display());
-    
+
     for key in FORWARDED_KEYS {
         println!("cargo:rerun-if-env-changed={key}");
     }

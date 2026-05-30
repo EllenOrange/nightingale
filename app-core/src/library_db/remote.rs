@@ -50,7 +50,10 @@ pub fn load_remote_cover_tags(kind: &str) -> rusqlite::Result<HashMap<String, Op
              WHERE json_extract(payload, '$.origin.kind') = ?1",
         )?;
         let rows = stmt.query_map([kind], |r| {
-            Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?))
+            Ok((
+                r.get::<_, Option<String>>(0)?,
+                r.get::<_, Option<String>>(1)?,
+            ))
         })?;
         let mut out = HashMap::new();
         for row in rows {
@@ -67,11 +70,7 @@ pub fn load_remote_cover_tags(kind: &str) -> rusqlite::Result<HashMap<String, Op
 /// update the row's `album_art_path` + payload accordingly. When `fetch`
 /// returns `None` we also clear the stored `cover_tag` so the next scan
 /// will retry (instead of skipping the item because the tag still matches).
-pub fn refresh_remote_cover_for_item<F>(
-    kind: &str,
-    item_id: &str,
-    fetch: F,
-) -> rusqlite::Result<()>
+pub fn refresh_remote_cover_for_item<F>(kind: &str, item_id: &str, fetch: F) -> rusqlite::Result<()>
 where
     F: FnOnce(&str) -> Option<PathBuf>,
 {

@@ -21,13 +21,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::cache::nightingale_dir;
 
+mod analysis_queue;
 mod connection;
 mod migrations;
-mod analysis_queue;
-mod songs;
 mod queries;
 mod rebase;
 pub mod remote;
+mod songs;
 
 pub use analysis_queue::{
     analysis_queue_clear, analysis_queue_delete, analysis_queue_load_rows,

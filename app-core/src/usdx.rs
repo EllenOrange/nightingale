@@ -157,8 +157,7 @@ fn parse_usdx_str(content: &str) -> Result<UsdxFile, NightingaleError> {
 
         match first {
             ':' | '*' | 'F' | 'R' | 'G' => {
-                if let Some(note) =
-                    parse_note(&trimmed[first.len_utf8()..], line_offset, relative)
+                if let Some(note) = parse_note(&trimmed[first.len_utf8()..], line_offset, relative)
                 {
                     current.push(note);
                 }
@@ -184,8 +183,8 @@ fn parse_usdx_str(content: &str) -> Result<UsdxFile, NightingaleError> {
 
     let title = title.ok_or_else(|| NightingaleError::Other("Missing #TITLE tag".into()))?;
     let artist = artist.ok_or_else(|| NightingaleError::Other("Missing #ARTIST tag".into()))?;
-    let audio_filename = audio_filename
-        .ok_or_else(|| NightingaleError::Other("Missing #AUDIO/#MP3 tag".into()))?;
+    let audio_filename =
+        audio_filename.ok_or_else(|| NightingaleError::Other("Missing #AUDIO/#MP3 tag".into()))?;
     let bpm = bpm
         .filter(|v| *v > 0.0)
         .ok_or_else(|| NightingaleError::Other("Missing or invalid #BPM tag".into()))?;
@@ -362,12 +361,18 @@ pub fn read_siblings(path: &Path) -> Option<UsdxSiblings> {
     let parent = path.parent()?.to_path_buf();
     Some(UsdxSiblings {
         audio: parent.join(file.audio_filename.trim()),
-        vocals: file.vocals_filename.as_deref().map(|n| parent.join(n.trim())),
+        vocals: file
+            .vocals_filename
+            .as_deref()
+            .map(|n| parent.join(n.trim())),
         instrumental: file
             .instrumental_filename
             .as_deref()
             .map(|n| parent.join(n.trim())),
-        video: file.video_filename.as_deref().map(|n| parent.join(n.trim())),
+        video: file
+            .video_filename
+            .as_deref()
+            .map(|n| parent.join(n.trim())),
     })
 }
 
@@ -495,7 +500,10 @@ pub fn build_usdx_song(path: &Path, cache: &CacheDir) -> Result<Song, Nightingal
 
     let transcript_json = synthesize_transcript(&file);
     let transcript_path = cache.transcript_path(&file_hash);
-    std::fs::write(&transcript_path, serde_json::to_string_pretty(&transcript_json)?)?;
+    std::fs::write(
+        &transcript_path,
+        serde_json::to_string_pretty(&transcript_json)?,
+    )?;
 
     let (audio_duration, embedded_cover) = read_audio_metadata(&bundle.audio);
     let duration_secs = if audio_duration > 0.0 {
@@ -512,7 +520,9 @@ pub fn build_usdx_song(path: &Path, cache: &CacheDir) -> Result<Song, Nightingal
             std::fs::read(p).ok()
         })
         .or(embedded_cover);
-    let album_art_path = cover_bytes.as_deref().and_then(|b| cache_album_art(cache, b));
+    let album_art_path = cover_bytes
+        .as_deref()
+        .and_then(|b| cache_album_art(cache, b));
 
     let album = file.edition.clone().unwrap_or_else(|| "USDX".to_string());
 

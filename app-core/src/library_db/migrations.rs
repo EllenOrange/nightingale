@@ -179,9 +179,7 @@ pub fn rewrite_legacy_jellyfin_paths(cache_dir: &Path) -> rusqlite::Result<()> {
              WHERE json_extract(payload, '$.origin.kind') = 'jellyfin'
                AND path LIKE 'jellyfin://%'",
         )?;
-        let rows = stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        })?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
         rows.collect::<Result<Vec<_>, _>>()
     })?;
 
@@ -194,9 +192,8 @@ pub fn rewrite_legacy_jellyfin_paths(cache_dir: &Path) -> rusqlite::Result<()> {
     with_conn_mut(|c| {
         let tx = c.transaction()?;
         {
-            let mut stmt = tx.prepare(
-                "UPDATE songs SET path = ?2, payload = ?3 WHERE file_hash = ?1",
-            )?;
+            let mut stmt =
+                tx.prepare("UPDATE songs SET path = ?2, payload = ?3 WHERE file_hash = ?1")?;
             for (file_hash, payload) in candidates {
                 let Ok(mut song) = serde_json::from_str::<Song>(&payload) else {
                     continue;

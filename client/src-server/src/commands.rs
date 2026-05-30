@@ -142,8 +142,9 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
                 password: String,
             }
             let args: Args = deserialize(payload)?;
-            let result = app_core::jellyfin_login(&args.base_url, &args.username, &args.password, None)
-                .map_err(|e| ApiError::bad_request(e.to_string()))?;
+            let result =
+                app_core::jellyfin_login(&args.base_url, &args.username, &args.password, None)
+                    .map_err(|e| ApiError::bad_request(e.to_string()))?;
             Ok(serde_json::to_value(result).map_err(serde_err)?)
         }
         "jellyfin_ping" => {

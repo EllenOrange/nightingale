@@ -160,7 +160,12 @@ async fn handle_client_message(state: &AppState, client_id: ClientId, raw: &str)
                 })
                 .await;
             if next.mic_owner != Some(client_id) {
-                state.events.emit("jukebox.deny", &DenyMessage { reason: "mic-owned" });
+                state.events.emit(
+                    "jukebox.deny",
+                    &DenyMessage {
+                        reason: "mic-owned",
+                    },
+                );
                 return;
             }
             broadcast_jukebox(state, &next);

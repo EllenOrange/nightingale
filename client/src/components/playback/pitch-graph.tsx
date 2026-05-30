@@ -290,9 +290,10 @@ function useWindowSize(): { height: number; width: number } {
 
 interface PitchGraphProps {
   series: PitchSeries;
+  position?: "top" | "bottom";
 }
 
-export function PitchGraph({ series }: PitchGraphProps) {
+export function PitchGraph({ series, position = "top" }: PitchGraphProps) {
   const { micReady: visible } = usePlaybackMicState();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { height: windowHeight, width: windowWidth } = useWindowSize();
@@ -312,8 +313,12 @@ export function PitchGraph({ series }: PitchGraphProps) {
 
   if (!visible) return null;
 
+  const positionClass = position === "bottom" ? "bottom-2 sm:bottom-3" : "top-2 sm:top-3";
+
   return (
-    <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-sm border-white/15 bg-black/40 p-1 sm:top-3">
+    <div
+      className={`pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-sm border-white/15 bg-black/40 p-1 ${positionClass}`}
+    >
       <canvas ref={canvasRef} className="block" />
     </div>
   );

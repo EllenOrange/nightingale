@@ -24,6 +24,18 @@ export const ASR_ENGINES: SettingsOption[] = [
 
 export const MODELS = ["large-v3", "large-v3-turbo", "medium", "small", "base", "tiny"];
 
+export const LYRICS_VERTICAL_POSITIONS: SettingsOption[] = [
+  { value: "bottom", label: "Bottom" },
+  { value: "center", label: "Center" },
+  { value: "top", label: "Top" },
+];
+
+export const LYRICS_HORIZONTAL_POSITIONS: SettingsOption[] = [
+  { value: "left", label: "Left" },
+  { value: "center", label: "Center" },
+  { value: "right", label: "Right" },
+];
+
 export const DEFAULTS = {
   separator: "karaoke",
   asr_engine: "whisper",
@@ -33,6 +45,8 @@ export const DEFAULTS = {
   mic_monitor_gain: 0.65,
   mic_latency_compensation_sec: DEFAULT_MIC_LATENCY_COMPENSATION_SEC,
   auto_analyze: false,
+  lyrics_vertical_position: "bottom",
+  lyrics_horizontal_position: "center",
 } satisfies Pick<
   AppConfig,
   | "separator"
@@ -43,6 +57,8 @@ export const DEFAULTS = {
   | "mic_monitor_gain"
   | "mic_latency_compensation_sec"
   | "auto_analyze"
+  | "lyrics_vertical_position"
+  | "lyrics_horizontal_position"
 >;
 
 export const MIC_MONITOR_GAIN_STEP = 0.01;
@@ -58,6 +74,8 @@ export const NAV = {
     microphone: 2,
     micMonitorGain: 3,
     micLatency: 4,
+    lyricsVerticalPosition: 5,
+    lyricsHorizontalPosition: 6,
   },
   analysis: {
     separator: 1,
@@ -72,7 +90,7 @@ export const NAV = {
 
 export function getSettingsStops(tab: SettingsTab, isParakeet: boolean) {
   if (tab === "general") {
-    return [2, 2, 1, 1, 2, 2];
+    return [2, 2, 1, 1, 2, 1, 1, 2];
   }
 
   return isParakeet
