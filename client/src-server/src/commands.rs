@@ -326,7 +326,11 @@ struct SaveConfigArgs {
 
 fn save_config_cmd(payload: Value) -> CmdResult {
     let SaveConfigArgs { config } = deserialize(payload)?;
+    let was_auto_analyze = AppConfig::load().auto_analyze();
     config.save();
+    if config.auto_analyze() && !was_auto_analyze {
+        app_core::enqueue_all(&app_core::LibraryMenuFilters::default());
+    }
     // Web mode has no server-side cpal monitor stream, so `mic_monitor_gain`
     // is consumed entirely by the browser's monitor GainNode.
     serde_json::to_value(config).map_err(serde_err)

@@ -27,9 +27,16 @@ export const DEFAULTS = {
   beam_size: 8,
   batch_size: 8,
   mic_monitor_gain: 0.65,
+  auto_analyze: false,
 } satisfies Pick<
   AppConfig,
-  "separator" | "asr_engine" | "whisper_model" | "beam_size" | "batch_size" | "mic_monitor_gain"
+  | "separator"
+  | "asr_engine"
+  | "whisper_model"
+  | "beam_size"
+  | "batch_size"
+  | "mic_monitor_gain"
+  | "auto_analyze"
 >;
 
 export const MIC_MONITOR_GAIN_STEP = 0.01;
@@ -46,10 +53,11 @@ export const NAV = {
   analysis: {
     separator: 1,
     asrEngine: 2,
-    whisperModel: 3,
-    beamSize: 4,
-    parakeetBatchSize: 3,
-    whisperBatchSize: 5,
+    autoAnalyze: 3,
+    whisperModel: 4,
+    beamSize: 5,
+    parakeetBatchSize: 4,
+    whisperBatchSize: 6,
   },
 } as const;
 
@@ -59,8 +67,8 @@ export function getSettingsStops(tab: SettingsTab, isParakeet: boolean) {
   }
 
   return isParakeet
-    ? [2, 1, 1, NUMBER_PICKER_SIZE, 2]
-    : [2, 1, 1, 1, NUMBER_PICKER_SIZE, NUMBER_PICKER_SIZE, 2];
+    ? [2, 1, 1, 2, NUMBER_PICKER_SIZE, 2]
+    : [2, 1, 1, 2, 1, NUMBER_PICKER_SIZE, NUMBER_PICKER_SIZE, 2];
 }
 
 export function getBatchSizeSegment(isParakeet: boolean) {

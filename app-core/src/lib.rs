@@ -76,6 +76,10 @@ pub fn startup() -> Result<(), String> {
     if let Err(e) = refresh_analyzer_scripts_if_ready() {
         tracing::warn!("Failed to refresh analyzer scripts: {e}");
     }
-    
+
+    if AppConfig::load().auto_analyze() {
+        analyzer::enqueue_all(&LibraryMenuFilters::default());
+    }
+
     Ok(())
 }

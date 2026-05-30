@@ -103,6 +103,7 @@ pub struct AppConfig {
     pub last_video_flavor: Option<usize>,
     pub separator: Option<String>,
     pub asr_engine: Option<String>,
+    pub auto_analyze: Option<bool>,
     pub language_overrides: Option<HashMap<String, String>>,
 }
 
@@ -130,6 +131,7 @@ impl Default for AppConfig {
             last_video_flavor: None,
             separator: None,
             asr_engine: None,
+            auto_analyze: None,
             language_overrides: None,
         }
     }
@@ -272,6 +274,10 @@ impl AppConfig {
 
     pub fn asr_engine(&self) -> &str {
         self.asr_engine.as_deref().unwrap_or("whisper")
+    }
+
+    pub fn auto_analyze(&self) -> bool {
+        self.auto_analyze.unwrap_or(false)
     }
 
     pub fn mic_monitor_gain(&self) -> f32 {

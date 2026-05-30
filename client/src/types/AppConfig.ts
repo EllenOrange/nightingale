@@ -28,5 +28,6 @@ export type AppConfig = {
   last_video_flavor: number | null;
   separator: string | null;
   asr_engine: string | null;
+  auto_analyze: boolean | null;
   language_overrides: { [key in string]: string } | null;
 };

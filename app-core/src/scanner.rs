@@ -8,10 +8,11 @@
 use tracing::warn;
 
 use crate::{
+    analyzer,
     cache::CacheDir,
     config::AppConfig,
     library_db,
-    library_model::{LoadSongsParams, SongsMeta, SongsStore},
+    library_model::{LibraryMenuFilters, LoadSongsParams, SongsMeta, SongsStore},
     source::{ScanContext, active_source_from_config},
 };
 
@@ -80,6 +81,11 @@ pub fn start_scan() {
         };
         if let Err(e) = source.scan(&ctx) {
             warn!("[scanner] Scan failed: {e}");
+            return;
+        }
+
+        if library_db::scan_generation_is_current(scan_generation) && AppConfig::load().auto_analyze() {
+            analyzer::enqueue_all(&LibraryMenuFilters::default());
         }
     });
 }

@@ -207,6 +207,27 @@ export const SettingsPage = () => {
                 />
               </Field>
 
+              <Field>
+                <Label>Auto-analyze</Label>
+                <Hint>Automatically queue every unanalyzed song after scans finish</Hint>
+                <ButtonGroup>
+                  <Button
+                    variant={config?.auto_analyze === true ? "outline" : "default"}
+                    onClick={() => mutate({ auto_analyze: false })}
+                    className={getFocusClassName(NAV.analysis.autoAnalyze, 0)}
+                  >
+                    Off
+                  </Button>
+                  <Button
+                    variant={config?.auto_analyze === true ? "default" : "outline"}
+                    onClick={() => mutate({ auto_analyze: true })}
+                    className={getFocusClassName(NAV.analysis.autoAnalyze, 1)}
+                  >
+                    On
+                  </Button>
+                </ButtonGroup>
+              </Field>
+
               {!isParakeet && (
                 <>
                   <Field>
