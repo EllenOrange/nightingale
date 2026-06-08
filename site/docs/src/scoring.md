@@ -25,8 +25,12 @@ The results screen appears at the end of a song whenever your score is above 0. 
 - Press `M` to toggle the microphone on/off
 - Press `N` to cycle through available microphones
 - Press `R` to toggle mic monitoring during playback
-- You can also select a preferred microphone in **Settings**
+- Select a preferred microphone in **Settings → General**
 - The active microphone is shown in the HUD during playback
+
+## Latency Calibration
+
+Use **Settings → General → Mic latency** to compensate for speaker-to-microphone delay. The test plays a short beep, listens for it through the selected microphone, and saves `mic_latency_compensation_sec`. You can also adjust the value manually if your room or audio device needs extra tuning.
 
 ## Per-Song Scoreboards
 

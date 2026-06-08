@@ -32,9 +32,9 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 🌐 **Self-hosted web mode** — run Nightingale on a Linux box on your home network and open it from phones, laptops, tablets, and TVs at `<hostname>.local`. See [docs/self-hosted](site/docs/src/self-hosted.md).
 
-🧭 **Sidebar + library filters** — browse by quick filters, metadata cleanup buckets, artists, and albums. **Analyze All** helps queue your library faster, and the sidebar/song list remember scroll position when you come back.
+🧭 **Sidebar + library filters** — browse by quick filters, metadata cleanup buckets, artists, and albums. **Analyze All** and optional auto-analysis help queue your library faster, and the sidebar/song list remember scroll position when you come back.
 
-🗂️ **Flexible data folder** — choose where Nightingale stores cache, models, videos, and library data during setup.
+🗂️ **Flexible storage** — choose the main data folder during setup, then split cache, models, videos, and vendor tools into separate folders from Settings when needed.
 
 📦 **Self-contained** — ffmpeg, uv, Python, PyTorch, and ML packages are downloaded automatically during setup. Video backgrounds are pre-downloaded so the first session is ready to go.
 
@@ -62,7 +62,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 🌌 **Audio-reactive backgrounds** — 10 GPU shaders that react to your microphone in real time (Plasma, Waves, Nebula, Starfield, Sonar, Voronoi, Vortex, Metaballs, Spectrum, Oscilloscope), Pixabay video loops in 5 flavors (Nature, Underwater, Space, City, Countryside), plus source-video playback for video files.
 
-🎙️ **Mic monitoring** — optionally route your live mic into playback for low-latency practice and monitoring, with an adjustable monitor gain (0–200%) in Settings.
+🎙️ **Mic monitoring + latency test** — optionally route your live mic into playback, adjust monitor gain (0–200%), and run a beep-based latency test from Settings so scoring lines up with your room.
 
 ### Quality of life
 
@@ -70,7 +70,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 🎮 **Gamepad support** — full navigation and control via gamepad (D-pad, sticks, face buttons).
 
-📺 **Adaptive UI scaling** — scales to any resolution including 4K TVs.
+📺 **Adaptive + touch-friendly UI** — scales from phones/tablets to 4K TVs, with on-screen playback controls on touch devices.
 
 ⬆️ **In-app updates** — on macOS and Windows, auto-checks for new releases at launch, badges the sidebar avatar when one is available, and downloads and installs signed updates with one click. Linux is manual: the **Update** entry opens GitHub Releases for you to grab the new build.
 

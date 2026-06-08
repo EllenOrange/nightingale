@@ -34,7 +34,7 @@ This tells macOS to clear (`-c`) all extended attributes recursively (`-r`) from
 
 On first launch, Nightingale will guide you through setup:
 
-1. **Choose data folder** — select where cache, models, videos, vendor tools, and the library database are stored
+1. **Choose data folder** — select where cache, models, videos, vendor tools, and the library database are stored. After setup, Settings can split cache, videos, models, and vendor tools into separate folders.
 2. **Downloads ffmpeg** — needed for audio/video processing
 3. **Downloads uv** — Python package manager
 4. **Installs Python 3.10** — via uv, isolated from your system Python
@@ -60,7 +60,7 @@ Before a song can be played as karaoke, it needs to be analyzed:
 2. Analysis runs automatically (stem separation → lyrics → transcription)
 3. Results are cached — subsequent plays are instant
 
-You can also batch analysis with **Analyze All** from the song list toolbar.
+You can also batch analysis with **Analyze All** from the song list toolbar, or enable **Settings → Analysis → Auto-analyze** to queue newly discovered unanalyzed songs after each scan.
 
 <!-- TODO: screenshot of the song library with a mix of analyzed/queued/not-analyzed songs -->
 
@@ -89,4 +89,4 @@ If the macOS or Windows dialog reports an error, see [Troubleshooting → Update
 
 ## Force Re-setup
 
-If something goes wrong with setup or dependencies, open the sidebar actions menu and select **Re-run Setup**.
+If something goes wrong with setup or dependencies, open the sidebar actions menu and select **Re-run Setup**. If you only need to move cache/models/videos/vendor files, use Settings so Nightingale migrates existing contents and avoids stale paths.

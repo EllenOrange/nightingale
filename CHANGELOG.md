@@ -11,6 +11,18 @@ GitHub Release body. If a section is missing the release is still created
 with a fallback body, but ideally every tagged version has its own entry
 below.
 
+## [0.8.0] - 2026-06-08
+
+### Highlights
+
+- Flexible cache folders — cache, video, model, and vendor directories can be separated from the main data folder, with guarded migration of existing contents.
+- Auto-analysis — when enabled, scans queue newly discovered unanalyzed songs automatically.
+- Playback polish — touch devices get on-screen playback controls, lyrics can be placed top/center/bottom and left/center/right, and the menu/playback UI adapts better to small screens.
+
+### Improvements
+
+- Settings moved from a modal into a dedicated page, keeping the existing controls easier to browse and navigate.
+
 ## [0.7.2] - 2026-05-28
 
 ### Highlights

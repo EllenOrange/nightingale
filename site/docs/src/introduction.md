@@ -21,9 +21,10 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 - **Profiles** — per-player score tracking
 - **Video Files** — use video files with synchronized background playback
 - **Audio-Reactive Backgrounds** — 10 GPU shaders that react to your mic, 5 Pixabay video flavors, source-video for video files
-- **Sidebar Filters + Analyze All** — quickly browse and batch-analyze your library
-- **Mic Monitoring** — optional low-latency live mic monitoring with adjustable gain (0–200%)
-- **Gamepad Support** — full navigation via gamepad
+- **Sidebar Filters + Analyze All** — quickly browse and batch-analyze your library, or enable auto-analysis after scans
+- **Mic Monitoring + Latency Test** — optional live mic monitoring with adjustable gain (0–200%) and calibration
+- **Flexible Storage** — split cache, videos, models, and vendor tools into separate folders
+- **Gamepad + Touch Support** — full gamepad navigation and touch playback controls
 - **Self-Contained** — zero manual dependency setup
 
 ## Supported Platforms

@@ -4,7 +4,7 @@ Nightingale stores app settings in `~/.nightingale/config.json`.
 
 ## Data Storage
 
-During setup, you can choose a custom data folder. Most runtime data lives in that selected folder. `config.json` and `nightingale.log` remain in the default `~/.nightingale` path.
+During setup, you can choose a custom data folder. Most runtime data lives in that selected folder. In v0.8.0, cache, videos, models, and vendor tools can also move into separate folders from the settings page. `config.json` and `nightingale.log` remain in the default `~/.nightingale` path.
 
 Typical selected data folder layout:
 
@@ -44,7 +44,7 @@ Toggle between dark and light themes from the sidebar. The theme preference is s
 
 ## Notable Settings
 
-`config.json` is written by the app — you'll usually change these from **Settings** rather than by editing the file directly. A few keys worth knowing:
+`config.json` is written by the app — you'll usually change these from **Settings** rather than by editing the file directly. In v0.8.0, settings moved from a modal into a dedicated page with **General** and **Analysis** tabs. A few keys worth knowing:
 
 | Key | Purpose |
 |---|---|
@@ -53,7 +53,11 @@ Toggle between dark and light themes from the sidebar. The theme preference is s
 | `whisper_model` | Whisper model size: `large-v3` (default), `large-v3-turbo`, `medium`, `small`, `base`, `tiny`. Ignored when `asr_engine` is `parakeet`. |
 | `beam_size` / `batch_size` | Decoder beam width and batch size for Whisper. Higher values are more accurate but slower and use more VRAM. |
 | `mic_monitor_gain` | Live monitor gain when mic monitoring is on. Range `0.0`–`2.0` (slider shown as 0–200%). Configs from older builds that used `mic_mirror_gain` are read transparently and migrated on next save. |
+| `mic_latency_compensation_sec` | Speaker-to-mic latency compensation for pitch scoring. Tune manually or use the Settings latency test. |
 | `mic_active` / `mic_monitoring` / `preferred_mic` | Microphone state and the device chosen for scoring + monitoring. Older `mic_mirroring` configs are accepted and migrated on next save. |
+| `lyrics_vertical_position` / `lyrics_horizontal_position` | Playback lyrics placement. Vertical: `top`, `center`, `bottom`; horizontal: `left`, `center`, `right`. |
+| `auto_analyze` | When `true`, scans automatically queue every unanalyzed song after they finish. |
+| `cache_paths` | Optional per-folder overrides for `songs`, `videos`, `models`, and `vendor`. Use Settings to move them so existing contents migrate safely. |
 | `last_video_flavor` | Index of the last-used Pixabay video flavor (Nature, Underwater, Space, City, Countryside). |
 | `last_theme` | Index of the last-used playback background (shaders → video → source). |
 | `language_overrides` | Per-song forced ASR language, keyed by song hash. Set this from the song-list controls. |

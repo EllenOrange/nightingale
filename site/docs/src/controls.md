@@ -1,6 +1,6 @@
 # Controls
 
-Nightingale supports both keyboard and gamepad input. The UI adapts to your input method automatically.
+Nightingale supports keyboard, gamepad, and touch input. The UI adapts to your input method automatically.
 
 ## Navigation
 
@@ -28,10 +28,16 @@ Nightingale supports both keyboard and gamepad input. The UI adapts to your inpu
 | Toggle fullscreen | F11 | — |
 | Skip Intro / Skip Outro | On-screen buttons | A (South) |
 
-Key and tempo are adjusted from the song list controls after a song has been analyzed.
+Touch devices show on-screen playback controls for core actions instead of relying on keyboard shortcuts.
+
+Key and tempo are adjusted from the song list controls after a song has been analyzed. Lyrics placement, preferred microphone, mic latency compensation, and analysis defaults live in **Settings**.
 
 ## Gamepad Notes
 
 - Full navigation of menus, song selection, and settings via gamepad
 - D-pad and left stick both work for navigation
 - Face buttons map to confirm (A/South) and cancel (B/East)
+
+## Settings Navigation
+
+Settings now open as a dedicated page instead of a modal. Use the same navigation model: move between General/Analysis tabs, change sliders/selects/buttons, and close or restore defaults without a mouse.
