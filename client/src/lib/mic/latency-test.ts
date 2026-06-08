@@ -31,16 +31,20 @@ async function createUnlockedAudioContext(): Promise<AudioContext> {
   await context.resume();
 
   // Unlock output during the button click gesture; the audible beep plays after baseline capture.
+  // Use a real one-sample buffer: some WebAudio hosts ignore a BufferSource with no buffer.
   const unlock = context.createBufferSource();
-  const gain = context.createGain();
-  gain.gain.value = 0;
-  unlock.connect(gain).connect(context.destination);
+  unlock.buffer = context.createBuffer(1, 1, context.sampleRate);
+  unlock.connect(context.destination);
   unlock.start();
 
   return context;
 }
 
-function playBeep(context: AudioContext): number {
+async function playBeep(context: AudioContext): Promise<number> {
+  if (context.state !== "running") {
+    await context.resume();
+  }
+
   const oscillator = context.createOscillator();
   const gain = context.createGain();
   oscillator.type = "square";
@@ -124,12 +128,14 @@ export async function measureMicLatencySec(
         () => {
           const baseline = baselineCount > 0 ? baselineSum / baselineCount : 0;
           threshold = Math.max(0.02, baseline + 0.03, baseline * 6);
-          try {
-            beepWallStart = playBeep(context);
-          } catch (error) {
-            window.clearTimeout(timer);
-            finish(() => reject(error));
-          }
+          playBeep(context)
+            .then((start) => {
+              beepWallStart = start;
+            })
+            .catch((error) => {
+              window.clearTimeout(timer);
+              finish(() => reject(error));
+            });
         },
         Math.max(0, BASELINE_MS - (performance.now() - startedAt)),
       );
