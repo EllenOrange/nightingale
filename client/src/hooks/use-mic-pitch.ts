@@ -4,46 +4,16 @@ import {
   type MicrophoneAdapter,
 } from "@/bridge/microphone";
 import { useMicSamples } from "@/hooks/use-mic-samples";
+import { SampleRing } from "@/lib/mic/sample-ring";
 import { PITCH_WINDOW_SAMPLES } from "@/lib/pitch/constants";
 import { createMicPitchDetector, detectPitchFromSamplesMic } from "@/lib/pitch/detect";
-import { SampleRing } from "@/lib/mic/sample-ring";
-import type { MicrophoneInfo } from "@/types/MicrophoneInfo";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** ~30 Hz pitch updates: more than enough for vocal pitch tracking. */
 const PITCH_TICK_MS = 33;
 const RING_CAPACITY = PITCH_WINDOW_SAMPLES * 2;
 
-export interface MicDevice {
-  deviceId: string;
-  label: string;
-}
-
 const defaultAdapter = microphoneAdapter;
-
-export function useMicDevices(adapter: MicrophoneAdapter = defaultAdapter) {
-  const [devices, setDevices] = useState<MicDevice[]>([]);
-
-  const refresh = useCallback(async () => {
-    try {
-      const mics = await adapter.listDevices();
-      setDevices(
-        mics.map((m: MicrophoneInfo) => ({
-          deviceId: m.name,
-          label: m.name,
-        })),
-      );
-    } catch {
-      setDevices([]);
-    }
-  }, [adapter]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  return devices;
-}
 
 export function useMicPitch(enabled: boolean) {
   const [latestPitch, setLatestPitch] = useState<number | null>(null);

@@ -6,7 +6,8 @@
  * to gate hardware capture, and persists user toggles to the app config.
  */
 
-import { useMicCapture, useMicDevices, useMicPitch } from "@/hooks/use-mic-pitch";
+import { useMicCapture, useMicPitch } from "@/hooks/use-mic-pitch";
+import { useMicDevices } from "@/queries/use-mic-devices";
 import { useMicReactive, type MicReactiveRef } from "@/hooks/use-mic-reactive";
 import { usePitchScoring } from "@/hooks/use-pitch-scoring";
 import { usePlaybackConfigPersist } from "@/hooks/playback/use-playback-config-persist";

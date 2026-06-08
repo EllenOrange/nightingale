@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { setFullScreen, isFullScreen as tauriIsFullScreen } from "@/bridge/fullScreen";
-import { useMicDevices } from "@/hooks/use-mic-pitch";
+import { useMicDevices } from "@/queries/use-mic-devices";
 import { useConfigMutation } from "@/mutations/use-config-mutation";
 import { useConfig } from "@/queries/use-config";
 import type { AppConfig } from "@/types/AppConfig";
