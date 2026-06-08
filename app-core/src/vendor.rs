@@ -9,7 +9,10 @@ use tracing::info;
 use ts_rs::TS;
 
 use crate::{
-    cache::{change_app_data_path, nightingale_dir, normalized_target_path, same_path},
+    cache::{
+        CachePaths, change_app_data_path, migrate_directory_contents, models_dir, nightingale_dir,
+        normalized_target_path, same_path, songs_cache_dir, vendor_dir, videos_dir,
+    },
     playback::prefetch_one_per_flavor,
     vendor_scripts,
 };
@@ -43,10 +46,6 @@ pub fn resolve_data_path_input(input: &str) -> Result<PathBuf, String> {
 }
 
 // ─── Directory Helpers ───────────────────────────────────────────────
-
-pub fn vendor_dir() -> PathBuf {
-    nightingale_dir().join("vendor")
-}
 
 pub fn clear_vendor_dir() -> Result<(), String> {
     let dir = vendor_dir();
@@ -95,8 +94,57 @@ pub fn is_ready() -> bool {
         && analyzer_dir().join("analyze.py").is_file()
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct SetupFolders {
+    pub data_path: Option<String>,
+    pub cache_paths: Option<CachePaths>,
+}
+
+fn normalize_optional_path(path: Option<PathBuf>) -> Result<Option<PathBuf>, String> {
+    path.map(normalized_target_path).transpose()
+}
+
+fn normalize_cache_paths(paths: CachePaths) -> Result<CachePaths, String> {
+    Ok(CachePaths {
+        songs: normalize_optional_path(paths.songs)?,
+        videos: normalize_optional_path(paths.videos)?,
+        models: normalize_optional_path(paths.models)?,
+        vendor: normalize_optional_path(paths.vendor)?,
+    })
+}
+
+fn default_cache_paths_for_data_root() -> CachePaths {
+    let root = nightingale_dir();
+    CachePaths {
+        songs: Some(root.join("cache")),
+        videos: Some(root.join("videos")),
+        models: Some(root.join("models")),
+        vendor: Some(root.join("vendor")),
+    }
+}
+
+fn migrate_cache_data_to_targets(targets: &CachePaths) -> Result<(), String> {
+    let old_songs = songs_cache_dir();
+    let old_videos = videos_dir();
+    let old_models = models_dir();
+
+    if let Some(target) = targets.songs.as_ref() {
+        migrate_directory_contents(&old_songs, target)?;
+    }
+    if let Some(target) = targets.videos.as_ref() {
+        migrate_directory_contents(&old_videos, target)?;
+    }
+    if let Some(target) = targets.models.as_ref() {
+        migrate_directory_contents(&old_models, target)?;
+    }
+
+    Ok(())
+}
+
 pub fn run_vendor_setup(
-    data_path: Option<String>,
+    folders: SetupFolders,
     mut on_progress: impl FnMut(SetupProgress) + Send,
     mut on_data_migrated: impl FnMut(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
@@ -109,7 +157,8 @@ pub fn run_vendor_setup(
     };
 
     let mut cleared_vendor = false;
-    if let Some(raw_path) = data_path
+    if let Some(raw_path) = folders
+        .data_path
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -139,6 +188,22 @@ pub fn run_vendor_setup(
             );
         }
     }
+
+    emit(
+        SetupStep::MigrateData,
+        20,
+        "Moving cache data to selected folders...".to_string(),
+    );
+
+    let separate_targets = folders.cache_paths.map(normalize_cache_paths).transpose()?;
+    let targets = separate_targets
+        .clone()
+        .unwrap_or_else(default_cache_paths_for_data_root);
+    migrate_cache_data_to_targets(&targets)?;
+
+    let mut cfg = crate::config::AppConfig::load();
+    cfg.cache_paths = separate_targets;
+    cfg.save();
 
     if !cleared_vendor {
         emit(

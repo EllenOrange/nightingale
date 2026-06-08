@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::cache::config_path;
+use crate::cache::{CachePaths, config_path};
 use crate::secret;
 
 /// Where the user wants Nightingale to source songs from. Persisted in
@@ -79,6 +79,8 @@ impl LibrarySource {
 pub struct AppConfig {
     #[serde(default = "default_data_path_option")]
     pub data_path: Option<PathBuf>,
+    #[serde(default)]
+    pub cache_paths: Option<CachePaths>,
     /// Deprecated. Kept for one-shot migration into `library_source`; never
     /// written by code that has been through `with_defaults`.
     pub last_folder: Option<PathBuf>,
@@ -118,6 +120,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             data_path: default_data_path_option(),
+            cache_paths: None,
             last_folder: None,
             library_source: None,
             last_theme: None,

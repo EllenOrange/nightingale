@@ -1,12 +1,13 @@
 import { invoke, listen } from "./runtime";
+import type { CachePaths } from "@/types/CachePaths";
 import type { SetupProgress } from "@/types/SetupProgress";
 
 export const isAppReady = async (): Promise<boolean> => {
   return await invoke<boolean>("is_ready");
 };
 
-export const triggerSetup = async (dataFolder?: string): Promise<void> => {
-  return await invoke<void>("trigger_setup", { dataPath: dataFolder });
+export const triggerSetup = async (dataFolder?: string, cachePaths?: CachePaths): Promise<void> => {
+  return await invoke<void>("trigger_setup", { dataPath: dataFolder, cachePaths });
 };
 
 export const onSetupProgress = async (

@@ -4,6 +4,15 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use walkdir::WalkDir;
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, TS)]
+#[ts(export)]
+pub struct CachePaths {
+    pub songs: Option<PathBuf>,
+    pub videos: Option<PathBuf>,
+    pub models: Option<PathBuf>,
+    pub vendor: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CacheDir {
     pub path: PathBuf,
@@ -11,7 +20,7 @@ pub struct CacheDir {
 
 impl CacheDir {
     pub fn new() -> Self {
-        let path = nightingale_dir().join("cache");
+        let path = songs_cache_dir();
         std::fs::create_dir_all(&path).expect("could not create cache directory");
         Self { path }
     }
@@ -209,10 +218,10 @@ impl CacheStats {
     pub fn calculate() -> Self {
         let base = nightingale_dir();
 
-        let songs_bytes = dir_size(&base.join("cache"));
-        let videos_bytes = dir_size(&base.join("videos"));
-        let models_bytes = dir_size(&base.join("models"));
-        let other_bytes = dir_size(&base.join("vendor"))
+        let songs_bytes = dir_size(&songs_cache_dir());
+        let videos_bytes = dir_size(&videos_dir());
+        let models_bytes = dir_size(&models_dir());
+        let other_bytes = dir_size(&vendor_dir())
             + dir_size(&base.join("sounds"))
             + default_nightingale_dir()
                 .join("nightingale.log")
@@ -270,12 +279,32 @@ pub fn analysis_queue_path() -> PathBuf {
     nightingale_dir().join("analysis_queue.json")
 }
 
+pub fn songs_cache_dir() -> PathBuf {
+    configured_cache_paths()
+        .songs
+        .unwrap_or_else(|| nightingale_dir().join("cache"))
+}
+
 pub fn videos_dir() -> PathBuf {
-    nightingale_dir().join("videos")
+    configured_cache_paths()
+        .videos
+        .unwrap_or_else(|| nightingale_dir().join("videos"))
 }
 
 pub fn models_dir() -> PathBuf {
-    nightingale_dir().join("models")
+    configured_cache_paths()
+        .models
+        .unwrap_or_else(|| nightingale_dir().join("models"))
+}
+
+pub fn vendor_dir() -> PathBuf {
+    configured_cache_paths()
+        .vendor
+        .unwrap_or_else(|| nightingale_dir().join("vendor"))
+}
+
+pub fn cache_roots() -> Vec<PathBuf> {
+    vec![songs_cache_dir(), videos_dir(), models_dir(), vendor_dir()]
 }
 
 pub fn dir_size(path: &Path) -> u64 {
@@ -364,16 +393,49 @@ struct DataPathOnlyConfig {
     data_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Deserialize)]
+struct PathsOnlyConfig {
+    cache_paths: Option<CachePaths>,
+}
+
+fn resolve_configured_path(path: PathBuf) -> Option<PathBuf> {
+    if path.as_os_str().is_empty() {
+        return None;
+    }
+
+    if path.is_absolute() {
+        Some(path)
+    } else {
+        std::env::current_dir().ok().map(|cwd| cwd.join(path))
+    }
+}
+
 fn configured_data_path() -> Option<PathBuf> {
     let path = config_path();
     let content = std::fs::read_to_string(path).ok()?;
     let configured = serde_json::from_str::<DataPathOnlyConfig>(&content)
         .ok()
         .and_then(|cfg| cfg.data_path)?;
-    if configured.is_absolute() {
-        Some(configured)
-    } else {
-        std::env::current_dir().ok().map(|cwd| cwd.join(configured))
+    resolve_configured_path(configured)
+}
+
+fn configured_cache_paths() -> CachePaths {
+    let path = config_path();
+    let Some(content) = std::fs::read_to_string(path).ok() else {
+        return CachePaths::default();
+    };
+    let Some(paths) = serde_json::from_str::<PathsOnlyConfig>(&content)
+        .ok()
+        .and_then(|cfg| cfg.cache_paths)
+    else {
+        return CachePaths::default();
+    };
+
+    CachePaths {
+        songs: paths.songs.and_then(resolve_configured_path),
+        videos: paths.videos.and_then(resolve_configured_path),
+        models: paths.models.and_then(resolve_configured_path),
+        vendor: paths.vendor.and_then(resolve_configured_path),
     }
 }
 
@@ -513,6 +575,26 @@ fn cleanup_migrated_source_entries(old_root: &Path, migrated: &[std::ffi::OsStri
             let _ = std::fs::remove_file(&src);
         }
     }
+}
+
+pub fn migrate_directory_contents(old_root: &Path, new_root: &Path) -> Result<(), String> {
+    if same_path(old_root, new_root) || !old_root.is_dir() {
+        std::fs::create_dir_all(new_root)
+            .map_err(|e| format!("failed creating cache path {:?}: {e}", new_root))?;
+        return Ok(());
+    }
+
+    if new_root.starts_with(old_root) {
+        return Err("new cache path cannot be inside current cache path".to_string());
+    }
+
+    std::fs::create_dir_all(new_root)
+        .map_err(|e| format!("failed creating cache path {:?}: {e}", new_root))?;
+    let migrated =
+        migrate_data_entries_with(old_root, new_root, |src, dst| copy_path_entry(src, dst))?;
+    cleanup_migrated_source_entries(old_root, &migrated);
+
+    Ok(())
 }
 
 pub fn change_app_data_path(new_path: PathBuf) -> Result<PathBuf, String> {

@@ -160,6 +160,12 @@ pub fn run() {
                 .asset_protocol_scope()
                 .allow_directory(app_core::default_nightingale_dir(), true)
                 .map_err(|e| format!("failed to allow asset protocol for default path: {e}"))?;
+            for root in app_core::cache_roots() {
+                app.handle()
+                    .asset_protocol_scope()
+                    .allow_directory(root, true)
+                    .map_err(|e| format!("failed to allow asset protocol for cache path: {e}"))?;
+            }
             let json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
             let b64 = B64.encode(json.as_bytes());
 

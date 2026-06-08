@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use app_core::{CachePaths, SetupFolders};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -11,11 +12,16 @@ use crate::events::EventBus;
 struct TriggerSetupArgs {
     #[serde(default)]
     data_path: Option<String>,
+    #[serde(default)]
+    cache_paths: Option<CachePaths>,
 }
 
 pub fn trigger_setup(events: Arc<EventBus>, payload: Value) -> CmdResult {
     let args: TriggerSetupArgs = if payload.is_null() {
-        TriggerSetupArgs { data_path: None }
+        TriggerSetupArgs {
+            data_path: None,
+            cache_paths: None,
+        }
     } else {
         serde_json::from_value(payload)
             .map_err(|e| ApiError::bad_request(format!("invalid trigger_setup args: {e}")))?
@@ -25,7 +31,10 @@ pub fn trigger_setup(events: Arc<EventBus>, payload: Value) -> CmdResult {
     std::thread::spawn(move || {
         let events_for_progress = events_clone.clone();
         if let Err(e) = app_core::run_vendor_setup(
-            args.data_path,
+            SetupFolders {
+                data_path: args.data_path,
+                cache_paths: args.cache_paths,
+            },
             move |progress| {
                 events_for_progress.emit("setup-progress", &progress);
             },
