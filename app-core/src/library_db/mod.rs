@@ -38,7 +38,7 @@ pub use queries::{
     iter_file_hashes_filtered_not_analyzed, load_meta_sql, load_songs_page,
     query_library_menu_items,
 };
-pub use rebase::rebase_song_album_art_paths;
+pub use rebase::{rebase_song_album_art_cache_paths, rebase_song_album_art_paths};
 pub use songs::{
     append_songs_for_scan, delete_songs_not_in_paths, load_all_songs, load_song_by_hash,
     load_song_path_strings, read_library_meta, rekey_song, replace_all_songs_sorted,

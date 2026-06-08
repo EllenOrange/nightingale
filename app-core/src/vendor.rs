@@ -199,7 +199,11 @@ pub fn run_vendor_setup(
     let targets = separate_targets
         .clone()
         .unwrap_or_else(default_cache_paths_for_data_root);
+    let old_songs_cache = songs_cache_dir();
     migrate_cache_data_to_targets(&targets)?;
+    if let Some(new_songs_cache) = targets.songs.as_ref() {
+        crate::library_db::rebase_song_album_art_cache_paths(&old_songs_cache, new_songs_cache)?;
+    }
 
     let mut cfg = crate::config::AppConfig::load();
     cfg.cache_paths = separate_targets;

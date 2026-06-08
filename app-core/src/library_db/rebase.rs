@@ -14,13 +14,16 @@ fn maybe_rebase_string_path(path: &str, old_root: &Path, new_root: &Path) -> Opt
     Some(new_root.join(rel).to_string_lossy().into_owned())
 }
 
-pub fn rebase_song_album_art_paths(old_root: &Path, new_root: &Path) -> Result<(), String> {
-    let db_path = new_root.join("songs.db");
-    if !db_path.is_file() {
+fn rebase_song_album_art_paths_in_db(
+    db_path: &Path,
+    old_root: &Path,
+    new_root: &Path,
+) -> Result<(), String> {
+    if !db_path.is_file() || crate::cache::same_path(old_root, new_root) {
         return Ok(());
     }
 
-    let conn = Connection::open(&db_path)
+    let conn = Connection::open(db_path)
         .map_err(|e| format!("failed opening songs db {:?}: {e}", db_path))?;
     let tx = conn
         .unchecked_transaction()
@@ -85,4 +88,12 @@ pub fn rebase_song_album_art_paths(old_root: &Path, new_root: &Path) -> Result<(
     tx.commit()
         .map_err(|e| format!("failed committing songs path rewrite: {e}"))?;
     Ok(())
+}
+
+pub fn rebase_song_album_art_paths(old_root: &Path, new_root: &Path) -> Result<(), String> {
+    rebase_song_album_art_paths_in_db(&new_root.join("songs.db"), old_root, new_root)
+}
+
+pub fn rebase_song_album_art_cache_paths(old_cache: &Path, new_cache: &Path) -> Result<(), String> {
+    rebase_song_album_art_paths_in_db(&super::library_db_path(), old_cache, new_cache)
 }
