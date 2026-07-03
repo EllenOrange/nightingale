@@ -21,7 +21,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from whisper_compat import progress, detect_device
+from whisper_compat import progress, detect_device, set_align_backend
+from audio import set_vocal_threshold_pct
 from pipeline import run_pipeline
 
 
@@ -45,6 +46,14 @@ def main():
                         help="Stem separation method: karaoke (UVR, cleaner) or demucs (faster)")
     parser.add_argument("--engine", default="whisper", choices=["whisper", "parakeet"],
                         help="Transcription engine: whisper (default) or parakeet (NeMo on CUDA, ONNX elsewhere)")
+    parser.add_argument("--align-backend", dest="align_backend", default="whisperx",
+                        choices=["whisperx", "ctc", "qwen"],
+                        help="Forced-alignment backend: whisperx (default, Python Viterbi), "
+                             "ctc (torchaudio forced_align C++/CUDA kernel), or qwen "
+                             "(Qwen3-ForcedAligner)")
+    parser.add_argument("--vocal-threshold", dest="vocal_threshold", type=float, default=None,
+                        help="RMS threshold (fraction of peak, 0-1) for start/end vocal "
+                             "detection. Lower keeps more edge audio; default 0.15")
     parser.add_argument("--lyrics", help="Path to pre-fetched lyrics JSON (align-only mode)")
     parser.add_argument("--language", default=None, help="Override automatic language detection")
     args = parser.parse_args()
@@ -60,6 +69,8 @@ def main():
     progress(0, "Starting analysis...")
 
     device = detect_device()
+    set_align_backend(args.align_backend)
+    set_vocal_threshold_pct(args.vocal_threshold)
 
     run_pipeline(
         audio_path, output_dir, file_hash, device,

@@ -31,6 +31,28 @@ def progress(pct: int, msg: str):
     _progress_sink(pct, msg)
 
 
+_align_backend = "whisperx"
+
+
+def set_align_backend(name):
+    """Select the forced-alignment backend:
+
+    - ``"whisperx"`` (default): pure-Python CTC Viterbi.
+    - ``"ctc"``: torchaudio ``forced_align`` C++/CUDA kernel.
+    - ``"qwen"``: Qwen3-ForcedAligner token-classification model. Handled
+      directly by the transcribe/align callers (see ``qwen_align``); when a song
+      falls outside its support (unsupported language, over-length audio, or any
+      failure) the callers fall through to the wav2vec2 path, where ``_run_align``
+      treats any non-``"ctc"`` backend as ``whisperx``.
+    """
+    global _align_backend
+    _align_backend = name if name in ("whisperx", "ctc", "qwen") else "whisperx"
+
+
+def get_align_backend() -> str:
+    return _align_backend
+
+
 def detect_device() -> str:
     if torch.cuda.is_available():
         return "cuda"
@@ -81,6 +103,29 @@ def _run_align(raw_segments, audio, language, device, model_name=None):
             language_code=language, device=device, model_name=model_name,
         )
         held.append(align_model)
+
+        if get_align_backend() == "ctc":
+            try:
+                import ctc_align
+                print(
+                    f"[nightingale:LOG] Aligning with torchaudio forced_align (ctc) on {device}",
+                    flush=True,
+                )
+                return ctc_align.ctc_align(
+                    raw_segments, align_model, metadata, audio, device,
+                )
+            except Exception as e:
+                if is_oom(e):
+                    # Let align_with_fallback's OOM handling retry (it re-enters
+                    # _run_align, keeping the fast ctc path, and finally drops to
+                    # CPU) instead of silently switching to the slow whisperx path.
+                    raise
+                print(
+                    f"[nightingale:LOG] ctc align backend failed ({e}); "
+                    f"falling back to whisperx.align",
+                    flush=True,
+                )
+
         return whisperx.align(raw_segments, align_model, metadata, audio, device)
 
 

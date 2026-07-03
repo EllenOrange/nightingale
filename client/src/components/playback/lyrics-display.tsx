@@ -66,6 +66,19 @@ function findCurrentSegment(segments: Segment[], time: number, hint: number): nu
 
   for (let i = start; i < segments.length; i++) {
     if (time >= segments[i].end + SEGMENT_LINGER) {
+      const next = i + 1;
+
+      // Through a short pause, keep the finished line current until the next
+      // line's lead-in begins, so the switch happens when the new line starts
+      // rather than when the old one ends.
+      if (
+        next < segments.length &&
+        segments[next].start - segments[i].end < COUNTDOWN_GAP_THRESHOLD &&
+        time < segments[next].start - LYRICS_LEAD
+      ) {
+        return i;
+      }
+
       continue;
     }
 
@@ -237,7 +250,13 @@ function LyricsDisplayImpl({
       const showCountdown =
         gapBefore >= COUNTDOWN_GAP_THRESHOLD && timeUntil > 0 && timeUntil <= COUNTDOWN_DURATION;
 
-      const showCurrent = isActive || showCountdown;
+      // After a line ends, keep it on screen through a short pause until the
+      // next line starts (findCurrentSegment holds idx on the finished line).
+      const nextStart = idx + 1 < segments.length ? segments[idx + 1].start : Infinity;
+      const bridgeShortGap =
+        time > seg.end + SEGMENT_LINGER && nextStart - seg.end < COUNTDOWN_GAP_THRESHOLD;
+
+      const showCurrent = isActive || showCountdown || bridgeShortGap;
       const hasNext = idx + 1 < segments.length;
 
       if (containerRef.current) containerRef.current.style.display = showCurrent ? "" : "none";
@@ -245,7 +264,9 @@ function LyricsDisplayImpl({
         nextContainerRef.current.style.display = showCurrent && hasNext ? "" : "none";
 
       updateCountdown(countdownRef.current, showCountdown, timeUntil);
-      updateWordSpans(wordRefs.current, seg.words, time, isActive);
+      // Bridged finished lines are past every word's end, so treating them as
+      // active keeps the already-sung colors instead of dropping to unsung.
+      updateWordSpans(wordRefs.current, seg.words, time, isActive || bridgeShortGap);
     };
 
     if (animate) {

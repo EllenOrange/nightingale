@@ -47,6 +47,28 @@ def is_cjk(lang) -> bool:
     return lang in ("ja", "zh")
 
 
+def qwen_kept_len(text: str) -> int:
+    """Count characters the Qwen forced aligner keeps when it tokenizes.
+
+    Mirrors transformers' ``_is_kept_char`` for ``Qwen3ASRProcessor`` (letters,
+    numbers, apostrophes, CJK; punctuation and whitespace dropped). Used to slice
+    Qwen's flat token stream back onto lyric lines by cumulative kept-char count,
+    which works uniformly whether a line tokenizes per-character (zh) or per-word
+    (ja/ko/latin) since token surfaces concatenate to the line's kept content.
+    """
+    import unicodedata
+
+    count = 0
+    for ch in text:
+        if ch == "'":
+            count += 1
+            continue
+        category = unicodedata.category(ch)
+        if category.startswith("L") or category.startswith("N"):
+            count += 1
+    return count
+
+
 def is_korean(lang) -> bool:
     return lang == "ko"
 

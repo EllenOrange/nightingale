@@ -33,6 +33,8 @@ export type AppConfig = {
   lyrics_horizontal_position: string | null;
   separator: string | null;
   asr_engine: string | null;
+  align_backend: string | null;
+  vocal_detection_threshold_pct: number | null;
   auto_analyze: boolean | null;
   language_overrides: { [key in string]: string } | null;
 };

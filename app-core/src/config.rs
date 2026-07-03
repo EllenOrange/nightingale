@@ -108,6 +108,8 @@ pub struct AppConfig {
     pub lyrics_horizontal_position: Option<String>,
     pub separator: Option<String>,
     pub asr_engine: Option<String>,
+    pub align_backend: Option<String>,
+    pub vocal_detection_threshold_pct: Option<f64>,
     pub auto_analyze: Option<bool>,
     pub language_overrides: Option<HashMap<String, String>>,
 }
@@ -140,6 +142,8 @@ impl Default for AppConfig {
             lyrics_horizontal_position: None,
             separator: None,
             asr_engine: None,
+            align_backend: None,
+            vocal_detection_threshold_pct: None,
             auto_analyze: None,
             language_overrides: None,
         }
@@ -283,6 +287,16 @@ impl AppConfig {
 
     pub fn asr_engine(&self) -> &str {
         self.asr_engine.as_deref().unwrap_or("whisper")
+    }
+
+    pub fn align_backend(&self) -> &str {
+        self.align_backend.as_deref().unwrap_or("whisperx")
+    }
+
+    pub fn vocal_detection_threshold_pct(&self) -> f64 {
+        self.vocal_detection_threshold_pct
+            .unwrap_or(0.15)
+            .clamp(0.0, 1.0)
     }
 
     pub fn auto_analyze(&self) -> bool {

@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { NUMBER_PICKER_SIZE, type SettingsOption } from "./constants";
 
 interface SettingsSelectProps {
@@ -34,14 +35,14 @@ export function SettingsSelect({
 }: SettingsSelectProps) {
   return (
     <Select onValueChange={onValueChange} value={value}>
-      <SelectTrigger id={id} className={triggerClassName}>
+      <SelectTrigger id={id} className={cn("w-full", triggerClassName)}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent position="popper" className="w-[var(--radix-select-trigger-width)]">
         <SelectGroup>
           <SelectLabel>{label}</SelectLabel>
           {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
+            <SelectItem key={option.value} value={option.value} description={option.description}>
               {option.label}
             </SelectItem>
           ))}
@@ -67,7 +68,7 @@ export function NumberButtonGroup({
   onChange,
 }: NumberButtonGroupProps) {
   return (
-    <ButtonGroup className="scrollbar-hide w-full max-w-full justify-start overflow-x-auto">
+    <ButtonGroup className="scrollbar-hide w-full max-w-full items-center justify-start overflow-x-auto py-1 px-0.5">
       {Array.from({ length: NUMBER_PICKER_SIZE }, (_, index) => {
         const option = index + 1;
 
@@ -91,7 +92,8 @@ export function PageHeader() {
     <div className="space-y-1">
       <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h1>
       <p className="text-sm text-muted-foreground">
-        Tune display, microphone, stem separation, transcript engine, and model parameters.
+        Set how Nightingale looks and sounds during playback, and control how it separates vocals,
+        transcribes lyrics, and syncs them to the music when analyzing songs.
       </p>
     </div>
   );

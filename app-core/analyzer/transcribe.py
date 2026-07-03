@@ -7,7 +7,7 @@ from audio import detect_vocal_region, highpass_filter, normalize_rms
 from gpu import gpu_model, hard_free_gpu
 from hallucination import is_hallucination, remove_hallucinated_words
 from language import detect_language_multiwindow
-from whisper_compat import progress, align_with_fallback
+from whisper_compat import progress, align_with_fallback, get_align_backend
 
 
 def transcribe_vocals(
@@ -306,9 +306,19 @@ def _filter_hallucinations(raw_segments: list[dict], duration_secs: float) -> li
 
 
 def _align_and_build(raw_segments: list[dict], audio, language: str, device: str, pre_align_cleanup=None) -> dict:
-    """Run WhisperX forced alignment, interpolate unaligned words, and build final segments."""
+    """Run forced alignment, interpolate unaligned words, and build final segments."""
     align_device = "cpu" if device == "mps" else device
     is_cjk = cjk.is_cjk(language)
+
+    import qwen_align
+    if get_align_backend() == "qwen" and qwen_align.is_supported(language):
+        qwen_result = _align_and_build_qwen(raw_segments, audio, language, pre_align_cleanup)
+        if qwen_result is not None:
+            return qwen_result
+        print(
+            "[nightingale:LOG] Qwen alignment unavailable; falling back to wav2vec2 path",
+            flush=True,
+        )
 
     if is_cjk:
         cleaned: list[dict] = []
@@ -352,6 +362,55 @@ def _align_and_build(raw_segments: list[dict], audio, language: str, device: str
 
     segments = _build_segments(all_words, is_cjk=is_cjk)
 
+    progress(90, f"Transcription complete: {len(segments)} segments, lang={language}")
+    if segments:
+        print(f"[nightingale:LOG] First segment: '{segments[0]['text'][:100]}'", flush=True)
+        if segments[0].get("words"):
+            print(f"[nightingale:LOG] First word: '{segments[0]['words'][0]}'", flush=True)
+        print(f"[nightingale:LOG] Last segment: '{segments[-1]['text'][:100]}'", flush=True)
+
+    return {"language": language, "segments": segments}
+
+
+def _align_and_build_qwen(raw_segments: list[dict], audio, language: str, pre_align_cleanup=None) -> dict | None:
+    """Align with Qwen3-ForcedAligner and build segments.
+
+    Qwen tokenizes the display text itself (dropping punctuation) and returns a
+    timed unit per token, so this skips the wav2vec2 word-recovery /
+    interpolation / CJK-retokenize steps: it just flattens the timed tokens,
+    attaches romanized readings for CJK/Korean, and groups into display segments.
+    Returns ``None`` on any qwen failure so the caller falls back to wav2vec2.
+    """
+    import qwen_align
+
+    progress(80, f"Aligning word timestamps with Qwen (lang={language})...")
+    try:
+        result = qwen_align.qwen_align_with_cpu_fallback(
+            raw_segments, audio, language, pre_align_cleanup,
+        )
+    except qwen_align.QwenUnsupportedError as e:
+        print(f"[nightingale:LOG] Qwen aligner unsupported: {e}", flush=True)
+        return None
+    except Exception as e:
+        print(f"[nightingale:LOG] Qwen aligner failed: {e}", flush=True)
+        return None
+
+    all_words: list[dict] = []
+    for seg in result.get("segments", []):
+        for w in seg.get("words", []):
+            word_text = w.get("word", "").strip()
+            if not word_text or w.get("start") is None or w.get("end") is None:
+                continue
+            all_words.append({"word": word_text, "start": w["start"], "end": w["end"]})
+
+    if not all_words:
+        return None
+
+    all_words = remove_hallucinated_words(all_words)
+    if cjk.is_supported_lang(language):
+        cjk.attach_reading(all_words, language)
+
+    segments = _build_segments(all_words, is_cjk=cjk.is_cjk(language))
     progress(90, f"Transcription complete: {len(segments)} segments, lang={language}")
     if segments:
         print(f"[nightingale:LOG] First segment: '{segments[0]['text'][:100]}'", flush=True)

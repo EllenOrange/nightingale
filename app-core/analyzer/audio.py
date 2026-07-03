@@ -2,14 +2,41 @@
 
 import numpy as np
 
+DEFAULT_VOCAL_THRESHOLD_PCT = 0.15
+_vocal_threshold_pct = DEFAULT_VOCAL_THRESHOLD_PCT
+
+
+def set_vocal_threshold_pct(pct) -> None:
+    """Set the RMS threshold (fraction of peak) used to detect the vocal region.
+
+    Lower values keep more quiet audio at the song's edges (less aggressive
+    trimming); higher values trim harder. Invalid/None values are ignored so the
+    default stays in effect.
+    """
+    global _vocal_threshold_pct
+    if pct is None:
+        return
+    try:
+        pct = float(pct)
+    except (TypeError, ValueError):
+        return
+    _vocal_threshold_pct = min(max(pct, 0.0), 1.0)
+
+
+def get_vocal_threshold_pct() -> float:
+    return _vocal_threshold_pct
+
 
 def detect_vocal_region(audio, sr: int = 16000, win_secs: float = 0.5,
-                        threshold_pct: float = 0.15, min_consecutive: int = 4,
+                        threshold_pct=None, min_consecutive: int = 4,
                         padding: float = 1.0) -> tuple[float, float]:
     """Detect where vocals start and end using RMS energy analysis.
 
-    Returns (vocal_start, vocal_end) in seconds.
+    Returns (vocal_start, vocal_end) in seconds. When ``threshold_pct`` is
+    ``None`` the module-level configurable threshold is used.
     """
+    if threshold_pct is None:
+        threshold_pct = _vocal_threshold_pct
     window_samples = int(win_secs * sr)
     rms_values = []
     for start_idx in range(0, len(audio), window_samples):

@@ -33,7 +33,8 @@ if os.name == "nt":
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from gpu import end_of_song_cleanup, hard_free_gpu, log_vram, reset_peak_stats, vram_snapshot
-from whisper_compat import detect_device, is_oom, set_progress_sink
+from whisper_compat import detect_device, is_oom, set_align_backend, set_progress_sink
+from audio import set_vocal_threshold_pct
 from pipeline import run_pipeline
 
 
@@ -48,6 +49,9 @@ def process_song(cmd, device):
     engine = cmd.get("engine", "whisper")
     lyrics_path = cmd.get("lyrics")
     language_override = cmd.get("language")
+
+    set_align_backend(cmd.get("align_backend", "whisperx"))
+    set_vocal_threshold_pct(cmd.get("vocal_detection_threshold_pct"))
 
     reset_peak_stats()
     log_vram("song_start")

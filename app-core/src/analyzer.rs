@@ -655,6 +655,8 @@ fn process_song(initial_hash: &str, cache: &CacheDir) {
         "batch_size": config.batch_size(),
         "separator": config.separator(),
         "engine": config.asr_engine(),
+        "align_backend": config.align_backend(),
+        "vocal_detection_threshold_pct": config.vocal_detection_threshold_pct(),
     });
 
     if let Some(ref lp) = lyrics_path {

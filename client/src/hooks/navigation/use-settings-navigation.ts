@@ -8,11 +8,15 @@ import {
   MIC_MONITOR_GAIN_MAX,
   MIC_MONITOR_GAIN_STEP,
   NAV,
+  VOCAL_THRESHOLD_MAX,
+  VOCAL_THRESHOLD_MIN,
+  VOCAL_THRESHOLD_STEP,
+  getAnalysisNav,
   getSettingsStops,
   type SettingsTab,
-} from "./constants";
+} from "@/components/menu/settings/constants";
 
-const FOCUS_RING = "z-10 ring-2 ring-primary ring-offset-2 ring-offset-background";
+const FOCUS_RING = "relative z-10 ring-2 ring-primary";
 const NO_FOCUS_RING = "focus-visible:ring-0 focus-visible:border-transparent";
 
 function getVisibleFocusables(container: HTMLElement) {
@@ -41,10 +45,12 @@ interface UseSettingsNavigationOptions {
   isParakeet: boolean;
   micMonitorGain: number;
   micLatencySec: number;
+  vocalThresholdPct: number;
   onBack: () => void;
   onTabChange: (tab: SettingsTab) => void;
   onMicMonitorGainChange: (gain: number) => void;
   onMicLatencyChange: (latencySec: number) => void;
+  onVocalThresholdChange: (pct: number) => void;
 }
 
 export function useSettingsNavigation({
@@ -53,10 +59,12 @@ export function useSettingsNavigation({
   isParakeet,
   micMonitorGain,
   micLatencySec,
+  vocalThresholdPct,
   onBack,
   onTabChange,
   onMicMonitorGainChange,
   onMicLatencyChange,
+  onVocalThresholdChange,
 }: UseSettingsNavigationOptions) {
   const stops = useMemo(() => getSettingsStops(tab, isParakeet), [tab, isParakeet]);
   const itemCount = useMemo(() => stops.reduce((sum, size) => sum + size, 0), [stops]);
@@ -74,19 +82,29 @@ export function useSettingsNavigation({
         return true;
       }
 
-      if (tab !== "general" || (!action.left && !action.right)) return false;
+      if (!action.left && !action.right) return false;
 
-      if (segment === NAV.general.micMonitorGain) {
+      if (tab === "general" && segment === NAV.general.micMonitorGain) {
         const delta = action.right ? MIC_MONITOR_GAIN_STEP : -MIC_MONITOR_GAIN_STEP;
         const next = Math.min(MIC_MONITOR_GAIN_MAX, Math.max(0, micMonitorGain + delta));
         onMicMonitorGainChange(next);
         return true;
       }
 
-      if (segment === NAV.general.micLatency) {
+      if (tab === "general" && segment === NAV.general.micLatency) {
         const delta = action.right ? MIC_LATENCY_STEP : -MIC_LATENCY_STEP;
         const next = Math.min(MIC_LATENCY_MAX, Math.max(0, micLatencySec + delta));
         onMicLatencyChange(next);
+        return true;
+      }
+
+      if (tab === "analysis" && segment === getAnalysisNav(isParakeet).vocalThreshold) {
+        const delta = action.right ? VOCAL_THRESHOLD_STEP : -VOCAL_THRESHOLD_STEP;
+        const next = Math.min(
+          VOCAL_THRESHOLD_MAX,
+          Math.max(VOCAL_THRESHOLD_MIN, vocalThresholdPct + delta),
+        );
+        onVocalThresholdChange(next);
         return true;
       }
 

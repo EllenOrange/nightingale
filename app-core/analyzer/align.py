@@ -7,7 +7,7 @@ import cjk
 from audio import detect_vocal_region
 from gpu import gpu_model
 from language import detect_language_multiwindow
-from whisper_compat import progress, align_device_for, compute_type_for, align_with_fallback
+from whisper_compat import progress, align_device_for, compute_type_for, align_with_fallback, get_align_backend
 
 
 def align_lyrics(
@@ -70,6 +70,22 @@ def align_lyrics(
         progress(59, f"Detected language: {language}")
 
     progress(80, f"Final alignment from {vocal_start:.1f}s...")
+
+    import qwen_align
+    if get_align_backend() == "qwen" and qwen_align.is_supported(language):
+        qwen_segments = _align_lyrics_qwen(
+            clean_lines, audio, language, vocal_start, vocal_end, pre_align_cleanup,
+        )
+        if qwen_segments is not None:
+            progress(90, f"Alignment complete: {len(qwen_segments)} segments, lang={language}")
+            if qwen_segments:
+                print(f"[nightingale:LOG] First segment: '{qwen_segments[0]['text'][:100]}'", flush=True)
+                print(f"[nightingale:LOG] Last segment: '{qwen_segments[-1]['text'][:100]}'", flush=True)
+            return {"language": language, "segments": qwen_segments, "source": "lyrics"}
+        print(
+            "[nightingale:LOG] Qwen lyrics alignment unavailable; falling back to wav2vec2 path",
+            flush=True,
+        )
 
     line_token_pairs: list[list[tuple[str, str]]] | None = None
     if cjk.is_cjk(language):
@@ -250,6 +266,115 @@ def _split_long_segments(segments: list[dict], joiner: str = " ") -> list[dict]:
                 "words": chunk,
             })
     return out
+
+
+def _align_lyrics_qwen(
+    clean_lines: list[str],
+    audio,
+    language: str,
+    vocal_start: float,
+    vocal_end: float,
+    pre_align_cleanup=None,
+) -> list[dict] | None:
+    """Align lyrics with Qwen3-ForcedAligner and map tokens back to lines.
+
+    The whole vocal region is aligned in one pass against the newline-joined
+    lyrics (newlines make line boundaries token boundaries and are dropped by
+    Qwen's tokenizer). The flat timed-token stream is then sliced onto lines by
+    cumulative kept-char count. Returns ``None`` on any qwen failure so the
+    caller falls back to the wav2vec2 path.
+    """
+    import qwen_align
+
+    full_text = "\n".join(clean_lines)
+    raw_segments = [{"text": full_text, "start": vocal_start, "end": vocal_end}]
+    try:
+        result = qwen_align.qwen_align_with_cpu_fallback(
+            raw_segments, audio, language, pre_align_cleanup,
+        )
+    except qwen_align.QwenUnsupportedError as e:
+        print(f"[nightingale:LOG] Qwen aligner unsupported: {e}", flush=True)
+        return None
+    except Exception as e:
+        print(f"[nightingale:LOG] Qwen aligner failed: {e}", flush=True)
+        return None
+
+    segments = _map_qwen_units_to_lines(result, clean_lines, language)
+    if not segments:
+        return None
+
+    total_words = sum(len(s["words"]) for s in segments)
+    print(
+        f"[nightingale:LOG] Qwen lyrics alignment: {len(segments)} lines, {total_words} tokens",
+        flush=True,
+    )
+    return segments
+
+
+def _map_qwen_units_to_lines(align_result: dict, clean_lines: list[str], language: str) -> list[dict]:
+    """Slice Qwen's flat timed-token stream onto lyric lines by kept-char count.
+
+    Every Qwen token carries a timestamp (the model never drops units), and token
+    surfaces concatenate to each line's kept content, so a running kept-char
+    counter attributes tokens to lines without normalized-text matching. Readings
+    are attached per line for CJK/Korean.
+    """
+    units = _collect_aligned(align_result)
+    segments: list[dict] = []
+    cursor = 0
+
+    for line_text in clean_lines:
+        need = cjk.qwen_kept_len(line_text)
+        if need == 0:
+            continue
+
+        taken: list[dict] = []
+        acc = 0
+        while cursor < len(units) and acc < need:
+            u = units[cursor]
+            cursor += 1
+            taken.append(u)
+            acc += cjk.qwen_kept_len(u["word"])
+
+        words: list[dict] = []
+        for u in taken:
+            if u["start"] is None or u["end"] is None:
+                continue
+            entry = {"word": u["word"], "start": round(u["start"], 3), "end": round(u["end"], 3)}
+            if entry["end"] < entry["start"]:
+                entry["end"] = entry["start"]
+            if u["score"] is not None:
+                entry["score"] = round(u["score"], 3)
+            words.append(entry)
+
+        if not words:
+            continue
+
+        if cjk.is_supported_lang(language):
+            cjk.attach_reading(words, language)
+
+        seg_start = words[0]["start"]
+        seg_end = words[-1]["end"]
+        if seg_end < seg_start:
+            seg_end = seg_start
+
+        segments.append({
+            "text": line_text,
+            "start": seg_start,
+            "end": seg_end,
+            "words": words,
+        })
+
+    for i in range(1, len(segments)):
+        prev = segments[i - 1]
+        cur = segments[i]
+        if cur["start"] < prev["end"]:
+            cur["start"] = prev["end"]
+            if cur["end"] < cur["start"]:
+                cur["end"] = cur["start"]
+
+    joiner = "" if cjk.is_cjk(language) else " "
+    return _split_long_segments(segments, joiner=joiner)
 
 
 def _map_words_to_lines(align_result: dict, clean_lines: list[str]) -> list[dict]:

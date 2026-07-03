@@ -11,6 +11,20 @@ GitHub Release body. If a section is missing the release is still created
 with a fallback body, but ideally every tagged version has its own entry
 below.
 
+## [Unreleased]
+
+### Improvements
+
+- Experimental CTC forced-alignment backend — **Settings → Analysis → Forced alignment** can now use torchaudio's `forced_align` C++/CUDA kernel instead of WhisperX's pure-Python Viterbi. It computes each word's start/end points with a different algorithm, and is much faster on CUDA GPUs and Apple Silicon (where WhisperX alignment runs on the CPU). It also speeds up LRCLIB lyrics alignment and automatically falls back to WhisperX on error. Defaults to WhisperX, so existing behavior is unchanged unless you opt in.
+- Experimental Qwen forced-alignment backend — **Settings → Analysis → Forced alignment** can also use [Qwen3-ForcedAligner-0.6B](https://huggingface.co/Qwen/Qwen3-ForcedAligner-0.6B-hf), a non-autoregressive model that timestamps every token in one forward pass from audio + transcript (no wav2vec2, no phonetic step). It's fast and covers 11 languages, runs on CUDA and Apple Silicon MPS (as well as CPU), and falls back to WhisperX for unsupported languages, over-length audio, or any error. Timing quality varies song to song, but it can do better on CJK. Defaults to WhisperX, so existing behavior is unchanged unless you opt in.
+- Adjustable vocal-detection sensitivity — **Settings → Analysis → Vocal detection sensitivity** exposes the RMS threshold that decides where a song's vocals start and end. Lower it when quiet intros, outros, or soft singing get trimmed; raise it to cut more silence. Defaults to 15%, matching previous behavior.
+- Clearer analysis settings — the vocal separator, transcription model, and alignment model options now have plain-language descriptions explaining what each choice actually changes.
+- Smoother lyrics display across short pauses — a finished line now stays on screen with its already-sung word colors until the next line's lead-in begins, instead of vanishing the moment it ends. Longer gaps still show the countdown as before.
+
+### Fixes
+
+- Fixed Settings page focus rings: tabs, buttons, and the beam/batch number pickers no longer show clipped borders or a brief shrink flicker on hover. The page now uses the same focus-ring style as the rest of the app (removing the `ring-offset` that got clipped by the scroll containers) and the number pickers have room for the ring.
+
 ## [0.8.0] - 2026-06-08
 
 ### Highlights
