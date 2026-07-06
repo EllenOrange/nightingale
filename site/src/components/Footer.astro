@@ -3,7 +3,10 @@
 
 <footer>
   <div class="container footer-inner">
-    <span class="footer-copy">Nightingale &middot; GPL-3.0-or-later</span>
+    <div class="footer-brand">
+      <img src="/logo_square.png" alt="Nightingale" width="24" height="24" />
+      <span class="footer-copy">Nightingale &middot; GPL-3.0-or-later</span>
+    </div>
     <div class="footer-links">
       <a href="/docs/">Docs</a>
       <a href="https://github.com/rzru/nightingale" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -14,8 +17,8 @@
 
 <style>
   footer {
-    border-top: 1px solid rgba(255, 255, 255, 0.04);
-    padding: 24px 0;
+    border-top: 1px solid var(--border);
+    padding: 32px 0;
   }
 
   .footer-inner {
@@ -26,15 +29,28 @@
     gap: 12px;
   }
 
+  .footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .footer-brand img {
+    opacity: 0.85;
+    border-radius: 6px;
+  }
+
   .footer-copy {
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     color: var(--text-dim);
   }
 
   .footer-links {
     display: flex;
-    gap: 20px;
-    font-size: 0.8rem;
+    gap: 24px;
+    font-size: 0.85rem;
+    font-family: var(--font-display);
+    font-weight: 500;
   }
 
   .footer-links a {

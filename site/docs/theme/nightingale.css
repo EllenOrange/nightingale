@@ -1,28 +1,28 @@
 :root {
-  --bg: rgb(19, 19, 30);
-  --sidebar-bg: rgb(14, 14, 22);
-  --sidebar-fg: rgb(237, 237, 245);
-  --sidebar-active: rgb(107, 138, 255);
-  --sidebar-spacer: rgba(107, 138, 255, 0.08);
+  --bg: rgb(13, 13, 24);
+  --sidebar-bg: rgb(8, 8, 15);
+  --sidebar-fg: rgb(244, 244, 251);
+  --sidebar-active: rgb(124, 147, 255);
+  --sidebar-spacer: rgba(124, 147, 255, 0.08);
   --content-max-width: 820px;
   --page-padding: 15px;
-  --searchbar-border-color: rgba(107, 138, 255, 0.15);
-  --searchbar-bg: rgb(28, 28, 43);
-  --searchbar-fg: rgb(237, 237, 245);
+  --searchbar-border-color: rgba(124, 147, 255, 0.15);
+  --searchbar-bg: rgb(26, 26, 40);
+  --searchbar-fg: rgb(244, 244, 251);
   --searchbar-shadow-color: transparent;
-  --searchresults-header-fg: rgb(107, 138, 255);
-  --searchresults-border-color: rgba(107, 138, 255, 0.1);
-  --links: rgb(107, 138, 255);
-  --icons: rgb(140, 140, 158);
-  --icons-hover: rgb(237, 237, 245);
-  --theme-popup-bg: rgb(28, 28, 43);
-  --theme-popup-border: rgba(107, 138, 255, 0.15);
-  --theme-hover: rgb(41, 41, 56);
-  --quote-bg: rgba(107, 138, 255, 0.06);
-  --quote-border: rgba(107, 138, 255, 0.3);
-  --table-border-color: rgba(107, 138, 255, 0.1);
-  --table-header-bg: rgb(28, 28, 43);
-  --table-alternate-bg: rgba(28, 28, 43, 0.5);
+  --searchresults-header-fg: rgb(124, 147, 255);
+  --searchresults-border-color: rgba(124, 147, 255, 0.1);
+  --links: rgb(124, 147, 255);
+  --icons: rgb(150, 150, 170);
+  --icons-hover: rgb(244, 244, 251);
+  --theme-popup-bg: rgb(26, 26, 40);
+  --theme-popup-border: rgba(124, 147, 255, 0.15);
+  --theme-hover: rgb(36, 36, 58);
+  --quote-bg: rgba(124, 147, 255, 0.06);
+  --quote-border: rgba(124, 147, 255, 0.3);
+  --table-border-color: rgba(124, 147, 255, 0.1);
+  --table-header-bg: rgb(26, 26, 40);
+  --table-alternate-bg: rgba(26, 26, 40, 0.5);
 }
 
 .light,
@@ -31,57 +31,57 @@
 .navy,
 .ayu,
 .nightingale {
-  --bg: rgb(19, 19, 30);
-  --fg: rgb(237, 237, 245);
-  --sidebar-bg: rgb(14, 14, 22);
-  --sidebar-fg: rgb(237, 237, 245);
-  --sidebar-active: rgb(107, 138, 255);
+  --bg: rgb(13, 13, 24);
+  --fg: rgb(244, 244, 251);
+  --sidebar-bg: rgb(8, 8, 15);
+  --sidebar-fg: rgb(244, 244, 251);
+  --sidebar-active: rgb(124, 147, 255);
 }
 
 body {
-  background: rgb(19, 19, 30) !important;
-  color: rgb(237, 237, 245) !important;
+  background: rgb(13, 13, 24) !important;
+  color: rgb(244, 244, 251) !important;
 }
 
 .sidebar {
-  background: rgb(14, 14, 22) !important;
+  background: rgb(8, 8, 15) !important;
 }
 
 .sidebar .sidebar-scrollbox {
-  background: rgb(14, 14, 22) !important;
+  background: rgb(8, 8, 15) !important;
 }
 
 .sidebar a {
-  color: rgb(140, 140, 158) !important;
+  color: rgb(150, 150, 170) !important;
 }
 
 .sidebar a.active,
 .sidebar a:hover {
-  color: rgb(107, 138, 255) !important;
+  color: rgb(124, 147, 255) !important;
 }
 
 .content {
-  background: rgb(19, 19, 30) !important;
+  background: rgb(13, 13, 24) !important;
 }
 
 .page-wrapper {
-  background: rgb(19, 19, 30) !important;
+  background: rgb(13, 13, 24) !important;
 }
 
 .menu-bar,
 .menu-bar.bordered {
-  background: rgb(19, 19, 30) !important;
-  border-bottom-color: rgba(107, 138, 255, 0.08) !important;
+  background: rgb(13, 13, 24) !important;
+  border-bottom-color: rgba(124, 147, 255, 0.08) !important;
 }
 
 .menu-bar i,
 .menu-bar .icon-button {
-  color: rgb(140, 140, 158) !important;
+  color: rgb(150, 150, 170) !important;
 }
 
 .menu-bar i:hover,
 .menu-bar .icon-button:hover {
-  color: rgb(237, 237, 245) !important;
+  color: rgb(244, 244, 251) !important;
 }
 
 .menu-bar .icon-button {
@@ -96,7 +96,7 @@ h3,
 h4,
 h5,
 h6 {
-  color: rgb(237, 237, 245) !important;
+  color: rgb(244, 244, 251) !important;
 }
 
 .content main {
@@ -143,23 +143,23 @@ table {
 }
 
 a {
-  color: rgb(107, 138, 255) !important;
+  color: rgb(124, 147, 255) !important;
 }
 
 a:hover {
-  color: rgb(133, 163, 255) !important;
+  color: rgb(152, 171, 255) !important;
 }
 
 code {
-  background: rgb(28, 28, 43) !important;
-  color: rgb(237, 237, 245) !important;
+  background: rgb(26, 26, 40) !important;
+  color: rgb(244, 244, 251) !important;
   border-radius: 4px;
   padding: 2px 5px;
 }
 
 pre {
-  background: rgb(28, 28, 43) !important;
-  border: 1px solid rgba(107, 138, 255, 0.1);
+  background: rgb(26, 26, 40) !important;
+  border: 1px solid rgba(124, 147, 255, 0.1);
   border-radius: 8px;
 }
 
@@ -168,43 +168,43 @@ pre > code {
 }
 
 table th {
-  background: rgb(28, 28, 43) !important;
+  background: rgb(26, 26, 40) !important;
 }
 
 table td,
 table th {
-  border-color: rgba(107, 138, 255, 0.1) !important;
+  border-color: rgba(124, 147, 255, 0.1) !important;
 }
 
 table tr:nth-child(2n) {
-  background: rgba(28, 28, 43, 0.5) !important;
+  background: rgba(26, 26, 40, 0.5) !important;
 }
 
 blockquote {
-  border-left: 4px solid rgba(107, 138, 255, 0.3);
-  background: rgba(107, 138, 255, 0.06);
+  border-left: 4px solid rgba(124, 147, 255, 0.3);
+  background: rgba(124, 147, 255, 0.06);
   padding: 10px 20px;
   border-radius: 0 8px 8px 0;
 }
 
 .nav-chapters:hover {
-  color: rgb(237, 237, 245) !important;
-  background: rgb(28, 28, 43) !important;
+  color: rgb(244, 244, 251) !important;
+  background: rgb(26, 26, 40) !important;
 }
 
 #searchbar {
-  background: rgb(28, 28, 43) !important;
-  border-color: rgba(107, 138, 255, 0.15) !important;
-  color: rgb(237, 237, 245) !important;
+  background: rgb(26, 26, 40) !important;
+  border-color: rgba(124, 147, 255, 0.15) !important;
+  color: rgb(244, 244, 251) !important;
 }
 
 #theme-list {
-  background: rgb(28, 28, 43) !important;
-  border-color: rgba(107, 138, 255, 0.15) !important;
+  background: rgb(26, 26, 40) !important;
+  border-color: rgba(124, 147, 255, 0.15) !important;
 }
 
 #theme-list > button:hover {
-  background: rgb(41, 41, 56) !important;
+  background: rgb(36, 36, 58) !important;
 }
 
 pre.mermaid {
@@ -221,33 +221,119 @@ pre.mermaid svg {
 
 pre.mermaid .node rect,
 pre.mermaid .node polygon {
-  fill: rgb(28, 28, 43) !important;
-  stroke: rgba(107, 138, 255, 0.3) !important;
+  fill: rgb(26, 26, 40) !important;
+  stroke: rgba(124, 147, 255, 0.3) !important;
   rx: 8;
   ry: 8;
 }
 
 pre.mermaid .node .label {
-  color: rgb(237, 237, 245) !important;
-  fill: rgb(237, 237, 245) !important;
+  color: rgb(244, 244, 251) !important;
+  fill: rgb(244, 244, 251) !important;
 }
 
 pre.mermaid .edgeLabel {
-  background: rgb(19, 19, 30) !important;
-  color: rgb(140, 140, 158) !important;
-  fill: rgb(140, 140, 158) !important;
+  background: rgb(13, 13, 24) !important;
+  color: rgb(150, 150, 170) !important;
+  fill: rgb(150, 150, 170) !important;
 }
 
 pre.mermaid .edgeLabel rect {
-  fill: rgb(19, 19, 30) !important;
+  fill: rgb(13, 13, 24) !important;
   stroke: none !important;
 }
 
 pre.mermaid .flowchart-link {
-  stroke: rgba(107, 138, 255, 0.4) !important;
+  stroke: rgba(124, 147, 255, 0.4) !important;
 }
 
 pre.mermaid .marker {
-  fill: rgba(107, 138, 255, 0.4) !important;
-  stroke: rgba(107, 138, 255, 0.4) !important;
+  fill: rgba(124, 147, 255, 0.4) !important;
+  stroke: rgba(124, 147, 255, 0.4) !important;
+}
+
+/* ==== Modern polish: fonts + aurora background (matches landing) ==== */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap");
+
+html {
+  background: rgb(13, 13, 24) !important;
+}
+
+body {
+  position: relative;
+}
+
+.page-wrapper::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(55% 40% at 12% -5%, rgba(124, 147, 255, 0.16), transparent 60%),
+    radial-gradient(50% 35% at 92% 0%, rgba(255, 107, 166, 0.1), transparent 55%),
+    radial-gradient(60% 45% at 55% 6%, rgba(177, 123, 255, 0.08), transparent 60%);
+}
+
+.page,
+.menu-bar,
+.content {
+  position: relative;
+  z-index: 1;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.sidebar .sidebar-title,
+.menu-title {
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif !important;
+  letter-spacing: -0.02em;
+}
+
+.content main h1 {
+  font-weight: 700;
+  font-size: 2.1rem;
+  background: linear-gradient(115deg, #7c93ff 0%, #b17bff 48%, #ff6ba6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent !important;
+}
+
+.content main h2 {
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(124, 147, 255, 0.14);
+}
+
+/* Softer, rounder chrome */
+#searchbar,
+pre,
+code,
+blockquote,
+#theme-list,
+table th {
+  border-radius: 10px !important;
+}
+
+.sidebar a {
+  border-radius: 8px;
+  padding: 2px 8px !important;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.sidebar a:hover {
+  background: rgba(124, 147, 255, 0.1) !important;
+}
+
+.sidebar a.active {
+  background: rgba(124, 147, 255, 0.14) !important;
+}
+
+::selection {
+  background: rgba(124, 147, 255, 0.35);
+  color: #fff;
 }

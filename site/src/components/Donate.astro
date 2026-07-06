@@ -58,6 +58,7 @@ const cards = [
         ))
       }
     </div>
+    </div>
   </div>
 </section>
 
@@ -66,18 +67,42 @@ const cards = [
     text-align: center;
   }
 
+  .donate-panel {
+    position: relative;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border);
+    background: var(--grad-brand-soft);
+    padding: 48px 32px;
+    overflow: hidden;
+  }
+
+  .donate-panel::before {
+    content: "";
+    position: absolute;
+    top: -60%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60%;
+    height: 120%;
+    background: var(--grad-brand);
+    filter: blur(120px);
+    opacity: 0.18;
+    pointer-events: none;
+  }
+
   h2 {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 8px;
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    font-weight: 700;
+    margin: 14px 0 10px;
     color: var(--text-primary);
   }
 
   .donate-desc {
     color: var(--text-secondary);
-    font-size: 0.95rem;
-    margin: 0 auto 24px;
-    max-width: 560px;
+    font-size: 1rem;
+    margin: 0 auto 28px;
+    max-width: 580px;
+    position: relative;
   }
 
   .donate-cards {
@@ -93,21 +118,22 @@ const cards = [
     display: flex;
     flex-direction: column;
     gap: 10px;
-    background: var(--surface);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(10, 10, 18, 0.55);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 20px;
+    padding: 22px;
     color: var(--text-primary);
     transition:
       background 0.2s,
       border-color 0.2s,
-      transform 0.15s;
+      transform 0.2s;
   }
 
   .donate-card:hover {
     color: var(--text-primary);
-    background: var(--surface-hover);
-    transform: translateY(-1px);
+    background: rgba(10, 10, 18, 0.75);
+    transform: translateY(-3px);
   }
 
   .donate-card-patreon:hover {

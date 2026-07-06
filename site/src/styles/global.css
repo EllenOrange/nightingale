@@ -1,19 +1,50 @@
 :root {
-  --bg: rgb(19, 19, 30);
-  --surface: rgb(28, 28, 43);
-  --surface-hover: rgb(41, 41, 56);
-  --sidebar-bg: rgb(14, 14, 22);
-  --accent: rgb(107, 138, 255);
-  --accent-hover: rgb(133, 163, 255);
-  --text-primary: rgb(237, 237, 245);
-  --text-secondary: rgb(140, 140, 158);
-  --text-dim: rgb(107, 107, 122);
-  --badge-ready: rgb(46, 173, 71);
-  --badge-lyrics: rgb(46, 133, 209);
-  --star-gold: rgb(255, 214, 0);
-  --radius: 6px;
-  --radius-lg: 10px;
-  --max-width: 1100px;
+  /* ---- Surfaces (deep indigo-black, matches the app's dark theme) ---- */
+  --bg: #0a0a12;
+  --bg-2: #0d0d18;
+  --surface: rgba(255, 255, 255, 0.035);
+  --surface-solid: #14141f;
+  --surface-2: #1a1a28;
+  --surface-hover: rgba(255, 255, 255, 0.06);
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  /* ---- Text ---- */
+  --text-primary: #f4f4fb;
+  --text-secondary: #b6b6c9;
+  --text-dim: #7c7c92;
+
+  /* ---- Brand accents (stage-light neon) ---- */
+  --accent: #4a6bf7;
+  --accent-hover: #6d8bff;
+  --violet: #6d8bff;
+  --pink: #59c0e8;
+  --gold: #ffcf4d;
+  --green: #34d17f;
+
+  --grad-brand: linear-gradient(120deg, #4a6bf7 0%, #6d8bff 55%, #59c0e8 100%);
+  --grad-brand-soft: linear-gradient(
+    120deg,
+    rgba(74, 107, 247, 0.15) 0%,
+    rgba(109, 139, 255, 0.12) 55%,
+    rgba(89, 192, 232, 0.14) 100%
+  );
+
+  --glow-accent: 0 0 0 1px rgba(74, 107, 247, 0.25),
+    0 12px 40px -12px rgba(74, 107, 247, 0.45);
+
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --max-width: 1160px;
+
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 20px 50px -30px rgba(0, 0, 0, 0.9);
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
 }
 
 *,
@@ -26,21 +57,58 @@
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  position: relative;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: 1.65;
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---- Ambient aurora / stage-light background ---- */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(60% 45% at 15% -5%, rgba(74, 107, 247, 0.22), transparent 60%),
+    radial-gradient(55% 40% at 90% 0%, rgba(89, 192, 232, 0.12), transparent 55%),
+    radial-gradient(70% 55% at 50% 8%, rgba(109, 139, 255, 0.14), transparent 60%);
+  pointer-events: none;
+}
+
+/* Subtle grain to kill banding and add texture */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.035;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 a {
   color: var(--accent);
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color 0.2s ease;
 }
 
 a:hover {
@@ -52,6 +120,11 @@ img {
   height: auto;
 }
 
+::selection {
+  background: rgba(74, 107, 247, 0.35);
+  color: #fff;
+}
+
 .container {
   width: 100%;
   max-width: var(--max-width);
@@ -60,11 +133,115 @@ img {
 }
 
 section {
-  padding: 32px 0;
+  padding: 72px 0;
+}
+
+/* ---- Shared building blocks ---- */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(74, 107, 247, 0.1);
+  border: 1px solid rgba(74, 107, 247, 0.22);
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 32px;
+  margin-bottom: 40px;
+  flex-wrap: wrap;
+}
+
+.section-title {
+  font-size: clamp(1.7rem, 3.4vw, 2.4rem);
+  font-weight: 700;
+  margin: 12px 0 0;
+}
+
+.section-sub {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin-top: 12px;
+  max-width: 620px;
+}
+
+.grad-text {
+  background: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.docs-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
+.docs-link:hover {
+  color: var(--text-primary);
+}
+
+.docs-link svg {
+  width: 15px;
+  height: 15px;
+  transition: transform 0.2s ease;
+}
+
+.docs-link:hover svg {
+  transform: translateX(3px);
+}
+
+/* Glass card baseline reused across sections */
+.card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.25s ease, border-color 0.25s ease,
+    background 0.25s ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
 }
 
 @media (max-width: 768px) {
   section {
-    padding: 24px 0;
+    padding: 52px 0;
+  }
+  .container {
+    padding: 0 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
   }
 }

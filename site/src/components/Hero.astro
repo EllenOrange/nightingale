@@ -33,13 +33,22 @@ const platforms = [
 <section class="hero">
   <div class="container">
     <div class="hero-content">
-      <h1>
+      <a class="hero-badge" href="/docs/">
+        <span class="hero-badge-dot"></span>
+        <span class="grad-text">v{version}</span>
+        <span class="hero-badge-text">— free &amp; open source</span>
+      </a>
+      <h1 class="hero-title">
         <img src="/logo.png" alt="Nightingale" class="hero-logo" />
+        <span class="hero-headline">
+          Your music library,<br />
+          <span class="grad-text">turned into karaoke.</span>
+        </span>
       </h1>
       <p class="hero-tagline">
-        Turn any song into karaoke. Nightingale separates vocals, aligns lyrics,
-        and gives you pitch scoring, key/tempo controls, and rich backgrounds in
-        one self-contained app.
+        Nightingale splits out the vocals, aligns every word of the lyrics, and
+        scores your pitch in real time — with key &amp; tempo controls and
+        audio-reactive backgrounds. One self-contained app, no cloud, no setup.
       </p>
       <div class="hero-actions">
         <div class="hero-downloads">
@@ -180,26 +189,73 @@ const platforms = [
 
 <style>
   .hero {
-    padding: 120px 0 48px;
+    padding: 148px 0 56px;
     text-align: center;
   }
 
-  h1 {
+  .hero-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 6px 14px 6px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    margin-bottom: 28px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+
+  .hero-badge:hover {
+    color: var(--text-secondary);
+    border-color: var(--border-strong);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .hero-badge-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 4px rgba(52, 209, 127, 0.18);
+  }
+
+  .hero-title {
     margin: 0;
-    line-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
   }
 
   .hero-logo {
-    width: 300px;
-    max-width: 70%;
-    margin-bottom: 20px;
+    width: 210px;
+    max-width: 62%;
+    filter: drop-shadow(0 8px 40px rgba(74, 107, 247, 0.35));
+  }
+
+  .hero-headline {
+    font-size: clamp(2.3rem, 6.2vw, 4.1rem);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.04;
+    max-width: 15ch;
   }
 
   .hero-tagline {
-    font-size: 1.15rem;
+    font-size: clamp(1.02rem, 1.6vw, 1.22rem);
     color: var(--text-secondary);
-    max-width: 540px;
-    margin: 0 auto 32px;
+    max-width: 600px;
+    margin: 26px auto 36px;
     line-height: 1.6;
   }
 
@@ -207,7 +263,7 @@ const platforms = [
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
   }
 
   .hero-downloads {
@@ -220,32 +276,37 @@ const platforms = [
   .btn-download {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    background: var(--surface);
+    gap: 7px;
+    background: rgba(255, 255, 255, 0.045);
     color: var(--text-primary);
-    padding: 10px 22px;
-    border-radius: var(--radius);
+    padding: 11px 22px;
+    border-radius: 999px;
+    font-family: var(--font-display);
     font-weight: 500;
-    font-size: 0.9rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    transition: background 0.2s, border-color 0.2s, color 0.2s;
+    font-size: 0.92rem;
+    border: 1px solid var(--border);
+    transition: background 0.2s, border-color 0.2s, color 0.2s,
+      transform 0.18s;
   }
 
   .btn-download:hover {
     background: var(--surface-hover);
+    border-color: var(--border-strong);
     color: var(--text-primary);
+    transform: translateY(-1px);
   }
 
   .btn-download.detected {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
+    background: var(--grad-brand);
+    color: #0a0a12;
+    border-color: transparent;
+    box-shadow: 0 10px 30px -10px rgba(74, 107, 247, 0.7);
   }
 
   .btn-download.detected:hover {
-    background: var(--accent-hover);
-    border-color: var(--accent-hover);
-    color: white;
+    filter: brightness(1.06);
+    color: #0a0a12;
+    transform: translateY(-1px);
   }
 
   .btn-icon {
@@ -264,13 +325,13 @@ const platforms = [
     top: calc(100% + 4px);
     left: 50%;
     transform: translateX(-50%);
-    background: var(--surface);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius);
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
     overflow: hidden;
     z-index: 10;
-    min-width: 140px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    min-width: 150px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
   }
 
   .arch-dropdown.open {
@@ -279,7 +340,7 @@ const platforms = [
   }
 
   .arch-option {
-    padding: 8px 16px;
+    padding: 9px 16px;
     font-size: 0.85rem;
     color: var(--text-primary);
     white-space: nowrap;
@@ -288,16 +349,20 @@ const platforms = [
 
   .arch-option:hover {
     background: var(--surface-hover);
-    color: var(--text-primary);
+    color: var(--accent-hover);
   }
 
   .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     background: transparent;
     color: var(--text-secondary);
-    padding: 8px 24px;
-    border-radius: var(--radius);
+    padding: 8px 20px;
+    border-radius: 999px;
+    font-family: var(--font-display);
     font-weight: 500;
-    font-size: 0.85rem;
+    font-size: 0.88rem;
     border: none;
     transition: color 0.2s;
   }
@@ -307,28 +372,39 @@ const platforms = [
   }
 
   .hero-media {
-    margin-top: 48px;
+    margin-top: 64px;
+    position: relative;
+  }
+
+  .hero-media::before {
+    content: "";
+    position: absolute;
+    inset: -8% 8% 30%;
+    z-index: -1;
+    background: var(--grad-brand);
+    filter: blur(90px);
+    opacity: 0.28;
+    border-radius: 50%;
   }
 
   .hero-video-wrapper {
-    max-width: 820px;
+    max-width: 900px;
     margin: 0 auto;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     overflow: hidden;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 40px 120px -40px rgba(0, 0, 0, 0.9),
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    background: var(--surface-solid);
   }
 
   @media (max-width: 768px) {
     .hero {
-      padding: 100px 0 40px;
-    }
-
-    .hero-tagline {
-      font-size: 1.05rem;
+      padding: 116px 0 40px;
     }
 
     .hero-logo {
-      width: 240px;
+      width: 150px;
     }
 
     .hero-downloads {
@@ -336,8 +412,8 @@ const platforms = [
     }
 
     .btn-download {
-      padding: 8px 14px;
-      font-size: 0.82rem;
+      padding: 9px 16px;
+      font-size: 0.84rem;
     }
   }
 </style>

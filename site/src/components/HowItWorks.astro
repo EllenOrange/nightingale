@@ -3,7 +3,7 @@ const steps = [
   {
     title: "Source",
     description:
-      "Pick a library: a local folder, a Jellyfin or Navidrome server, or the self-hosted web build that any device in the house can open.",
+      "Point Nightingale at your music: a local folder, or a Jellyfin or Navidrome server. Run it as the desktop app or the self-hosted web build \u2014 either way, the pipeline is the same.",
   },
   {
     title: "Separate",
@@ -25,14 +25,21 @@ const steps = [
 
 <section id="how-it-works">
   <div class="container">
-    <div class="header">
-      <h2>How it works</h2>
-      <a href="/docs/how-it-works.html" class="docs-link">Read pipeline docs</a>
+    <div class="section-head">
+      <div>
+        <span class="eyebrow">The pipeline</span>
+        <h2 class="section-title">From track to stage in four steps</h2>
+      </div>
+      <a href="/docs/how-it-works.html" class="docs-link">
+        Read pipeline docs
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
     </div>
     <div class="steps">
       {
-        steps.map((step) => (
+        steps.map((step, i) => (
           <div class="step">
+            <span class="step-num">{String(i + 1).padStart(2, "0")}</span>
             <h3>{step.title}</h3>
             <p>{step.description}</p>
           </div>
@@ -43,25 +50,6 @@ const steps = [
 </section>
 
 <style>
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 32px;
-  }
-
-  h2 {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin: 0;
-  }
-
-  .docs-link {
-    font-size: 0.9rem;
-    color: var(--accent);
-  }
-
   .steps {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -69,23 +57,45 @@ const steps = [
   }
 
   .step {
+    position: relative;
     background: var(--surface);
     border-radius: var(--radius-lg);
-    padding: 24px 20px;
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 26px 22px;
+    border: 1px solid var(--border);
+    transition: transform 0.25s ease, border-color 0.25s ease,
+      background 0.25s ease;
+  }
+
+  .step:hover {
+    transform: translateY(-4px);
+    border-color: var(--border-strong);
+    background: var(--surface-hover);
+  }
+
+  .step-num {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.7rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 14px;
+    background: var(--grad-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 
   .step h3 {
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     font-weight: 600;
-    margin-bottom: 6px;
-    color: var(--accent);
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
   }
 
   .step p {
-    font-size: 0.85rem;
+    font-size: 0.86rem;
     color: var(--text-secondary);
-    line-height: 1.55;
+    line-height: 1.6;
   }
 
   @media (max-width: 960px) {

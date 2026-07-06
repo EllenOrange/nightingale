@@ -3,6 +3,7 @@
 
 <section class="newsletter" id="newsletter">
   <div class="container">
+    <span class="eyebrow">Newsletter</span>
     <h2 class="newsletter-title">Stay in the loop</h2>
     <p class="newsletter-desc">
       Get notified about new releases and updates. No spam, unsubscribe anytime.
@@ -66,21 +67,21 @@
 
 <style>
   .newsletter {
-    padding: 64px 0;
+    padding: 80px 0;
     text-align: center;
   }
 
   .newsletter-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 8px;
+    font-size: clamp(1.6rem, 3vw, 2.2rem);
+    font-weight: 700;
+    margin: 14px 0 10px;
     color: var(--text-primary);
   }
 
   .newsletter-desc {
     color: var(--text-secondary);
-    font-size: 0.95rem;
-    margin-bottom: 24px;
+    font-size: 1rem;
+    margin-bottom: 28px;
   }
 
   .newsletter-form {
@@ -93,14 +94,15 @@
 
   .newsletter-input {
     flex: 1;
-    padding: 10px 16px;
-    border-radius: var(--radius);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 12px 18px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
     background: var(--surface);
     color: var(--text-primary);
-    font-size: 0.9rem;
+    font-size: 0.92rem;
+    font-family: var(--font-body);
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
 
   .newsletter-input::placeholder {
@@ -109,23 +111,26 @@
 
   .newsletter-input:focus {
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(74, 107, 247, 0.18);
   }
 
   .newsletter-btn {
-    padding: 10px 24px;
-    border-radius: var(--radius);
+    padding: 12px 26px;
+    border-radius: 999px;
     border: none;
-    background: var(--accent);
-    color: white;
-    font-weight: 500;
-    font-size: 0.9rem;
+    background: var(--grad-brand);
+    color: #0a0a12;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.92rem;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: transform 0.18s, filter 0.18s;
     white-space: nowrap;
   }
 
   .newsletter-btn:hover {
-    background: var(--accent-hover);
+    filter: brightness(1.06);
+    transform: translateY(-1px);
   }
 
   .newsletter-btn:disabled {
