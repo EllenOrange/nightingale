@@ -26,6 +26,13 @@ struct Args {
     /// Override the data folder. Equivalent to `NIGHTINGALE_DATA_PATH=...`.
     #[arg(long, env = "NIGHTINGALE_DATA_PATH")]
     data: Option<String>,
+
+    /// Pin the library to a folder at this server-visible path. Equivalent to
+    /// `NIGHTINGALE_LIBRARY_PATH=...`. When set, Nightingale configures a folder
+    /// library source pointing here on startup, so the music folder never has to
+    /// be picked in the browser (ideal for Docker / headless installs).
+    #[arg(long, env = "NIGHTINGALE_LIBRARY_PATH")]
+    library: Option<String>,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -37,6 +44,14 @@ async fn main() {
         // pick it up for both the config seed and every later `step_*` call.
         // Safety: must happen before any thread reads the env.
         unsafe { std::env::set_var("NIGHTINGALE_DATA_PATH", data) };
+    }
+
+    if let Some(library) = args.library.as_deref() {
+        // Mirror the data path: persist to the env so `/api/bootstrap` can
+        // report the library as env-pinned regardless of whether the value
+        // arrived via `--library` or the env var.
+        // Safety: must happen before any thread reads the env.
+        unsafe { std::env::set_var("NIGHTINGALE_LIBRARY_PATH", library) };
     }
 
     let _ = dotenvy_quiet();
@@ -51,6 +66,10 @@ async fn main() {
     if let Err(e) = app_core::startup() {
         tracing::error!("startup failed: {e}");
         std::process::exit(1);
+    }
+
+    if let Some(library) = args.library.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        pin_folder_library(library);
     }
 
     let state = AppState::new();
@@ -83,6 +102,32 @@ async fn main() {
 
     tracing::info!("shutting down analyzer / vendor processes");
     app_core::shutdown_server();
+}
+
+/// Force the library source to a folder at `path`, declaratively. Running with
+/// `NIGHTINGALE_LIBRARY_PATH` set means the operator owns the library choice, so
+/// this overrides whatever was previously configured (including a remote source)
+/// and kicks off a scan. It no-ops when the folder source is already pinned here
+/// to avoid a needless rescan on every restart.
+fn pin_folder_library(path: &str) {
+    use app_core::{AppConfig, LibrarySource};
+
+    let desired = LibrarySource::Folder {
+        path: std::path::PathBuf::from(path),
+    };
+
+    let mut config = AppConfig::load();
+    if config.library_source.as_ref() == Some(&desired) {
+        tracing::info!(path, "library already pinned to folder; not rescanning");
+        return;
+    }
+
+    config.library_source = Some(desired);
+    config.last_folder = None;
+    config.save();
+
+    tracing::info!(path, "pinned library to folder from NIGHTINGALE_LIBRARY_PATH");
+    app_core::start_scan();
 }
 
 fn dotenvy_quiet() -> std::io::Result<()> {

@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { selectFolderPath } from "@/bridge/source";
+import { getServerFlags } from "@/bridge/server-flags";
 import { useConfig } from "@/queries/use-config";
 import { ANALYSIS_QUEUE, CONFIG, MENU, SONGS, SONGS_META } from "@/queries/keys";
 import { useQueryClient } from "@tanstack/react-query";
@@ -251,6 +252,11 @@ export const Setup = () => {
   const { shouldRunSetup, setShouldRunSetup } = useShouldRunSetup();
   const queryClient = useQueryClient();
 
+  // In self-hosted deployments the operator fixes the data folder via
+  // NIGHTINGALE_DATA_PATH (e.g. the /data volume in Docker), so there's nothing
+  // for the browser user to choose — skip the data-folder step entirely.
+  const { dataPathPinned } = getServerFlags();
+
   const [overrideFolder, setOverrideFolder] = useState(config?.data_path);
   const [separateCacheFolders, setSeparateCacheFolders] = useState(Boolean(config?.cache_paths));
   const [cacheFolders, setCacheFolders] = useState<CachePaths>(
@@ -292,10 +298,10 @@ export const Setup = () => {
   const startSetup = useCallback(
     () =>
       triggerSetup(
-        overrideFolder ?? undefined,
-        selectedCachePaths(separateCacheFolders, cacheFolders),
+        dataPathPinned ? undefined : (overrideFolder ?? undefined),
+        dataPathPinned ? undefined : selectedCachePaths(separateCacheFolders, cacheFolders),
       ),
-    [cacheFolders, overrideFolder, separateCacheFolders],
+    [cacheFolders, dataPathPinned, overrideFolder, separateCacheFolders],
   );
 
   const invalidatePostSetupState = useCallback(async () => {
@@ -372,7 +378,11 @@ export const Setup = () => {
       case "init":
         return () => (
           <InitialStep
-            toNextStep={() => setSetupProgress({ ...setupProgress, step: "changedatafolder" })}
+            toNextStep={() =>
+              dataPathPinned
+                ? startSetup()
+                : setSetupProgress({ ...setupProgress, step: "changedatafolder" })
+            }
           />
         );
       case "changedatafolder":
@@ -421,6 +431,7 @@ export const Setup = () => {
     cacheFolders,
     setCacheFolder,
     startSetup,
+    dataPathPinned,
     invalidatePostSetupState,
     setShouldRunSetup,
   ]);

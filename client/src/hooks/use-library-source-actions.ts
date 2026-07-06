@@ -7,6 +7,7 @@ import {
   useSelectFolderSource,
 } from "@/mutations/use-source-mutations";
 import { getSource } from "@/lib/library-source";
+import { getServerFlags } from "@/bridge/server-flags";
 
 /**
  * Coordinated source actions used by the sidebar + empty-state. Wraps the
@@ -21,6 +22,10 @@ export const useLibrarySourceActions = () => {
   const folderMutation = useSelectFolderSource();
   const rescanMutation = useRescan();
   const disconnectMutation = useDisconnectSource();
+
+  // When the operator pins the library folder (NIGHTINGALE_LIBRARY_PATH), the
+  // source is configured server-side and picking one in-app is disabled.
+  const { libraryPinned } = getServerFlags();
 
   const hasSource = !!config?.library_source;
   const jellyfinSource = getSource(config, "jellyfin");
@@ -48,6 +53,7 @@ export const useLibrarySourceActions = () => {
     jellyfinHealth,
     navidromeHealth,
     hasSource,
+    libraryPinned,
     jellyfinSource,
     navidromeSource,
     isFolderSource,

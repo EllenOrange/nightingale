@@ -1,0 +1,65 @@
+# Nightingale self-hosted web mode via Docker Compose.
+#
+#   CPU:   docker compose -f docker/compose.yaml up -d
+#   GPU:   docker compose -f docker/compose.yaml --profile gpu up -d nightingale-gpu
+#
+# Then open http://<host>:8080 and follow the setup wizard. The data folder is
+# fixed to the /data volume and the music library is fixed to NIGHTINGALE_LIBRARY_PATH
+# below, so there's nothing to pick in the browser — just mount your music at
+# that path.
+#
+# First launch downloads several GB of ML dependencies into the nightingale-data
+# volume; keep that volume to avoid re-downloading on recreate.
+#
+# Microphone scoring needs a secure context (HTTPS). Plain http://<host>:8080
+# works for everything else; put a TLS reverse proxy in front for mic support.
+
+services:
+  nightingale:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        # Optional: enables Pixabay video backgrounds.
+        PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
+    image: nightingale:latest
+    container_name: nightingale
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - nightingale-data:/data
+      # Point this at your music library on the host. The image already pins the
+      # library to /songs (NIGHTINGALE_LIBRARY_PATH), so just mount it here. To
+      # use a remote source (Jellyfin/Navidrome) instead, add
+      # `environment: { NIGHTINGALE_LIBRARY_PATH: "" }` and drop this mount.
+      - /path/to/your/music:/songs:ro
+
+  # GPU variant. Requires the NVIDIA Container Toolkit on the host.
+  # Start with: docker compose --profile gpu up -d nightingale-gpu
+  nightingale-gpu:
+    profiles: ["gpu"]
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        RUNTIME_BASE: nvidia/cuda:12.6.2-runtime-ubuntu24.04
+        PIXABAY_API_KEY: ${PIXABAY_API_KEY:-}
+    image: nightingale:cuda
+    container_name: nightingale-gpu
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - nightingale-data:/data
+      - /path/to/your/music:/songs:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  nightingale-data:

@@ -8,6 +8,8 @@ document.addEventListener("contextmenu", (e) => e.preventDefault());
 interface WebBootstrap {
   config: typeof window.__NIGHTINGALE_APP_CONFIG__;
   songsMeta: typeof window.__NIGHTINGALE_SONGS_META__;
+  dataPathPinned?: boolean;
+  libraryPinned?: boolean;
 }
 
 /**
@@ -28,6 +30,10 @@ async function loadWebBootstrap(): Promise<void> {
     const data = (await res.json()) as WebBootstrap;
     if (data.config) window.__NIGHTINGALE_APP_CONFIG__ = data.config;
     if (data.songsMeta) window.__NIGHTINGALE_SONGS_META__ = data.songsMeta;
+    window.__NIGHTINGALE_SERVER_FLAGS__ = {
+      dataPathPinned: Boolean(data.dataPathPinned),
+      libraryPinned: Boolean(data.libraryPinned),
+    };
   } catch (e) {
     console.warn("bootstrap fetch failed", e);
   }

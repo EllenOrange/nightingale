@@ -172,6 +172,10 @@ http://nightingale.local
 
 If your router supports DHCP reservations, reserve a stable IP for the host too.
 
+## Run with Docker
+
+Prefer containers? You can skip the systemd / Caddy / Avahi installer entirely and run the server in Docker (CPU or CUDA/GPU). See [Docker](./docker.md).
+
 ## Build from source
 
 Use this if you are testing local changes or no release exists yet:

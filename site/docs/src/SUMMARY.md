@@ -17,5 +17,6 @@
 - [Profiles](./profiles.md)
 - [Configuration](./configuration.md)
 - [Self-Hosted Web Mode](./self-hosted.md)
+  - [Docker](./docker.md)
 - [Building from Source](./building.md)
 - [Troubleshooting](./troubleshooting.md)

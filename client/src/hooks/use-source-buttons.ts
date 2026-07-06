@@ -64,6 +64,7 @@ export const useSourceButtons = (): SourceButton[] => {
     rescanDisabled,
     isPending,
     hasSource,
+    libraryPinned,
     jellyfinSource,
     navidromeSource,
     jellyfinHealth,
@@ -91,34 +92,38 @@ export const useSourceButtons = (): SourceButton[] => {
   );
 
   return useMemo<SourceButton[]>(() => {
-    const buttons: SourceButton[] = [
-      {
-        key: "navidrome",
-        icon: Disc3Icon,
-        label: "Connect Navidrome",
-        tooltip: navidrome.tooltip,
-        handler: () => setMode("navidrome-connect"),
-        disabled: isPending,
-        badge: navidrome.badge,
-      },
-      {
-        key: "jellyfin",
-        icon: JellyfinIcon,
-        label: "Connect Jellyfin",
-        tooltip: jellyfin.tooltip,
-        handler: () => setMode("jellyfin-connect"),
-        disabled: isPending,
-        badge: jellyfin.badge,
-      },
-      {
-        key: "folder",
-        icon: FolderIcon,
-        label: "Select folder",
-        tooltip: "Select folder",
-        handler: selectFolder,
-        disabled: isPending,
-      },
-    ];
+    // Operator pinned the library folder: source switching is disabled, only
+    // the rescan action stays available.
+    const buttons: SourceButton[] = libraryPinned
+      ? []
+      : [
+          {
+            key: "navidrome",
+            icon: Disc3Icon,
+            label: "Connect Navidrome",
+            tooltip: navidrome.tooltip,
+            handler: () => setMode("navidrome-connect"),
+            disabled: isPending,
+            badge: navidrome.badge,
+          },
+          {
+            key: "jellyfin",
+            icon: JellyfinIcon,
+            label: "Connect Jellyfin",
+            tooltip: jellyfin.tooltip,
+            handler: () => setMode("jellyfin-connect"),
+            disabled: isPending,
+            badge: jellyfin.badge,
+          },
+          {
+            key: "folder",
+            icon: FolderIcon,
+            label: "Select folder",
+            tooltip: "Select folder",
+            handler: selectFolder,
+            disabled: isPending,
+          },
+        ];
 
     if (hasSource) {
       buttons.push({
@@ -132,5 +137,15 @@ export const useSourceButtons = (): SourceButton[] => {
     }
 
     return buttons;
-  }, [hasSource, isPending, jellyfin, navidrome, rescan, rescanDisabled, selectFolder, setMode]);
+  }, [
+    hasSource,
+    libraryPinned,
+    isPending,
+    jellyfin,
+    navidrome,
+    rescan,
+    rescanDisabled,
+    selectFolder,
+    setMode,
+  ]);
 };
