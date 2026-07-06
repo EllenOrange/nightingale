@@ -46,7 +46,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 ✏️ **Lyrics editor with LRCLIB browser** — edit analyzed non-USDX lyrics from a song's Actions button. When LRCLIB has multiple matches, browse them and apply one with a click; saving re-runs alignment.
 
-🈯 **CJK lyric support** — Japanese, Chinese, and Korean songs get per-character forced alignment and romanized readings (Hepburn / pinyin / Revised Romanization) shown above each token.
+🈯 **CJK lyric support** — Japanese, Chinese, Cantonese, and Korean songs get per-character forced alignment and romanized readings (Hepburn / pinyin / Jyutping / Revised Romanization) shown above each token.
 
 🗣️ **Pluggable ASR engines** — choose Whisper (default, broad language coverage) or **Parakeet v3 (experimental)** for ~25 European languages, with NeMo on CUDA and ONNX Runtime everywhere else.
 

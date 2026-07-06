@@ -693,6 +693,7 @@ pub fn step_install_packages() -> Result<(), String> {
         "pykakasi>=2.3",
         "jieba>=0.42",
         "pypinyin>=0.50",
+        "ToJyutping>=3.0",
         "hangul-romanize>=0.1.0",
         // Tokenizers the Qwen3 forced aligner uses internally for ja/ko.
         "nagisa>=0.2.11",

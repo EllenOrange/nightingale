@@ -104,7 +104,7 @@ def align_lyrics(
     raw_segments = [{"text": full_text, "start": vocal_start, "end": vocal_end}]
 
     align_result = align_with_fallback(
-        raw_segments, audio, language, a_device, pre_align_cleanup,
+        raw_segments, audio, cjk.align_lang_code(language), a_device, pre_align_cleanup,
         model_name=cjk.align_model_for(language),
     )
 

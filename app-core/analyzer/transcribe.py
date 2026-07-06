@@ -343,7 +343,7 @@ def _align_and_build(raw_segments: list[dict], audio, language: str, device: str
 
     progress(80, f"Aligning word timestamps (lang={language})...")
     result = align_with_fallback(
-        raw_segments, audio, language, align_device, pre_align_cleanup,
+        raw_segments, audio, cjk.align_lang_code(language), align_device, pre_align_cleanup,
         model_name=cjk.align_model_for(language),
     )
 

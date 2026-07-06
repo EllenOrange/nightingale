@@ -9,15 +9,21 @@ training-time ``CHARS_TO_IGNORE`` so the aligner only sees in-vocab chars.
 Per-character timing from those aligners is mapped onto fugashi (ja) or
 jieba (zh) tokens for display.
 
+Cantonese ("yue") shares written Han characters with Mandarin, so it rides
+the same char-level path as ``zh``: jieba tokenization for display and the
+Chinese wav2vec2 CTC checkpoint for alignment (WhisperX ships no ``yue``
+default). Only its reading differs — Jyutping instead of pinyin.
+
 Korean ("ko") uses ``kresnik/wav2vec2-large-xlsr-korean`` and is *not* in
 WhisperX's ``LANGUAGES_WITHOUT_SPACES`` list, so its alignment output is
 already per-eojeol (whitespace chunks) and bypasses the char-level
 retokenization path entirely; only :func:`reading` is involved for ko.
 
 Reading systems used: pykakasi Hepburn (ja), pypinyin tone-mark pinyin
-(zh), hangul-romanize academic Revised Romanization (ko). All heavy
-modules are imported lazily on first use so non-CJK songs don't pay the
-fugashi/pykakasi/jieba/hangul-romanize startup cost.
+(zh), ToJyutping Jyutping (yue), hangul-romanize academic Revised
+Romanization (ko). All heavy modules are imported lazily on first use so
+non-CJK songs don't pay the fugashi/pykakasi/jieba/ToJyutping/
+hangul-romanize startup cost.
 """
 
 # Punctuation / symbols / whitespace not present in the wav2vec2 ja/zh
@@ -36,6 +42,10 @@ _NOISE_CHARS_SET = set(_NOISE_CHARS) | {" ", "\t", "\n", "\r", "\u3000"}
 # acoustic prior of natural Japanese speech much better.
 JA_ALIGN_MODEL = "vumichien/wav2vec2-large-xlsr-japanese-hiragana"
 
+# Han-character CTC checkpoint used for zh; also reused for yue since Cantonese
+# lyrics are written in the same Han characters and WhisperX has no yue default.
+ZH_ALIGN_MODEL = "jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn"
+
 _fugashi_tagger = None
 _pykakasi_instance = None
 _jieba_inited = False
@@ -44,7 +54,7 @@ _korean_transliter = None
 
 def is_cjk(lang) -> bool:
     """Languages that go through the char-level alignment + retokenize path."""
-    return lang in ("ja", "zh")
+    return lang in ("ja", "zh", "yue")
 
 
 def qwen_kept_len(text: str) -> int:
@@ -128,6 +138,11 @@ def _get_korean_romanizer():
         from hangul_romanize.rule import academic
         _korean_transliter = Transliter(academic)
     return _korean_transliter
+
+
+def _get_tojyutping():
+    import ToJyutping
+    return ToJyutping
 
 
 def tokenize_japanese(text: str) -> list[str]:
@@ -216,7 +231,7 @@ def tokenize(text: str, lang: str) -> list[str]:
         return []
     if lang == "ja":
         return tokenize_japanese(text)
-    if lang == "zh":
+    if lang in ("zh", "yue"):
         return tokenize_chinese(text)
     if lang == "ko":
         return tokenize_korean(text)
@@ -240,7 +255,7 @@ def tokenize_for_alignment(text: str, lang: str) -> list[tuple[str, str]]:
         return []
     if lang == "ja":
         return tokenize_japanese_with_reading(text)
-    if lang == "zh":
+    if lang in ("zh", "yue"):
         return [(t, clean_for_alignment(t)) for t in tokenize_chinese(text)]
     return [(text, clean_for_alignment(text))]
 
@@ -259,16 +274,40 @@ def align_model_for(lang: str):
     default is poorly suited. Returns ``None`` to mean 'use default'."""
     if lang == "ja":
         return JA_ALIGN_MODEL
+    if lang == "yue":
+        return ZH_ALIGN_MODEL
     return None
+
+
+def align_lang_code(lang: str) -> str:
+    """WhisperX ``language_code`` for the wav2vec2 aligner.
+
+    Cantonese reuses the Chinese code so WhisperX applies its no-space
+    (per-character) word grouping and Han-character alignment path — the same
+    treatment ``zh`` gets. WhisperX only uses this code to pick the word-split
+    behaviour and (when no ``model_name`` is given) the default model, so the
+    app keeps tracking ``yue`` separately for jieba tokenization and Jyutping
+    readings."""
+    return "zh" if lang == "yue" else lang
 
 
 def reading(text: str, lang: str):
     """Romanized reading: pykakasi Hepburn (ja), tone-mark pinyin (zh),
-    Revised Romanization (ko)."""
+    Jyutping (yue), Revised Romanization (ko)."""
     if not text:
         return None
     if not clean_for_alignment(text):
         return None
+    if lang == "yue":
+        try:
+            pairs = _get_tojyutping().get_jyutping_list(text)
+            # Drop Jyutping tone digits — bare numbers read poorly as karaoke
+            # syllables (e.g. "hoi2 fut3" -> "hoi fut").
+            parts = ["".join(ch for ch in jp if not ch.isdigit()) for _, jp in pairs if jp]
+            r = " ".join(p for p in parts if p).strip()
+            return r or None
+        except Exception:
+            return None
     if lang == "ja":
         try:
             chunks = _get_pykakasi().convert(text)

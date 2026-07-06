@@ -61,25 +61,26 @@ Notes:
 
 ## Language Support
 
-The language is auto-detected from the audio. You can override it per song from the song-list controls. Nightingale includes Noto Sans CJK fonts for Chinese, Japanese, and Korean lyrics.
+The language is auto-detected from the audio. You can override it per song from the song-list controls. Nightingale includes Noto Sans CJK fonts for Chinese, Cantonese, Japanese, and Korean lyrics.
 
 ## CJK Languages
 
-Japanese (`ja`) and Chinese (`zh`) take a dedicated forced-alignment path because their wav2vec2 alignment models are character-level CTC checkpoints, not word/space-segmented. Nightingale:
+Japanese (`ja`), Chinese (`zh`), and Cantonese (`yue`) take a dedicated forced-alignment path because their wav2vec2 alignment models are character-level CTC checkpoints, not word/space-segmented. Nightingale:
 
 1. **Transcribes** with Whisper or Parakeet as usual.
 2. **Cleans** the text down to the alignment vocab (drops punctuation and other out-of-vocab symbols).
 3. **Aligns** per character with a wav2vec2 model:
    - Japanese: `vumichien/wav2vec2-large-xlsr-japanese-hiragana` — feeds [fugashi](https://github.com/polm/fugashi)-derived hiragana readings into a hiragana-vocab CTC model. This sidesteps the dense kanji vocabulary of the default checkpoint and matches the acoustic prior of natural Japanese speech far better.
-   - Chinese: `jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn` with [jieba](https://github.com/fxsjy/jieba) tokenization for display.
-4. **Reattributes** per-character timing back onto fugashi (ja) or jieba (zh) tokens for word-level highlighting.
+   - Chinese and Cantonese: `jonatasgrosman/wav2vec2-large-xlsr-53-chinese-zh-cn` with [jieba](https://github.com/fxsjy/jieba) tokenization for display. Cantonese is written in the same Han characters, so it reuses the Chinese CTC model and per-character grouping; only its romanized reading differs.
+4. **Reattributes** per-character timing back onto fugashi (ja) or jieba (zh/yue) tokens for word-level highlighting.
 
 Korean (`ko`) uses `kresnik/wav2vec2-large-xlsr-korean`, which is already eojeol-segmented and bypasses the character-retokenization step.
 
-For all three languages, every word is annotated with a romanized **reading** that appears above the original token during playback:
+For all four languages, every word is annotated with a romanized **reading** that appears above the original token during playback:
 
 - Japanese — Hepburn romaji via [pykakasi](https://github.com/miurahr/pykakasi)
 - Chinese — tone-mark pinyin via [pypinyin](https://github.com/mozillazg/python-pinyin)
+- Cantonese — Jyutping via [ToJyutping](https://github.com/CanCLID/ToJyutping)
 - Korean — academic Revised Romanization via [hangul-romanize](https://github.com/youknowone/hangul-romanize)
 
 Heavy CJK modules are imported lazily on first use, so non-CJK songs don't pay the startup cost.

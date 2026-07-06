@@ -13,7 +13,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 - **Stem Separation** — isolates lead vocals from instrumentals
 - **Word-Level Lyrics** — automatic transcription with alignment
-- **CJK Lyrics** — Japanese / Chinese / Korean songs get per-character forced alignment and romanized readings (Hepburn, pinyin, Revised Romanization) above each token
+- **CJK Lyrics** — Japanese / Chinese / Cantonese / Korean songs get per-character forced alignment and romanized readings (Hepburn, pinyin, Jyutping, Revised Romanization) above each token
 - **Pluggable ASR** — Whisper (default) or Parakeet v3 (experimental, ~25 European languages)
 - **UltraStar Deluxe Songs (experimental)** — drop USDX folders into your library and play them with their built-in pitch + lyric data
 - **Pitch Scoring** — real-time microphone input with star ratings
