@@ -718,35 +718,6 @@ pub fn step_install_packages() -> Result<(), String> {
         return Err(format!("Package install failed: {stderr}"));
     }
 
-    // Qwen3-ForcedAligner (experimental align backend) needs the Qwen3-ASR
-    // integration, which landed in transformers main (PR #43838) but is not in
-    // any tagged release yet. Install it from the merge commit over whatever
-    // whisperx pulled in; this stays a no-upper-bound override so whisperx's
-    // own transformers usage keeps working. Pinned for reproducibility.
-    let transformers_git = concat!(
-        "transformers @ git+https://github.com/huggingface/transformers",
-        "@967203924487e8e9f64a2d825fc4e1bdbec3f518",
-    );
-    let transformers_args: Vec<&str> = vec![
-        "pip",
-        "install",
-        "--reinstall-package",
-        "transformers",
-        transformers_git,
-        "--python",
-        &py_str,
-    ];
-
-    let output = silent_command(&uv)
-        .args(&transformers_args)
-        .output()
-        .map_err(|e| format!("Failed to install Qwen-capable transformers: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("transformers (Qwen3-ASR) install failed: {stderr}"));
-    }
-
     if gpu.device == "cuda" {
         let torch_args: Vec<&str> = vec![
             "pip",
@@ -793,6 +764,39 @@ pub fn step_install_packages() -> Result<(), String> {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(format!("NeMo install failed: {stderr}"));
         }
+    }
+
+    // Qwen3-ForcedAligner (experimental align backend) needs the Qwen3-ASR
+    // integration, which landed in transformers main (PR #43838) but is not in
+    // any tagged release yet. Install it from the merge commit over whatever
+    // whisperx pulled in; this stays a no-upper-bound override so whisperx's
+    // own transformers usage keeps working. Pinned for reproducibility.
+    //
+    // This MUST run last: on CUDA, `nemo_toolkit[asr]` (installed above) pins
+    // transformers back to a tagged release that doesn't recognize the
+    // `qwen3_asr` model type, so it has to be re-applied after NeMo to win.
+    let transformers_git = concat!(
+        "transformers @ git+https://github.com/huggingface/transformers",
+        "@967203924487e8e9f64a2d825fc4e1bdbec3f518",
+    );
+    let transformers_args: Vec<&str> = vec![
+        "pip",
+        "install",
+        "--reinstall-package",
+        "transformers",
+        transformers_git,
+        "--python",
+        &py_str,
+    ];
+
+    let output = silent_command(&uv)
+        .args(&transformers_args)
+        .output()
+        .map_err(|e| format!("Failed to install Qwen-capable transformers: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("transformers (Qwen3-ASR) install failed: {stderr}"));
     }
 
     Ok(())

@@ -34,7 +34,9 @@ const attributions = [
     name: "Stem separation",
     value: "UVR — MIT / Demucs by Meta Research — MIT",
   },
-  { name: "Speech recognition", value: "WhisperX / OpenAI Whisper — MIT" },
+  { name: "Speech recognition", value: "WhisperX / OpenAI Whisper, NVIDIA Parakeet" },
+  { name: "Forced alignment", value: "WhisperX, torchaudio, Qwen3-ForcedAligner" },
+  { name: "CJK romanization", value: "fugashi, pypinyin, hangul-romanize, ToJyutping" },
 ];
 
 export const InfoDialog = () => {

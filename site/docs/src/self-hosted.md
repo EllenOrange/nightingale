@@ -144,7 +144,7 @@ This replaces the server binary and restarts Nightingale. Your config, library, 
 To install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/master/scripts/install.sh | NIGHTINGALE_VERSION=v0.8.0 bash
+curl -fsSL https://raw.githubusercontent.com/rzru/nightingale/master/scripts/install.sh | NIGHTINGALE_VERSION=v0.9.0 bash
 ```
 
 ## Useful commands
