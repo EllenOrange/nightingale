@@ -1,6 +1,6 @@
 [package]
 name = "Nightingale"
-version = "0.9.0"
+version = "0.9.1"
 description = "Nightingale — Karaoke from your music library."
 authors = ["rzru <rzzzzru@gmail.com>"]
 license = "GPL-3.0"
