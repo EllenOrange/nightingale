@@ -261,6 +261,16 @@ Required repository secrets:
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`  | Password for the signing key. Omit the secret entirely if the key was generated passwordless — GitHub rejects empty-string secrets, and a missing one resolves to empty at workflow runtime, which is what `minisign` expects. |
 | `PIXABAY_API_KEY`                     | Embedded at compile time so release builds can fetch video backgrounds.                                                            |
 
+## Contributing
+
+Contributions are welcome, but Nightingale follows a **discussion-first** process:
+before writing any code for a new feature or change, please
+[start a discussion thread](https://github.com/rzru/nightingale/discussions) so we
+can agree on whether it fits the app. Only once a discussion reaches **approved**
+status will a corresponding pull request be accepted.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow.
+
 ## Support the project
 
 Nightingale is open-source, free, and built by one person in their spare time. If it brings you joy and you want to help keep development going, you can chip in:
