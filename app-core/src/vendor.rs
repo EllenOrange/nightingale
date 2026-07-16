@@ -279,14 +279,14 @@ fn extract_archive(archive: &std::path::Path, dest_dir: &std::path::Path) -> Res
 
     let output = if name.ends_with(".tar.xz") {
         silent_command("tar")
-            .arg("-xJf")
+            .arg("-xmJf")
             .arg(archive)
             .arg("-C")
             .arg(dest_dir)
             .output()
     } else if name.ends_with(".tar.gz") {
         silent_command("tar")
-            .arg("-xzf")
+            .arg("-xmzf")
             .arg(archive)
             .arg("-C")
             .arg(dest_dir)
@@ -295,7 +295,7 @@ fn extract_archive(archive: &std::path::Path, dest_dir: &std::path::Path) -> Res
         #[cfg(windows)]
         {
             silent_command("tar")
-                .arg("-xf")
+                .arg("-xmf")
                 .arg(archive)
                 .arg("-C")
                 .arg(dest_dir)
