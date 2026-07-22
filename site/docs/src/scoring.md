@@ -6,7 +6,7 @@ Nightingale includes real-time pitch scoring to gamify the karaoke experience.
 
 1. **Microphone input** — select your microphone and toggle it on with `M`
 2. **Pitch detection** — your vocal pitch is analyzed in real-time
-3. **Comparison** — your pitch is compared against the reference vocal track
+3. **Comparison** — your pitch is compared against the reference vocal track (or the original mix for songs analyzed without stem separation, where scoring is less accurate)
 4. **Scoring** — accuracy is tracked throughout the song
 
 ## Star Ratings

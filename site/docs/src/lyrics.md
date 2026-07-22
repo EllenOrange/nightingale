@@ -85,14 +85,14 @@ For all four languages, every word is annotated with a romanized **reading** tha
 
 Heavy CJK modules are imported lazily on first use, so non-CJK songs don't pay the startup cost.
 
-## Editing Lyrics
+## Editing & Providing Lyrics
 
-When the automatic transcript needs a human pass, use a ready non-USDX song's **Actions** button and choose **Edit lyrics**. The dialog has two halves:
+Open a non-USDX song's **Actions** button and choose **Edit lyrics** (ready songs) or **Provide LRC** (un-analyzed songs). The dialog has two tabs:
 
-- **Edit tab** — a textarea seeded with the current transcript, one karaoke line per row. Saving re-runs alignment with your edits, so timing stays accurate to the audio. Dirty state is tracked; closing without saving discards the edit.
-- **LRCLIB matches tab** — visible when [LRCLIB](https://lrclib.net) returns more than one candidate for the song's metadata. Each candidate shows its track / artist / album / duration and the lyric body; arrows above the card let you carousel through them, and **Use these** copies the candidate's lines into the editor. Save to commit them with realignment.
+- **Edit tab** — a textarea for the lyrics. Paste timed **LRC / Enhanced LRC** (line- or word-level) to set timing directly and skip transcription, or paste plain lyrics to run alignment against the audio. For un-analyzed songs an **Audio** choice also appears: separate stems (karaoke) or play over the original mix.
+- **LRCLIB matches tab** — visible when [LRCLIB](https://lrclib.net) returns candidates. Each shows track / artist / album / duration and the lyric body; carousel through them and pick **Use LRC** (synced candidates, applied as-is) or **Use as plain text** (runs alignment).
 
-Saved lyrics replace the cached transcript for that song's blake3 hash, so subsequent plays pick up the edit immediately. CJK alignment paths are skipped on edits — the editor saves a flat per-line transcript and lets the alignment stage re-derive per-character timings on the next analyzer pass.
+Timed LRC is written straight to the transcript with no ML pass. Skipping stem separation plays the song over its original mix with the guide control hidden; a quick key-detection pass still enables key/tempo shifts, and pitch scoring falls back to the original mix (less accurate). Saved lyrics replace the cached transcript for that song's blake3 hash, so subsequent plays pick up the change immediately. CJK alignment paths are skipped on edits — the editor saves a flat per-line transcript and lets the alignment stage re-derive per-character timings on the next analyzer pass.
 
 ## Highlighting
 

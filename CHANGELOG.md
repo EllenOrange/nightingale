@@ -15,6 +15,7 @@ below.
 
 ### Features
 
+- Provide your own lyrics — paste timed **LRC / Enhanced LRC** to skip transcription (optionally skipping stem separation to play over the original mix), or plain lyrics to run alignment. Available on un-analyzed songs via a new **Provide LRC** action and in the existing lyrics editor; LRCLIB matches now include plain-text results. No-stems songs still detect key for key/tempo shifts, hide the guide control, and score pitch against the original mix (flagged as less accurate).
 - Plex Media Server provider — authorize through Plex's hosted PIN flow with account server discovery, or connect a LAN-only PMS directly with its URL and token. Choose one or more music libraries; Nightingale syncs their tracks and associated playable clips, metadata, covers, and read-only audio playlists. Playback and analysis lazily cache original media, video uses the authenticated range proxy, and every normal provider request goes directly to the selected PMS rather than app.plex.tv. Tokens are encrypted at rest and never placed in frontend media URLs.
 - Read-only playlist navigation — the sidebar now imports existing Jellyfin and Navidrome playlists, plus `.m3u`, `.m3u8`, and `.pls` files from folder libraries. Playlist order is preserved, relative local paths are resolved from the playlist file, and missing library entries are skipped.
 

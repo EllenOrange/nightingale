@@ -47,7 +47,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 📝 **Word-level lyrics** — automatic transcription with alignment, or fetched from [LRCLIB](https://lrclib.net) when available.
 
-✏️ **Lyrics editor with LRCLIB browser** — edit analyzed non-USDX lyrics from a song's Actions button. When LRCLIB has multiple matches, browse them and apply one with a click; saving re-runs alignment.
+✏️ **Lyrics editor with LRCLIB browser** — edit lyrics, browse LRCLIB matches, or paste your own **LRC / Enhanced LRC** from a song's Actions button. Timed LRC is used as-is (optionally skipping stem separation to sing over the original mix); plain lyrics run alignment.
 
 🈯 **CJK lyric support** — Japanese, Chinese, Cantonese, and Korean songs get per-character forced alignment and romanized readings (Hepburn / pinyin / Jyutping / Revised Romanization) shown above each token.
 
