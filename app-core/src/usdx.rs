@@ -544,6 +544,7 @@ pub fn build_usdx_song(path: &Path, cache: &CacheDir) -> Result<Song, Nightingal
         is_video: false,
         usdx: Some(bundle),
         origin: crate::song::SongOrigin::LocalFile,
+        no_stems: false,
     };
 
     Ok(song)

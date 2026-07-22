@@ -323,6 +323,29 @@ static ANALYZER: LazyLock<Mutex<AnalyzerState>> = LazyLock::new(|| {
 static FORCE_TRANSCRIBE: LazyLock<Mutex<HashSet<String>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
+/// Hashes whose queued job should only run stem separation (key detect +
+/// separation) and keep the already-written LRC-provided transcript.
+static STEMS_ONLY: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Mark a hash so its next analysis pass separates stems without transcribing,
+/// preserving the transcript built from provided LRC.
+pub fn mark_stems_only(file_hash: &str) {
+    STEMS_ONLY.lock().unwrap().insert(file_hash.to_string());
+}
+
+/// Hashes whose queued job should only detect the musical key (no separation,
+/// no transcription) so LRC-provided songs played over the original mix still
+/// support key/tempo shifting.
+static KEY_ONLY: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Mark a hash so its next analysis pass only detects the key, keeping the
+/// LRC-provided transcript and the song's `no_stems` playback mode intact.
+pub fn mark_key_only(file_hash: &str) {
+    KEY_ONLY.lock().unwrap().insert(file_hash.to_string());
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 fn update_queue_status(file_hash: &str, status: QueuedStatus) {
@@ -357,11 +380,15 @@ pub(crate) fn update_song_analyzed(
         if let Some(value) = tempo {
             song.tempo = value;
         }
+        // LRC-provided songs without stem separation are flagged in the
+        // transcript; mirror that onto the song so playback hides the guide.
+        song.no_stems = read_transcript_meta(&CacheDir::new(), file_hash).no_stems;
     } else {
         song.key = None;
         song.override_key = None;
         song.tempo = 1.0;
         song.key_offset = 0;
+        song.no_stems = false;
     }
     let _ = library_db::update_song_fields(file_hash, &song);
 }
@@ -637,8 +664,27 @@ fn process_song(initial_hash: &str, cache: &CacheDir) {
 
     update_queue_status(file_hash, QueuedStatus::Analyzing(0));
 
+    // Stems-only: keep the LRC-provided transcript and just separate stems.
+    // The intent may have been keyed by the pre-rekey hash for remote songs.
+    let stems_only = {
+        let mut set = STEMS_ONLY.lock().unwrap();
+        set.remove(file_hash) || set.remove(initial_hash)
+    };
+    let key_only = {
+        let mut set = KEY_ONLY.lock().unwrap();
+        set.remove(file_hash) || set.remove(initial_hash)
+    };
+    if (stems_only || key_only) && file_hash != initial_hash {
+        // Move the pre-written transcript to the rekeyed hash so the pass can
+        // patch it in place.
+        let _ = std::fs::rename(
+            cache.transcript_path(initial_hash),
+            cache.transcript_path(file_hash),
+        );
+    }
+
     let config = AppConfig::load();
-    let skip_lrclib = FORCE_TRANSCRIBE.lock().unwrap().remove(file_hash);
+    let skip_lrclib = stems_only || key_only || FORCE_TRANSCRIBE.lock().unwrap().remove(file_hash);
     let lyrics_path = if skip_lrclib {
         None
     } else {
@@ -659,13 +705,27 @@ fn process_song(initial_hash: &str, cache: &CacheDir) {
         "vocal_detection_threshold_pct": config.vocal_detection_threshold_pct(),
     });
 
+    if stems_only {
+        cmd_json["skip_transcription"] = serde_json::json!(true);
+    }
+    if key_only {
+        cmd_json["skip_transcription"] = serde_json::json!(true);
+        cmd_json["skip_separation"] = serde_json::json!(true);
+    }
+
     if let Some(ref lp) = lyrics_path {
         cmd_json["lyrics"] = serde_json::json!(lp.to_string_lossy());
     }
     let language_hint = config
         .language_override(file_hash)
         .map(str::to_string)
-        .or_else(|| lyrics_path.as_ref().and_then(|_| song.language.clone()));
+        .or_else(|| lyrics_path.as_ref().and_then(|_| song.language.clone()))
+        .filter(|lang| {
+            // "unknown"/empty is not a real language: passing it as a forced
+            // alignment language crashes whisperx, so let the worker detect it.
+            let normalized = lang.trim().to_ascii_lowercase();
+            !normalized.is_empty() && normalized != "unknown" && normalized != "und"
+        });
     if let Some(lang) = language_hint {
         cmd_json["language"] = serde_json::json!(lang);
     }

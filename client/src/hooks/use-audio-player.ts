@@ -23,6 +23,9 @@ export interface AudioPlayer {
   isFinished: boolean;
   error: string | null;
   guideVolume: number;
+  /** False for LRC-provided songs without stems: the original mix plays and
+   * there is no separate guide vocal track to control. */
+  guideAvailable: boolean;
   play: () => void;
   pause: () => void;
   resume: () => void;
@@ -30,6 +33,7 @@ export interface AudioPlayer {
   setGuideVolume: (v: number) => void;
   cleanup: () => void;
   getVocalsBuffer: () => AudioBuffer | null;
+  getScoringBuffer: () => AudioBuffer | null;
   getAudioContext: () => AudioContext | null;
 }
 
@@ -62,8 +66,14 @@ export function useAudioPlayer(
   const [isFinished, setIsFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guideVolume, setGuideVolumeState] = useState(initialGuideVolume);
+  const [guideAvailable, setGuideAvailable] = useState(true);
 
   const getVocalsBuffer = useCallback(() => vocalsBufRef.current, []);
+
+  const getScoringBuffer = useCallback(
+    () => vocalsBufRef.current ?? instrumentalBufRef.current,
+    [],
+  );
 
   const getAudioContext = useCallback(() => ctxRef.current, []);
 
@@ -115,7 +125,7 @@ export function useAudioPlayer(
       const vocBuf = vocalsBufRef.current;
       const gainNode = vocalsGainRef.current;
 
-      if (!ctx || !instBuf || !vocBuf || !gainNode) {
+      if (!ctx || !instBuf) {
         return;
       }
 
@@ -126,10 +136,6 @@ export function useAudioPlayer(
       const instSrc = ctx.createBufferSource();
       instSrc.buffer = instBuf;
       instSrc.connect(ctx.destination);
-
-      const vocSrc = ctx.createBufferSource();
-      vocSrc.buffer = vocBuf;
-      vocSrc.connect(gainNode);
 
       instSrc.onended = () => {
         if (!cancelledRef.current && playingRef.current && instrumentalSrcRef.current === instSrc) {
@@ -144,10 +150,18 @@ export function useAudioPlayer(
       startContextTimeRef.current = ctx.currentTime;
 
       instSrc.start(0, clamped);
-      vocSrc.start(0, clamped);
-
       instrumentalSrcRef.current = instSrc;
-      vocalsSrcRef.current = vocSrc;
+
+      // No vocals stem (LRC-provided, no separation): play the original mix
+      // through the instrumental node only.
+      if (vocBuf && gainNode) {
+        const vocSrc = ctx.createBufferSource();
+        vocSrc.buffer = vocBuf;
+        vocSrc.connect(gainNode);
+        vocSrc.start(0, clamped);
+        vocalsSrcRef.current = vocSrc;
+      }
+
       playingRef.current = true;
     },
     [stopSources],
@@ -184,6 +198,9 @@ export function useAudioPlayer(
           return;
         }
 
+        const vocalsUrl = paths.vocals;
+        setGuideAvailable(vocalsUrl !== null);
+
         const [instData, vocData] = await Promise.all([
           fetch(paths.instrumental).then((r) => {
             if (!r.ok) {
@@ -193,13 +210,15 @@ export function useAudioPlayer(
             return r.arrayBuffer();
           }),
 
-          fetch(paths.vocals).then((r) => {
-            if (!r.ok) {
-              throw new Error(`Failed to fetch vocals: ${r.status}`);
-            }
+          vocalsUrl === null
+            ? Promise.resolve(null)
+            : fetch(vocalsUrl).then((r) => {
+                if (!r.ok) {
+                  throw new Error(`Failed to fetch vocals: ${r.status}`);
+                }
 
-            return r.arrayBuffer();
-          }),
+                return r.arrayBuffer();
+              }),
         ]);
 
         if (isCancelled()) {
@@ -212,7 +231,7 @@ export function useAudioPlayer(
 
         const [instBuf, vocBuf] = await Promise.all([
           ctx.decodeAudioData(instData),
-          ctx.decodeAudioData(vocData),
+          vocData === null ? Promise.resolve(null) : ctx.decodeAudioData(vocData),
         ]);
 
         if (isCancelled()) {
@@ -342,6 +361,7 @@ export function useAudioPlayer(
       isFinished,
       error,
       guideVolume,
+      guideAvailable,
       play,
       pause,
       resume,
@@ -349,6 +369,7 @@ export function useAudioPlayer(
       setGuideVolume,
       cleanup,
       getVocalsBuffer,
+      getScoringBuffer,
       getAudioContext,
     }),
     [
@@ -360,6 +381,7 @@ export function useAudioPlayer(
       isFinished,
       error,
       guideVolume,
+      guideAvailable,
       play,
       pause,
       resume,
@@ -367,6 +389,7 @@ export function useAudioPlayer(
       setGuideVolume,
       cleanup,
       getVocalsBuffer,
+      getScoringBuffer,
       getAudioContext,
     ],
   );

@@ -144,12 +144,22 @@ def run_pipeline(
     separator="karaoke", engine="whisper",
     lyrics_path=None, language_override=None,
     whisper_model=None, pre_align_cleanup=None, free_gpu_fn=None,
+    skip_transcription=False,
+    skip_separation=False,
 ):
-    """Full analysis pipeline: stem separation -> transcription -> save."""
+    """Full analysis pipeline: stem separation -> transcription -> save.
+
+    When ``skip_transcription`` is set, an existing (LRC-provided) transcript is
+    kept as-is: only key detection and stem separation run, and the detected key
+    is patched into the transcript. When ``skip_separation`` is also set, stem
+    separation is skipped too (the song plays over its original mix); only the
+    key is detected and stamped onto the provided transcript.
+    """
     os.makedirs(output_dir, exist_ok=True)
 
     transcript_path = os.path.join(output_dir, f"{file_hash}_transcript.json")
-    if os.path.isfile(transcript_path):
+    transcript_exists = os.path.isfile(transcript_path)
+    if transcript_exists and not skip_transcription:
         progress(100, "Already analyzed, skipping")
         return
 
@@ -160,13 +170,31 @@ def run_pipeline(
         detected_key = detect_key(audio_path)
         tempo = 1.0
 
-        vocals_path = separate_and_cache(
-            audio_path, output_dir, file_hash, separator, device,
-            key=detected_key,
-            tempo=tempo,
-            free_gpu_fn=free_gpu_fn,
-        )
-        log_vram("phase:after_separation")
+        vocals_path = None
+        if not skip_separation:
+            vocals_path = separate_and_cache(
+                audio_path, output_dir, file_hash, separator, device,
+                key=detected_key,
+                tempo=tempo,
+                free_gpu_fn=free_gpu_fn,
+            )
+            log_vram("phase:after_separation")
+
+        if skip_transcription:
+            # Keep the provided LRC transcript; only stamp key/tempo onto it.
+            transcript = {}
+            if transcript_exists:
+                try:
+                    with open(transcript_path, "r", encoding="utf-8") as f:
+                        transcript = json.load(f)
+                except (OSError, ValueError) as e:
+                    print(f"[nightingale:LOG] Failed to read provided transcript: {e}", flush=True)
+            transcript["key"] = detected_key
+            transcript["tempo"] = normalize_tempo(tempo)
+            progress(95, "Writing transcript...")
+            with open(transcript_path, "w", encoding="utf-8") as f:
+                json.dump(transcript, f, ensure_ascii=False, indent=2)
+            return
 
         if callable(whisper_model):
             whisper_model = whisper_model()

@@ -28,7 +28,20 @@ export const SongList = () => {
 
   const view: SongListView = config?.song_list_view === "grid" ? "grid" : "table";
   const songs = useMemo(() => data?.pages.flatMap((page) => page.processed) ?? [], [data]);
-  const selectedSong = songs.find((song) => song.file_hash === selectedSongHash) ?? null;
+  const foundSong = songs.find((song) => song.file_hash === selectedSongHash) ?? null;
+  // Keep the details sidebar open even when the selected song temporarily drops
+  // out of the loaded pages — e.g. it leaves the analysis queue and re-sorts to
+  // a position we haven't paged to yet. Fall back to the last snapshot for the
+  // same hash so the sidebar doesn't flicker closed on status transitions.
+  const lastSelectedSongRef = useRef<(typeof songs)[number] | null>(null);
+  if (foundSong) {
+    lastSelectedSongRef.current = foundSong;
+  }
+  const selectedSong =
+    foundSong ??
+    (selectedSongHash && lastSelectedSongRef.current?.file_hash === selectedSongHash
+      ? lastSelectedSongRef.current
+      : null);
   const isFirstFilterRun = useRef(true);
   const songsRef = useRef(songs);
   const sentinelRef = useRef<HTMLDivElement>(null);

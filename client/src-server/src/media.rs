@@ -76,7 +76,7 @@ pub async fn handle_hashed(
 ) -> Response<Body> {
     let path = match kind.as_str() {
         "instrumental" => Some(app_core::get_audio_paths(&hash).instrumental),
-        "vocals" => Some(app_core::get_audio_paths(&hash).vocals),
+        "vocals" => app_core::get_audio_paths(&hash).vocals,
         "source-video" | "video" => app_core::ensure_playable_source_video(&hash).ok().flatten(),
         _ => None,
     };

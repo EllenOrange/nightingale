@@ -5,6 +5,7 @@ mod error;
 mod library_db;
 mod library_menu;
 mod library_model;
+mod lrc;
 mod lyrics;
 pub mod media_server;
 mod playback;
@@ -30,7 +31,8 @@ pub use library_db::{init_library, library_db_path};
 pub use library_menu::{LibraryMenuItem, LibraryMenuItems, load_library_menu_items};
 pub use library_model::{LibraryMenuFilters, LoadSongsParams, SongsMeta, SongsStore};
 pub use lyrics::{
-    LrclibCandidate, LyricsFile, load_lyrics_file, save_lyrics_and_realign, search_lrclib_for_hash,
+    LrclibCandidate, LyricsFile, apply_timed_lyrics, load_lyrics_file, provide_lrc,
+    save_lyrics_and_realign, search_lrclib_for_hash,
 };
 pub use media_server::MediaEndpoint;
 pub use playback::{

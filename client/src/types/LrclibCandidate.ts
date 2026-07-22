@@ -6,4 +6,5 @@ export type LrclibCandidate = {
   album_name: string;
   duration_secs: number;
   lines: Array<string>;
+  synced_lyrics: string | null;
 };

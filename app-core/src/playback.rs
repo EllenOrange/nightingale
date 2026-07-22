@@ -11,13 +11,15 @@ use ts_rs::TS;
 use crate::cache::{CacheDir, normalize_tempo, videos_dir};
 use crate::error::NightingaleError;
 use crate::library_db;
-use crate::song::Song;
+use crate::song::{Song, SongOrigin};
 use crate::vendor::{ffmpeg_path, silent_command};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AudioPaths {
     pub instrumental: String,
-    pub vocals: String,
+    /// `None` for LRC-provided songs played without stem separation: playback
+    /// uses the original mix as the instrumental and hides the guide control.
+    pub vocals: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -101,15 +103,52 @@ fn resolve_transcript_path(cache: &CacheDir, file_hash: &str) -> PathBuf {
     cache.transcript_path(file_hash)
 }
 
+/// Resolve the on-disk original media for a song, materializing remote sources
+/// on demand. Used for LRC-provided songs played without stem separation.
+fn resolve_original_media(song: &Song, cache: &CacheDir) -> String {
+    if matches!(song.origin, SongOrigin::LocalFile) {
+        return song.path.to_string_lossy().into_owned();
+    }
+    match crate::source::active_source() {
+        Ok(Some(source)) => match source.ensure_local_media(song, cache) {
+            Ok(path) => path.to_string_lossy().into_owned(),
+            Err(e) => {
+                warn!("[playback] Failed to materialize original media: {e}");
+                song.path.to_string_lossy().into_owned()
+            }
+        },
+        _ => song.path.to_string_lossy().into_owned(),
+    }
+}
+
 pub fn get_audio_paths(file_hash: &str) -> AudioPaths {
     let cache = CacheDir::new();
     if let Some(song) = library_db::load_song_by_hash(file_hash).ok().flatten() {
+        if song.no_stems {
+            let tempo = normalize_tempo(song.tempo);
+            if let Some(key) = song.override_key.as_ref().or(song.key.as_ref()) {
+                if !is_base_original_selection(&song, key, tempo) {
+                    let variant = cache.variant_instrumental_path(file_hash, key, tempo);
+                    if variant.is_file() {
+                        return AudioPaths {
+                            instrumental: variant.to_string_lossy().into_owned(),
+                            vocals: None,
+                        };
+                    }
+                }
+            }
+            return AudioPaths {
+                instrumental: resolve_original_media(&song, &cache),
+                vocals: None,
+            };
+        }
+
         if let Some(bundle) = song.usdx.as_ref() {
             let voc = bundle.vocals.as_ref().unwrap_or(&bundle.audio);
             let inst = bundle.instrumental.as_ref().unwrap_or(&bundle.audio);
             return AudioPaths {
                 instrumental: inst.to_string_lossy().into_owned(),
-                vocals: voc.to_string_lossy().into_owned(),
+                vocals: Some(voc.to_string_lossy().into_owned()),
             };
         }
 
@@ -123,7 +162,7 @@ pub fn get_audio_paths(file_hash: &str) -> AudioPaths {
                 if variant_instrumental.is_file() && variant_vocals.is_file() {
                     return AudioPaths {
                         instrumental: variant_instrumental.to_string_lossy().into_owned(),
-                        vocals: variant_vocals.to_string_lossy().into_owned(),
+                        vocals: Some(variant_vocals.to_string_lossy().into_owned()),
                     };
                 }
                 let legacy_inst = cache.instrumental_path(file_hash);
@@ -131,14 +170,14 @@ pub fn get_audio_paths(file_hash: &str) -> AudioPaths {
                 if legacy_inst.is_file() && legacy_voc.is_file() {
                     return AudioPaths {
                         instrumental: legacy_inst.to_string_lossy().into_owned(),
-                        vocals: legacy_voc.to_string_lossy().into_owned(),
+                        vocals: Some(legacy_voc.to_string_lossy().into_owned()),
                     };
                 }
             }
             if variant_instrumental.is_file() && variant_vocals.is_file() {
                 return AudioPaths {
                     instrumental: variant_instrumental.to_string_lossy().into_owned(),
-                    vocals: variant_vocals.to_string_lossy().into_owned(),
+                    vocals: Some(variant_vocals.to_string_lossy().into_owned()),
                 };
             }
         }
@@ -146,16 +185,9 @@ pub fn get_audio_paths(file_hash: &str) -> AudioPaths {
 
     let legacy_inst = cache.instrumental_path(file_hash);
     let legacy_voc = cache.vocals_path(file_hash);
-    if legacy_inst.is_file() && legacy_voc.is_file() {
-        return AudioPaths {
-            instrumental: legacy_inst.to_string_lossy().into_owned(),
-            vocals: legacy_voc.to_string_lossy().into_owned(),
-        };
-    }
-
     AudioPaths {
         instrumental: legacy_inst.to_string_lossy().into_owned(),
-        vocals: legacy_voc.to_string_lossy().into_owned(),
+        vocals: Some(legacy_voc.to_string_lossy().into_owned()),
     }
 }
 
@@ -405,6 +437,69 @@ fn resolve_canonical_stems_for_key(
     )))
 }
 
+/// Key/tempo shift for LRC-provided songs played without stem separation.
+/// Everything is derived from the untouched original mix (single track, no
+/// guide vocals), and tempo changes scale the provided transcript timings.
+fn no_stems_shift(
+    cache: &CacheDir,
+    file_hash: &str,
+    mut song: Song,
+    target_key: String,
+    key_offset: i32,
+    target_tempo: f64,
+) -> Result<ShiftResult, NightingaleError> {
+    let target_tempo = normalize_tempo(target_tempo);
+    let base_key = song.key.clone().unwrap_or_else(|| target_key.clone());
+
+    // Base selection: play the untouched original mix.
+    if key_offset == 0 && target_tempo == 1.0 {
+        song.override_key = None;
+        song.tempo = 1.0;
+        song.key_offset = 0;
+        cache.delete_transcript_variants(file_hash);
+        library_db::update_song_fields(file_hash, &song).map_err(|e| e.to_string())?;
+        return Ok(ShiftResult {
+            key: base_key,
+            tempo: 1.0,
+        });
+    }
+
+    let target_inst = cache.variant_instrumental_path(file_hash, &target_key, target_tempo);
+    if !target_inst.is_file() {
+        let source = resolve_original_media(&song, cache);
+        let pitch_ratio = 2f64.powf(f64::from(key_offset) / 12.0);
+        run_rubberband_filter(Path::new(&source), &target_inst, pitch_ratio, target_tempo)?;
+    }
+
+    // Tempo changes stretch the timeline, so scale the LRC timings into a
+    // tempo variant that playback picks up for the shifted mix.
+    if target_tempo != 1.0 {
+        let base_transcript = std::fs::read_to_string(cache.transcript_path(file_hash))?;
+        let mut transcript: Value = serde_json::from_str(&base_transcript)?;
+        scale_transcript_timestamps(&mut transcript, 1.0 / target_tempo);
+        transcript["tempo"] = Value::from(target_tempo);
+        transcript["key"] = Value::from(target_key.clone());
+        std::fs::write(
+            cache.variant_transcript_path(file_hash, target_tempo),
+            serde_json::to_string_pretty(&transcript)?,
+        )?;
+    }
+
+    song.override_key = if base_key == target_key {
+        None
+    } else {
+        Some(target_key.clone())
+    };
+    song.tempo = target_tempo;
+    song.key_offset = key_offset;
+    library_db::update_song_fields(file_hash, &song).map_err(|e| e.to_string())?;
+
+    Ok(ShiftResult {
+        key: target_key,
+        tempo: target_tempo,
+    })
+}
+
 fn resolve_source_transcript_path(cache: &CacheDir, file_hash: &str, tempo: f64) -> PathBuf {
     if normalize_tempo(tempo) == 1.0 {
         return cache.transcript_path(file_hash);
@@ -453,6 +548,11 @@ pub fn ensure_mp3_stems(file_hash: &str) -> Result<(), NightingaleError> {
 
     if let Some(song) = library_db::load_song_by_hash(file_hash).ok().flatten() {
         if song.usdx.is_some() {
+            return Ok(());
+        }
+        // LRC-provided songs without separation have no stems to convert; they
+        // play the original mix directly.
+        if song.no_stems {
             return Ok(());
         }
     }
@@ -519,6 +619,10 @@ pub fn shift_key(
     let target_key = key.trim().to_string();
     if target_key.is_empty() {
         return Err("target key cannot be empty".into());
+    }
+    if song.no_stems {
+        let target_tempo = normalize_tempo(song.tempo);
+        return no_stems_shift(&cache, file_hash, song, target_key, key_offset, target_tempo);
     }
     let target_tempo = normalize_tempo(song.tempo);
     if is_base_original_selection(&song, &target_key, target_tempo) {
@@ -612,6 +716,13 @@ pub fn shift_tempo(file_hash: &str, tempo: f64) -> Result<ShiftResult, Nightinga
         return Err("Tempo shift is not supported for USDX songs".into());
     }
     let cache = CacheDir::new();
+    if song.no_stems {
+        let key_offset = song.key_offset;
+        let key = song.override_key.clone().or(song.key.clone()).ok_or_else(|| {
+            NightingaleError::Other("Key detection still in progress; try again shortly".into())
+        })?;
+        return no_stems_shift(&cache, file_hash, song, key, key_offset, normalize_tempo(tempo));
+    }
     let key = song
         .override_key
         .clone()

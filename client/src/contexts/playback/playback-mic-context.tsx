@@ -60,7 +60,7 @@ interface PlaybackMicProviderProps {
 
 export function PlaybackMicProvider({ config, children }: PlaybackMicProviderProps) {
   const { isReady, isPlaying, paused, duration } = usePlaybackTransportState();
-  const { subscribe, getVocalsBuffer } = usePlaybackTransportActions();
+  const { subscribe, getScoringBuffer } = usePlaybackTransportActions();
 
   const persistConfig = usePlaybackConfigPersist(config);
 
@@ -91,7 +91,7 @@ export function PlaybackMicProvider({ config, children }: PlaybackMicProviderPro
   const reactiveRef = useMicReactive(micPitchEnabled);
 
   const { series, score } = usePitchScoring(
-    { isReady, duration, getVocalsBuffer, subscribe },
+    { isReady, duration, getReferenceBuffer: getScoringBuffer, subscribe },
     latestPitch,
     config?.mic_latency_compensation_sec ?? DEFAULT_MIC_LATENCY_COMPENSATION_SEC,
   );

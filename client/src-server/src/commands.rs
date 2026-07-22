@@ -301,6 +301,31 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
             save_lyrics_and_realign(&args.file_hash, args.lines).map_err(ApiError::bad_request)?;
             Ok(Value::Null)
         }
+        "provide_lrc" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                file_hash: String,
+                lrc_text: String,
+                separate_stems: bool,
+            }
+            let args: Args = deserialize(payload)?;
+            app_core::provide_lrc(&args.file_hash, &args.lrc_text, args.separate_stems)
+                .map_err(ApiError::bad_request)?;
+            Ok(Value::Null)
+        }
+        "apply_timed_lyrics" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                file_hash: String,
+                lrc_text: String,
+            }
+            let args: Args = deserialize(payload)?;
+            app_core::apply_timed_lyrics(&args.file_hash, &args.lrc_text)
+                .map_err(ApiError::bad_request)?;
+            Ok(Value::Null)
+        }
 
         // ── Playback ─────────────────────────────────────────────────────
         "load_transcript" => {

@@ -66,7 +66,7 @@ export const tauriPlaybackAdapter: PlaybackAdapter = {
     const paths = await tauriRawGetAudioPaths(fileHash);
     return {
       instrumental: tauriToMediaUrl(paths.instrumental),
-      vocals: tauriToMediaUrl(paths.vocals),
+      vocals: paths.vocals === null ? null : tauriToMediaUrl(paths.vocals),
     };
   },
 };
@@ -93,7 +93,7 @@ export const webPlaybackAdapter: PlaybackAdapter = {
     const paths = await tauriRawGetAudioPaths(fileHash);
     return {
       instrumental: webToMediaUrl(paths.instrumental),
-      vocals: webToMediaUrl(paths.vocals),
+      vocals: paths.vocals === null ? null : webToMediaUrl(paths.vocals),
     };
   },
 };

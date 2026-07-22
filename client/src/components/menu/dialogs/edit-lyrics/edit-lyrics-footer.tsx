@@ -8,6 +8,8 @@ interface EditLyricsFooterProps {
   onSave: () => void;
   saving: boolean;
   canSave: boolean;
+  saveLabel: string;
+  hint?: string;
   isFocused: (slot: number) => boolean;
 }
 
@@ -16,12 +18,17 @@ export const EditLyricsFooter = ({
   onSave,
   saving,
   canSave,
+  saveLabel,
+  hint,
   isFocused,
 }: EditLyricsFooterProps) => {
   const cancelFocused = isFocused(0);
   const saveFocused = isFocused(1);
   return (
-    <DialogFooter>
+    <DialogFooter className="sm:items-center">
+      {hint ? (
+        <p className="text-[11px] text-muted-foreground sm:mr-auto sm:text-left">{hint}</p>
+      ) : null}
       <Button
         variant="outline"
         onClick={() => {
@@ -41,7 +48,7 @@ export const EditLyricsFooter = ({
         aria-disabled={!canSave}
         className={cn(ARIA_DISABLED_CLASS, ringFor(saveFocused))}
       >
-        {saving ? "Saving…" : "Save & realign"}
+        {saving ? "Saving…" : saveLabel}
       </Button>
     </DialogFooter>
   );

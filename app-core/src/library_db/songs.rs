@@ -27,6 +27,7 @@ pub(crate) fn transcript_source_to_db(t: Option<TranscriptSource>) -> Option<Str
         TranscriptSource::Lyrics => "lyrics".to_string(),
         TranscriptSource::Generated => "generated".to_string(),
         TranscriptSource::Usdx => "usdx".to_string(),
+        TranscriptSource::Lrc => "lrc".to_string(),
     })
 }
 

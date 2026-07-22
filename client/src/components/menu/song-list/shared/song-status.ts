@@ -11,9 +11,10 @@ export type SongStatusInfo = {
 };
 
 export function formatTranscriptSource(source: Song["transcript_source"]): string {
-  if (source === "Lyrics") return "Lyrics";
+  if (source === "Lyrics") return "AI aligned";
   if (source === "Usdx") return "USDX";
-  return "Generated";
+  if (source === "Lrc") return "LRC";
+  return "AI generated";
 }
 
 export function getSongStatusInfo(isAnalyzed: boolean, queueStatus?: QueuedStatus): SongStatusInfo {
@@ -35,7 +36,7 @@ export function getSongStatusInfo(isAnalyzed: boolean, queueStatus?: QueuedStatu
 
   if (isAnalyzed) {
     return {
-      label: "Analyzed",
+      label: "Ready",
       variant: "default",
       className: ANALYSIS_STATUS_STYLES.analysed,
       isReady: true,

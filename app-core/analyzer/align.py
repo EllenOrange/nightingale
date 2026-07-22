@@ -54,7 +54,7 @@ def align_lyrics(
     a_device = align_device_for(device)
     c_type = compute_type_for(device)
 
-    if language_override:
+    if language_override and language_override.strip().lower() not in ("unknown", "und", ""):
         language = language_override
         print(f"[nightingale:LOG] Using language override: '{language}'", flush=True)
         progress(59, f"Language override: {language}")

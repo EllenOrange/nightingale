@@ -4,7 +4,7 @@ import type { Song } from "@/types/Song";
 import { XIcon } from "lucide-react";
 import { formatSeconds } from "@/utils/format-duration";
 import { AlbumArt } from "../shared/album-art";
-import { LanguageBadge } from "../shared/language-badge";
+import { LanguageBadge, isDisplayableLanguage } from "../shared/language-badge";
 import { StatusBadge } from "../shared/status-badge";
 
 interface SongDetailsHeaderProps {
@@ -48,7 +48,7 @@ export const SongDetailsHeader = ({ song, queueStatus, onClose }: SongDetailsHea
 
     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       <StatusBadge song={song} queueStatus={queueStatus} />
-      {song.language ? (
+      {isDisplayableLanguage(song.language) ? (
         <>
           <span aria-hidden="true">·</span>
           <LanguageBadge language={song.language} />

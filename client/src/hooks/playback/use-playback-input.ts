@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef } from "react";
  * persist guide-volume changes without coupling this hook to the config query.
  */
 export function usePlaybackInput(config: AppConfig | null) {
-  const { paused, isReady, guideVolume } = usePlaybackTransportState();
+  const { paused, isReady, guideVolume, guideAvailable } = usePlaybackTransportState();
   const { getCurrentTime, setGuideVolume, handlePause, handleContinue } =
     usePlaybackTransportActions();
   const { cycleTheme, cycleFlavor } = usePlaybackThemeActions();
@@ -97,6 +97,7 @@ export function usePlaybackInput(config: AppConfig | null) {
 
         case "g":
         case "G": {
+          if (!guideAvailable) break;
           const nextVol = guideVolume > 0 ? 0 : 0.3;
           setGuideVolume(nextVol);
           persistConfig({ guide_volume: nextVol });
@@ -105,6 +106,7 @@ export function usePlaybackInput(config: AppConfig | null) {
 
         case "=":
         case "+": {
+          if (!guideAvailable) break;
           const next = Math.min(1, guideVolume + 0.1);
           setGuideVolume(next);
           persistConfig({ guide_volume: next });
@@ -112,6 +114,7 @@ export function usePlaybackInput(config: AppConfig | null) {
         }
 
         case "-": {
+          if (!guideAvailable) break;
           const next = Math.max(0, guideVolume - 0.1);
           setGuideVolume(next);
           persistConfig({ guide_volume: next });
@@ -140,6 +143,7 @@ export function usePlaybackInput(config: AppConfig | null) {
   }, [
     paused,
     guideVolume,
+    guideAvailable,
     setGuideVolume,
     cycleTheme,
     cycleFlavor,

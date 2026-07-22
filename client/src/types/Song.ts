@@ -21,4 +21,5 @@ export type Song = {
   is_video: boolean;
   usdx: UsdxBundle | null;
   origin: SongOrigin;
+  no_stems: boolean;
 };

@@ -1,64 +1,89 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { LrclibCandidate } from "@/types/LrclibCandidate";
 import { formatSeconds } from "@/utils/edit-lyrics";
-import type { UseQueryResult } from "@tanstack/react-query";
+import { Loader2Icon } from "lucide-react";
 import { ringFor } from "./parts";
 
 interface LrclibMatchesProps {
-  query: UseQueryResult<LrclibCandidate[]>;
+  candidates: LrclibCandidate[];
+  isLoading: boolean;
+  isError: boolean;
+  errorMessage: string | null;
   index: number;
   onSelect: (candidate: LrclibCandidate) => void;
-  useFocused: boolean;
+  onUseLrc: (candidate: LrclibCandidate) => void;
+  isFocused: (slot: number) => boolean;
 }
 
-export const LrclibMatches = ({ query, index, onSelect, useFocused }: LrclibMatchesProps) => {
-  if (query.isLoading) {
-    return <p className="text-muted-foreground">Searching LRCLIB…</p>;
+export const LrclibMatches = ({
+  candidates,
+  isLoading,
+  isError,
+  errorMessage,
+  index,
+  onSelect,
+  onUseLrc,
+  isFocused,
+}: LrclibMatchesProps) => {
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center gap-2 text-muted-foreground">
+        <Loader2Icon className="size-4 animate-spin" />
+        <span>Searching LRCLIB…</span>
+      </div>
+    );
   }
 
-  if (query.isError) {
-    const message =
-      query.error instanceof Error ? query.error.message : "Failed to load LRCLIB matches";
-    return <p className="text-destructive">{message}</p>;
+  if (isError) {
+    return <p className="text-destructive">{errorMessage ?? "Failed to load LRCLIB matches"}</p>;
   }
 
-  const candidates = query.data ?? [];
   if (candidates.length === 0) {
     return <p className="text-muted-foreground">No LRCLIB matches found for this song.</p>;
   }
 
   const safeIndex = Math.min(index, candidates.length - 1);
   const candidate = candidates[safeIndex];
+  const hasLrc = candidate.synced_lyrics != null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 rounded-md border border-border bg-card p-3">
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate text-sm font-medium">{candidate.track_name}</span>
         <span className="truncate text-xs text-muted-foreground">
           {candidate.artist_name}
           {candidate.album_name ? ` • ${candidate.album_name}` : ""} •{" "}
           {formatSeconds(candidate.duration_secs)}
+          {" • "}
+          {candidate.lines.length} {candidate.lines.length === 1 ? "line" : "lines"}
+          {hasLrc && <span className="text-primary"> • LRC available</span>}
         </span>
-        <div className="mt-1 flex items-center gap-2">
-          <Badge variant="outline">
-            {candidate.lines.length} {candidate.lines.length === 1 ? "line" : "lines"}
-          </Badge>
+        <div className="mt-1.5 flex items-center gap-2">
+          {hasLrc && (
+            <Button
+              size="xs"
+              variant="default"
+              onClick={() => onUseLrc(candidate)}
+              className={ringFor(isFocused(0))}
+            >
+              Use LRC
+            </Button>
+          )}
           <Button
             size="xs"
-            variant="default"
+            variant={hasLrc ? "outline" : "default"}
             onClick={() => onSelect(candidate)}
-            className={cn("ml-auto", ringFor(useFocused))}
+            className={cn(ringFor(isFocused(hasLrc ? 1 : 0)))}
           >
-            Use these
+            Use as plain text
           </Button>
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded border border-border bg-background">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border">
         <pre className="px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
-          {candidate.lines.join("\n")}
+          {hasLrc ? candidate.synced_lyrics : candidate.lines.join("\n")}
         </pre>
       </div>
     </div>

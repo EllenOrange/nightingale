@@ -22,5 +22,5 @@ export type Transcript = {
 
 export type AudioPaths = {
   instrumental: string;
-  vocals: string;
+  vocals: string | null;
 };

@@ -245,6 +245,7 @@ impl JellyfinSource {
                 container,
                 cover_tag,
             },
+            no_stems: false,
         })
     }
 

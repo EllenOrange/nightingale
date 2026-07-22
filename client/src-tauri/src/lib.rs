@@ -17,7 +17,7 @@ use app_core::{AppConfig, SongsStore};
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use cache::{calculate_cache_stats, clear_all, clear_models_command, clear_videos_command};
 use config::{load_config, save_config};
-use lyrics::{load_lyrics, save_lyrics, search_lrclib_lyrics};
+use lyrics::{apply_timed_lyrics, load_lyrics, provide_lrc, save_lyrics, search_lrclib_lyrics};
 use microphones::{list_microphones, set_monitor_gain, start_mic_capture, stop_mic_capture};
 use playback::{
     ensure_mp3_stems, ensure_playable_source_video, fetch_pixabay_videos, get_audio_paths,
@@ -132,6 +132,8 @@ pub fn run() {
             load_lyrics,
             search_lrclib_lyrics,
             save_lyrics,
+            provide_lrc,
+            apply_timed_lyrics,
             // Playback
             load_transcript,
             get_audio_paths,

@@ -202,6 +202,7 @@ impl NavidromeSource {
                 container,
                 cover_tag,
             },
+            no_stems: false,
         })
     }
 

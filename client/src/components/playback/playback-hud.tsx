@@ -11,7 +11,7 @@ import {
 import { usePlaybackConfigPersist } from "@/hooks/playback/use-playback-config-persist";
 import type { VideoFlavor } from "@/lib/playback/video-flavor";
 import type { AppConfig } from "@/types/AppConfig";
-import { forwardRef, memo, useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { isPixabayTheme, themeName } from "./background";
 
 function formatTime(seconds: number): string {
@@ -95,6 +95,7 @@ function TouchButton({
 
 function SettingsInfo({
   guideVolume,
+  guideAvailable,
   micUserEnabled,
   micName,
   micMonitorUserEnabled,
@@ -103,6 +104,7 @@ function SettingsInfo({
   showShortcuts,
 }: {
   guideVolume: number;
+  guideAvailable: boolean;
   micUserEnabled: boolean;
   micName: string;
   micMonitorUserEnabled: boolean;
@@ -112,9 +114,13 @@ function SettingsInfo({
 }) {
   return (
     <div className="flex flex-col items-end">
-      <HintText>
-        {showShortcuts ? formatGuideText(guideVolume) : `Guide: ${Math.round(guideVolume * 100)}%`}
-      </HintText>
+      {guideAvailable && (
+        <HintText>
+          {showShortcuts
+            ? formatGuideText(guideVolume)
+            : `Guide: ${Math.round(guideVolume * 100)}%`}
+        </HintText>
+      )}
       <HintText>
         Mic: {micUserEnabled ? micName : "OFF"}
         {showShortcuts ? " [M/N]" : ""}
@@ -143,7 +149,7 @@ function TouchControls({
   position: PlaybackHudPosition;
 }) {
   const [open, setOpen] = useState(false);
-  const { guideVolume } = usePlaybackTransportState();
+  const { guideVolume, guideAvailable } = usePlaybackTransportState();
   const { setGuideVolume, handlePause } = usePlaybackTransportActions();
   const { micUserEnabled, micName, micMonitorUserEnabled } = usePlaybackMicState();
   const { handleToggleMic, handleCycleMic, handleToggleMicMonitor } = usePlaybackMicActions();
@@ -171,6 +177,7 @@ function TouchControls({
       <div className="sm:hidden">
         <SettingsInfo
           guideVolume={guideVolume}
+          guideAvailable={guideAvailable}
           micUserEnabled={micUserEnabled}
           micName={micName}
           micMonitorUserEnabled={micMonitorUserEnabled}
@@ -192,12 +199,22 @@ function TouchControls({
       {open && (
         <div className="grid w-full grid-cols-3 gap-2 text-center">
           <TouchButton label="Pause" onClick={handlePause} />
-          <TouchButton
-            label={guideVolume === 0 ? "Guide On" : "Guide Off"}
-            onClick={() => setPersistedGuideVolume(guideVolume > 0 ? 0 : 0.3)}
-          />
-          <TouchButton label="Guide +" onClick={() => setPersistedGuideVolume(guideVolume + 0.1)} />
-          <TouchButton label="Guide -" onClick={() => setPersistedGuideVolume(guideVolume - 0.1)} />
+          {guideAvailable && (
+            <>
+              <TouchButton
+                label={guideVolume === 0 ? "Guide On" : "Guide Off"}
+                onClick={() => setPersistedGuideVolume(guideVolume > 0 ? 0 : 0.3)}
+              />
+              <TouchButton
+                label="Guide +"
+                onClick={() => setPersistedGuideVolume(guideVolume + 0.1)}
+              />
+              <TouchButton
+                label="Guide -"
+                onClick={() => setPersistedGuideVolume(guideVolume - 0.1)}
+              />
+            </>
+          )}
           <TouchButton label={micUserEnabled ? "Mic Off" : "Mic On"} onClick={handleToggleMic} />
           <TouchButton label="Mic Select" onClick={handleCycleMic} />
           <TouchButton
@@ -218,8 +235,28 @@ function TouchControls({
 
 type PlaybackHudPosition = "top" | "bottom";
 
-function Disclaimer({ source, position }: { source: string; position: PlaybackHudPosition }) {
-  if (source === "usdx") {
+function Disclaimer({
+  source,
+  position,
+  noStems,
+  micActive,
+}: {
+  source: string;
+  position: PlaybackHudPosition;
+  noStems: boolean;
+  micActive: boolean;
+}) {
+  // No stems means we score against the original mix, so pitch scoring suffers.
+  if (noStems && micActive) {
+    return (
+      <DisclaimerNote position={position}>
+        Original mix is used, so pitch scoring will likely be inaccurate
+      </DisclaimerNote>
+    );
+  }
+
+  // USDX and provided LRC timings are authored, not AI-generated.
+  if (source === "usdx" || source === "lrc") {
     return null;
   }
 
@@ -228,11 +265,21 @@ function Disclaimer({ source, position }: { source: string; position: PlaybackHu
       ? "Timing is AI-generated and may not be perfectly accurate"
       : "Lyrics and timing are AI-generated and may not be perfectly accurate";
 
+  return <DisclaimerNote position={position}>{text}</DisclaimerNote>;
+}
+
+function DisclaimerNote({
+  position,
+  children,
+}: {
+  position: PlaybackHudPosition;
+  children: ReactNode;
+}) {
   return (
     <p
       className={`${NOTE_BASE_CLASS} ${notePositionClass(position)} left-1/2 -translate-x-1/2 whitespace-nowrap text-center`}
     >
-      {text}
+      {children}
     </p>
   );
 }
@@ -249,7 +296,7 @@ interface PlaybackHudProps {
 }
 
 function PlaybackHudImpl({ title, artist, config, position = "top" }: PlaybackHudProps) {
-  const { duration, guideVolume } = usePlaybackTransportState();
+  const { duration, guideVolume, guideAvailable } = usePlaybackTransportState();
   const { subscribe, getCurrentTime } = usePlaybackTransportActions();
   const { themeIndex, videoFlavor } = usePlaybackThemeState();
   const { firstSegmentStart, lastSegmentEnd, introSkipLeadSec, transcriptSource } =
@@ -328,6 +375,7 @@ function PlaybackHudImpl({ title, artist, config, position = "top" }: PlaybackHu
           <div className="hidden sm:block">
             <SettingsInfo
               guideVolume={guideVolume}
+              guideAvailable={guideAvailable}
               micUserEnabled={micUserEnabled}
               micName={micName}
               micMonitorUserEnabled={micMonitorUserEnabled}
@@ -346,7 +394,12 @@ function PlaybackHudImpl({ title, artist, config, position = "top" }: PlaybackHu
         </p>
       )}
 
-      <Disclaimer source={transcriptSource} position={position} />
+      <Disclaimer
+        source={transcriptSource}
+        position={position}
+        noStems={!guideAvailable}
+        micActive={micUserEnabled}
+      />
     </>
   );
 }

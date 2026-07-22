@@ -210,6 +210,7 @@ impl PlexSource {
                 container,
                 cover_tag,
             },
+            no_stems: false,
         })
     }
 

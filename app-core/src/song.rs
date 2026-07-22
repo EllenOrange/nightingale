@@ -21,6 +21,9 @@ pub enum TranscriptSource {
     Lyrics,
     Generated,
     Usdx,
+    /// Timing came directly from a provided LRC / Enhanced LRC file (no AI
+    /// transcription or alignment).
+    Lrc,
 }
 
 /// Where the bytes for a song actually live. `LocalFile` means `Song.path` is the
@@ -113,6 +116,11 @@ pub struct Song {
     pub usdx: Option<UsdxBundle>,
     #[serde(default = "default_origin")]
     pub origin: SongOrigin,
+    /// True when the song was made playable from provided LRC without stem
+    /// separation: playback uses the original mix and the guide control is
+    /// hidden. Defaults to `false` for stem-separated songs.
+    #[serde(default)]
+    pub no_stems: bool,
 }
 
 fn default_tempo() -> f64 {
@@ -125,6 +133,7 @@ pub struct TranscriptMetaInfo {
     pub language: Option<String>,
     pub key: Option<String>,
     pub tempo: f64,
+    pub no_stems: bool,
 }
 
 impl Song {
@@ -190,6 +199,7 @@ impl Song {
             is_video,
             usdx,
             origin,
+            no_stems: false,
         }
     }
 }
@@ -216,14 +226,14 @@ pub fn build_song(path: &Path, cache: &CacheDir, is_video: bool) -> Result<Song,
     let file_hash = compute_file_hash(path)?;
 
     let is_analyzed = cache.transcript_exists(&file_hash);
-    let (transcript_source, language, key, tempo) = if is_analyzed {
+    let (transcript_source, language, key, tempo, no_stems) = if is_analyzed {
         let meta = read_transcript_meta(cache, &file_hash);
-        (Some(meta.source), meta.language, meta.key, meta.tempo)
+        (Some(meta.source), meta.language, meta.key, meta.tempo, meta.no_stems)
     } else {
-        (None, None, None, default_tempo())
+        (None, None, None, default_tempo(), false)
     };
 
-    Ok(Song::from_path(
+    let mut song = Song::from_path(
         path,
         file_hash,
         cache,
@@ -237,7 +247,9 @@ pub fn build_song(path: &Path, cache: &CacheDir, is_video: bool) -> Result<Song,
         is_video,
         None,
         SongOrigin::LocalFile,
-    ))
+    );
+    song.no_stems = no_stems;
+    Ok(song)
 }
 
 pub fn read_transcript_meta(cache: &CacheDir, hash: &str) -> TranscriptMetaInfo {
@@ -251,6 +263,8 @@ pub fn read_transcript_meta(cache: &CacheDir, hash: &str) -> TranscriptMetaInfo 
         key: Option<String>,
         #[serde(default = "default_tempo")]
         tempo: f64,
+        #[serde(default)]
+        no_stems: bool,
     }
     let path = cache.transcript_path(hash);
     if let Ok(data) = std::fs::read_to_string(&path) {
@@ -258,6 +272,7 @@ pub fn read_transcript_meta(cache: &CacheDir, hash: &str) -> TranscriptMetaInfo 
             let src = match parsed.source.as_deref() {
                 Some("lyrics") => TranscriptSource::Lyrics,
                 Some("usdx") => TranscriptSource::Usdx,
+                Some("lrc") => TranscriptSource::Lrc,
                 _ => TranscriptSource::Generated,
             };
             return TranscriptMetaInfo {
@@ -265,6 +280,7 @@ pub fn read_transcript_meta(cache: &CacheDir, hash: &str) -> TranscriptMetaInfo 
                 language: parsed.language,
                 key: parsed.key,
                 tempo: parsed.tempo,
+                no_stems: parsed.no_stems,
             };
         }
     }
@@ -273,6 +289,7 @@ pub fn read_transcript_meta(cache: &CacheDir, hash: &str) -> TranscriptMetaInfo 
         language: None,
         key: None,
         tempo: default_tempo(),
+        no_stems: false,
     }
 }
 

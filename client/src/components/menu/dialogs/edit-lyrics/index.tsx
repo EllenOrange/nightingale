@@ -6,20 +6,30 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { openUrl } from "@/bridge/opener";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
 import { useDialog } from "@/hooks/use-dialog";
 import { useLyricsEditor } from "@/hooks/use-lyrics-editor";
+import {
+  useApplyTimedLyricsMutation,
+  useProvideLrcMutation,
+} from "@/mutations/use-timed-lyrics-mutation";
+import { useSaveLyricsMutation } from "@/mutations/use-save-lyrics-mutation";
 import { useLrclibCandidates } from "@/queries/use-lyrics";
 import type { LrclibCandidate } from "@/types/LrclibCandidate";
-import { isEditLyricsDialogMode } from "@/utils/edit-lyrics";
-import { useRef, useState } from "react";
+import { detectLrcLevel, isEditLyricsDialogMode, stripLrcToPlainLines } from "@/utils/edit-lyrics";
+import { Loader2Icon } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { CarouselNav } from "./carousel-nav";
 import { EditLyricsFooter } from "./edit-lyrics-footer";
+import { LrcOptions, type TimingChoice } from "./lrc-options";
 import { LrclibMatches } from "./lrclib-matches";
 import { LyricsEditor } from "./lyrics-editor";
 import { ringFor } from "./parts";
 
 export { isEditLyricsDialogMode } from "@/utils/edit-lyrics";
+
+const LRC_SPEC_URL = "https://en.wikipedia.org/wiki/LRC_(file_format)";
 
 type EditLyricsTab = "edit" | "lrclib";
 
@@ -33,40 +43,70 @@ interface NavLayout {
   // Slot offset where the carousel arrows start inside `headerSegment`; null
   // if no arrows in this view.
   arrowSlotStart: number | null;
+  // Timing / audio radio rows (each 2 slots) on the edit pane, present only
+  // when their controls are enabled.
+  timingSegment: number | null;
+  audioSegment: number | null;
   useThisSegment: number | null;
   footerSegment: number;
 }
 
-function navLayout(showMatchesTab: boolean, activeTab: EditLyricsTab): NavLayout {
-  if (!showMatchesTab) {
-    return {
-      stops: [1, 2],
-      editorSegment: 0,
-      headerSegment: null,
-      arrowSlotStart: null,
-      useThisSegment: null,
-      footerSegment: 1,
-    };
+interface NavLayoutInput {
+  showMatchesTab: boolean;
+  activeTab: EditLyricsTab;
+  hasCandidates: boolean;
+  // Number of action buttons on the current LRCLIB candidate: 2 when it has
+  // synced lyrics ("Use LRC" + "Use as plain text"), otherwise 1.
+  useSlots: number;
+  timingNav: boolean;
+  audioNav: boolean;
+}
+
+function navLayout({
+  showMatchesTab,
+  activeTab,
+  hasCandidates,
+  useSlots,
+  timingNav,
+  audioNav,
+}: NavLayoutInput): NavLayout {
+  const onLrclib = showMatchesTab && activeTab === "lrclib";
+  const segments: { key: string; width: number }[] = [];
+  let arrowSlotStart: number | null = null;
+
+  if (showMatchesTab) {
+    if (onLrclib && hasCandidates) {
+      segments.push({ key: "header", width: 4 });
+      arrowSlotStart = 2;
+    } else {
+      segments.push({ key: "header", width: 2 });
+    }
   }
 
-  if (activeTab === "edit") {
-    return {
-      stops: [2, 1, 2],
-      editorSegment: 1,
-      headerSegment: 0,
-      arrowSlotStart: null,
-      useThisSegment: null,
-      footerSegment: 2,
-    };
+  if (onLrclib) {
+    if (hasCandidates) segments.push({ key: "use", width: Math.max(1, useSlots) });
+  } else {
+    segments.push({ key: "editor", width: 1 });
+    if (timingNav) segments.push({ key: "timing", width: 2 });
+    if (audioNav) segments.push({ key: "audio", width: 2 });
   }
+
+  segments.push({ key: "footer", width: 2 });
+
+  const indexOf = (key: string): number | null => {
+    const i = segments.findIndex((s) => s.key === key);
+    return i === -1 ? null : i;
+  };
 
   return {
-    stops: [4, 1, 2],
-    editorSegment: null,
-    headerSegment: 0,
-    arrowSlotStart: 2,
-    useThisSegment: 1,
-    footerSegment: 2,
+    stops: segments.map((s) => s.width),
+    headerSegment: indexOf("header"),
+    arrowSlotStart,
+    editorSegment: indexOf("editor"),
+    timingSegment: indexOf("timing"),
+    audioSegment: indexOf("audio"),
+    useThisSegment: indexOf("use"),
+    footerSegment: indexOf("footer") ?? segments.length - 1,
   };
 }
 
@@ -80,26 +120,117 @@ export const EditLyricsDialog = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const isAnalyzed = song?.is_analyzed ?? false;
+
   const editor = useLyricsEditor({ song, onSaved: close });
   const candidatesQuery = useLrclibCandidates(fileHash);
-  const candidateCount = candidatesQuery.data?.length ?? 0;
-  const showMatchesTab = candidateCount > 1;
+  const candidates = candidatesQuery.data ?? [];
+  const candidateCount = candidates.length;
+  const matchesLoading = candidatesQuery.isLoading;
+  const hasMatches = isAnalyzed ? candidateCount > 1 : candidateCount > 0;
+  // Show the tab while searching too, so the loading state is visible instead
+  // of the tab silently popping in once results arrive.
+  const showMatchesTab = hasMatches || matchesLoading;
+
+  const provideLrcMutation = useProvideLrcMutation();
+  const applyTimedMutation = useApplyTimedLyricsMutation();
+  const saveLyricsMutation = useSaveLyricsMutation();
 
   const [activeTab, setActiveTab] = useState<EditLyricsTab>("edit");
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [timingChoice, setTimingChoice] = useState<TimingChoice>("provided");
+  const [separateStems, setSeparateStems] = useState(false);
   const [lastHash, setLastHash] = useState<string | null>(fileHash);
   if (lastHash !== fileHash) {
     setLastHash(fileHash);
     setActiveTab("edit");
     setCarouselIndex(0);
+    setTimingChoice("provided");
+    setSeparateStems(false);
   }
+
+  const lrcLevel = useMemo(() => detectLrcLevel(editor.text), [editor.text]);
+  const hasLrc = lrcLevel !== "none";
+  const useProvidedTiming = hasLrc && timingChoice === "provided";
+
+  const saving =
+    provideLrcMutation.isLoading || applyTimedMutation.isLoading || saveLyricsMutation.isLoading;
+  const canSave =
+    !saving && !editor.loadingInitial && editor.isDirty && editor.text.trim().length > 0;
+
+  const saveLabel = useProvidedTiming
+    ? isAnalyzed
+      ? "Use timed lyrics"
+      : separateStems
+        ? "Save & separate stems"
+        : "Save timed lyrics"
+    : isAnalyzed
+      ? "Save & realign"
+      : "Save & analyze";
+
+  const footerHints: string[] = [];
+  if (!hasLrc) {
+    footerHints.push("Paste LRC / Enhanced LRC to set timing directly.");
+  } else {
+    if (useProvidedTiming && lrcLevel === "line") {
+      footerHints.push("Line-level LRC highlights whole lines — no per-word timing.");
+    }
+    if (useProvidedTiming && !isAnalyzed && !separateStems) {
+      footerHints.push("Original mix is used, so pitch scoring will likely be inaccurate.");
+    }
+  }
+  const footerHint = footerHints.length > 0 ? footerHints.join(" ") : undefined;
+
+  const handleSave = () => {
+    if (!canSave || !song) return;
+    const hash = song.file_hash;
+    const title = song.title;
+
+    if (useProvidedTiming) {
+      if (isAnalyzed) {
+        applyTimedMutation.mutate({ hash, lrcText: editor.text, title }, { onSuccess: close });
+      } else {
+        provideLrcMutation.mutate(
+          { hash, lrcText: editor.text, separateStems, title },
+          { onSuccess: close },
+        );
+      }
+      return;
+    }
+
+    const lines = hasLrc ? stripLrcToPlainLines(editor.text) : editor.normalized;
+    if (lines.length === 0) return;
+    saveLyricsMutation.mutate({ hash, lines, title }, { onSuccess: close });
+  };
 
   const applyCandidate = (candidate: LrclibCandidate) => {
     editor.setText(candidate.lines.join("\n"));
+    setTimingChoice("provided");
     setActiveTab("edit");
   };
 
-  const layout = navLayout(showMatchesTab, activeTab);
+  const applyCandidateLrc = (candidate: LrclibCandidate) => {
+    if (candidate.synced_lyrics == null) return;
+    editor.setText(candidate.synced_lyrics);
+    setTimingChoice("provided");
+    setActiveTab("edit");
+  };
+
+  const timingNav = hasLrc && !saving;
+  const audioNav = useProvidedTiming && !isAnalyzed && !saving;
+
+  const currentCandidate =
+    candidateCount > 0 ? candidates[Math.min(carouselIndex, candidateCount - 1)] : undefined;
+  const currentHasLrc = currentCandidate?.synced_lyrics != null;
+
+  const layout = navLayout({
+    showMatchesTab,
+    activeTab,
+    hasCandidates: candidateCount > 0,
+    useSlots: currentHasLrc ? 2 : 1,
+    timingNav,
+    audioNav,
+  });
 
   const { isFocused, focusSegment } = useDialogNav({
     open,
@@ -118,22 +249,56 @@ export const EditLyricsDialog = () => {
         return true;
       }
 
-      if (layout.editorSegment !== null && segment === layout.editorSegment && action.confirm) {
+      if (!action.confirm) return false;
+
+      if (layout.editorSegment !== null && segment === layout.editorSegment) {
         textarea?.focus();
         return true;
       }
 
-      // Radix TabsTrigger activates on mousedown/keydown but not click, so the
-      // hook's default click() is a no-op for the tab slots (0..1). Drive the
-      // active tab from our state. Arrow slots (>= 2) fall through to the
-      // default click() which works on plain buttons.
-      if (
-        layout.headerSegment !== null &&
-        segment === layout.headerSegment &&
-        action.confirm &&
-        slot < 2
-      ) {
-        setActiveTab(slot === 0 ? "edit" : "lrclib");
+      // Header holds the tabs (slots 0..1) and, on the LRCLIB tab, the carousel
+      // arrows (slots >= arrowSlotStart). Radix tabs activate on mousedown, not
+      // click, so drive them from state; arrows adjust the carousel directly.
+      if (layout.headerSegment !== null && segment === layout.headerSegment) {
+        if (slot < 2) {
+          setActiveTab(slot === 0 ? "edit" : "lrclib");
+          return true;
+        }
+        if (layout.arrowSlotStart !== null && slot >= layout.arrowSlotStart) {
+          const delta = slot - layout.arrowSlotStart === 0 ? -1 : 1;
+          setCarouselIndex((i) =>
+            Math.min(Math.max(0, i + delta), Math.max(0, candidateCount - 1)),
+          );
+          return true;
+        }
+      }
+
+      if (layout.timingSegment !== null && segment === layout.timingSegment) {
+        setTimingChoice(slot === 0 ? "provided" : "align");
+        return true;
+      }
+
+      if (layout.audioSegment !== null && segment === layout.audioSegment) {
+        setSeparateStems(slot === 1);
+        return true;
+      }
+
+      if (layout.useThisSegment !== null && segment === layout.useThisSegment) {
+        const candidate = candidates[Math.min(carouselIndex, candidateCount - 1)];
+        if (candidate) {
+          const candidateHasLrc = candidate.synced_lyrics != null;
+          if (candidateHasLrc && slot === 0) applyCandidateLrc(candidate);
+          else applyCandidate(candidate);
+        }
+        return true;
+      }
+
+      if (segment === layout.footerSegment) {
+        if (slot === 0) {
+          if (!saving) close();
+        } else {
+          handleSave();
+        }
         return true;
       }
 
@@ -152,6 +317,43 @@ export const EditLyricsDialog = () => {
     }
   };
 
+  const focusedSlotIn = (segment: number | null): number | null => {
+    if (segment === null) return null;
+    if (isFocused(segment, 0)) return 0;
+    if (isFocused(segment, 1)) return 1;
+    return null;
+  };
+
+  const editorPane = (
+    <>
+      <LyricsEditor
+        textareaRef={textareaRef}
+        text={editor.text}
+        onChange={editor.setText}
+        disabled={editor.loadingInitial || saving}
+        loadingInitial={editor.loadingInitial}
+        lineCount={editor.normalized.length}
+        isDirty={editor.isDirty}
+        focused={editorFocused}
+      />
+      <LrcOptions
+        level={lrcLevel}
+        isAnalyzed={isAnalyzed}
+        timingChoice={timingChoice}
+        onTimingChoiceChange={setTimingChoice}
+        separateStems={separateStems}
+        onSeparateStemsChange={setSeparateStems}
+        disabled={saving}
+        timingFocusedSlot={focusedSlotIn(layout.timingSegment)}
+        audioFocusedSlot={focusedSlotIn(layout.audioSegment)}
+        onFocusOption={(row, slot) => {
+          const segment = row === "timing" ? layout.timingSegment : layout.audioSegment;
+          if (segment !== null) focusSegment(segment, slot);
+        }}
+      />
+    </>
+  );
+
   return (
     <Dialog
       open={open}
@@ -164,8 +366,19 @@ export const EditLyricsDialog = () => {
           <DialogHeader>
             <DialogTitle>Edit lyrics</DialogTitle>
             <DialogDescription>
-              Each line in the editor becomes a karaoke line after realignment. Saving re-runs
-              alignment with your edits.
+              Type plain lyrics to run alignment, or paste{" "}
+              <a
+                href={LRC_SPEC_URL}
+                rel="noreferrer"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openUrl(LRC_SPEC_URL);
+                }}
+                className="text-primary underline underline-offset-2 hover:text-primary/80"
+              >
+                LRC / Enhanced LRC
+              </a>{" "}
+              to set timing directly.
             </DialogDescription>
           </DialogHeader>
 
@@ -197,7 +410,12 @@ export const EditLyricsDialog = () => {
                       layout.headerSegment !== null && isFocused(layout.headerSegment, 1),
                     )}
                   >
-                    LRCLIB matches ({candidateCount})
+                    LRCLIB matches
+                    {matchesLoading ? (
+                      <Loader2Icon className="size-3 animate-spin" />
+                    ) : (
+                      `(${candidateCount})`
+                    )}
                   </TabsTrigger>
                 </TabsList>
                 {activeTab === "lrclib" &&
@@ -218,47 +436,37 @@ export const EditLyricsDialog = () => {
               </div>
 
               <TabsContent value="edit" className="mt-3 flex min-h-0 flex-1 flex-col">
-                <LyricsEditor
-                  textareaRef={textareaRef}
-                  text={editor.text}
-                  onChange={editor.setText}
-                  disabled={editor.loadingInitial || editor.saving}
-                  loadingInitial={editor.loadingInitial}
-                  lineCount={editor.normalized.length}
-                  isDirty={editor.isDirty}
-                  focused={editorFocused}
-                />
+                {editorPane}
               </TabsContent>
 
               <TabsContent value="lrclib" className="mt-3 flex min-h-0 flex-1 flex-col">
                 <LrclibMatches
-                  query={candidatesQuery}
+                  candidates={candidates}
+                  isLoading={candidatesQuery.isLoading}
+                  isError={candidatesQuery.isError}
+                  errorMessage={
+                    candidatesQuery.error instanceof Error ? candidatesQuery.error.message : null
+                  }
                   index={carouselIndex}
                   onSelect={applyCandidate}
-                  useFocused={layout.useThisSegment !== null && isFocused(layout.useThisSegment)}
+                  onUseLrc={applyCandidateLrc}
+                  isFocused={(slot) =>
+                    layout.useThisSegment !== null && isFocused(layout.useThisSegment, slot)
+                  }
                 />
               </TabsContent>
             </Tabs>
           ) : (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <LyricsEditor
-                textareaRef={textareaRef}
-                text={editor.text}
-                onChange={editor.setText}
-                disabled={editor.loadingInitial || editor.saving}
-                loadingInitial={editor.loadingInitial}
-                lineCount={editor.normalized.length}
-                isDirty={editor.isDirty}
-                focused={editorFocused}
-              />
-            </div>
+            <div className="flex min-h-0 flex-1 flex-col">{editorPane}</div>
           )}
 
           <EditLyricsFooter
             onCancel={close}
-            onSave={editor.handleSave}
-            saving={editor.saving}
-            canSave={editor.canSave}
+            onSave={handleSave}
+            saving={saving}
+            canSave={canSave}
+            saveLabel={saveLabel}
+            hint={footerHint}
             isFocused={(slot) => isFocused(layout.footerSegment, slot)}
           />
         </div>

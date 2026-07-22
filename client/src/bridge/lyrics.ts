@@ -13,3 +13,15 @@ export const searchLrclibLyrics = async (fileHash: string): Promise<LrclibCandid
 export const saveLyrics = async (fileHash: string, lines: string[]): Promise<void> => {
   return await invoke<void>("save_lyrics", { fileHash, lines });
 };
+
+export const provideLrc = async (
+  fileHash: string,
+  lrcText: string,
+  separateStems: boolean,
+): Promise<void> => {
+  return await invoke<void>("provide_lrc", { fileHash, lrcText, separateStems });
+};
+
+export const applyTimedLyrics = async (fileHash: string, lrcText: string): Promise<void> => {
+  return await invoke<void>("apply_timed_lyrics", { fileHash, lrcText });
+};

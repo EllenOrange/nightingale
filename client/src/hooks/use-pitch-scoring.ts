@@ -19,12 +19,12 @@ import { useEffect, useRef, useState } from "react";
 export interface PitchScoringSource {
   isReady: boolean;
   duration: number;
-  getVocalsBuffer: () => AudioBuffer | null;
+  getReferenceBuffer: () => AudioBuffer | null;
   subscribe: (fn: TimeSubscriber) => () => void;
 }
 
 export function usePitchScoring(
-  { isReady, duration, getVocalsBuffer, subscribe }: PitchScoringSource,
+  { isReady, duration, getReferenceBuffer, subscribe }: PitchScoringSource,
   micPitch: number | null,
   latencyCompensationSec = DEFAULT_MIC_LATENCY_COMPENSATION_SEC,
 ) {
@@ -54,14 +54,14 @@ export function usePitchScoring(
     }
     bufferRef.current.reset();
 
-    const vocals = getVocalsBuffer();
-    const singable = vocals ? computeSingableTime(vocals) : duration;
+    const reference = getReferenceBuffer();
+    const singable = reference ? computeSingableTime(reference) : duration;
     singableRef.current = singable;
     scoringRef.current = new PitchScoring(singable);
 
     setSeries(bufferRef.current.snapshot());
     setScore(0);
-  }, [isReady, duration, getVocalsBuffer]);
+  }, [isReady, duration, getReferenceBuffer]);
 
   useEffect(() => {
     if (!isReady) {
@@ -73,16 +73,16 @@ export function usePitchScoring(
         return;
       }
 
-      const vocals = getVocalsBuffer();
+      const reference = getReferenceBuffer();
       const mp = micPitchRef.current;
 
-      if (!vocals || !sampleVocalsWindow(vocals, t, scratchRef.current, latencyRef.current)) {
+      if (!reference || !sampleVocalsWindow(reference, t, scratchRef.current, latencyRef.current)) {
         bufferRef.current.tryPush(null, mp, 0, t);
       } else {
         const refHz = detectPitchFromSamplesRef(
           refDetector.current,
           scratchRef.current,
-          vocals.sampleRate,
+          reference.sampleRate,
         );
         const sim = refHz != null && mp != null ? pitchSimilarity(refHz, mp) : 0;
         bufferRef.current.tryPush(refHz, mp, sim, t);
@@ -94,7 +94,7 @@ export function usePitchScoring(
     };
 
     return subscribe(run);
-  }, [isReady, subscribe, getVocalsBuffer]);
+  }, [isReady, subscribe, getReferenceBuffer]);
 
   return { series, score };
 }

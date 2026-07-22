@@ -110,7 +110,13 @@ impl CacheDir {
     }
 
     pub fn transcript_exists(&self, hash: &str) -> bool {
-        self.transcript_path(hash).is_file() && self.stems_exist(hash)
+        let transcript = self.transcript_path(hash);
+        if !transcript.is_file() {
+            return false;
+        }
+        // A transcript built from provided LRC without stem separation is
+        // complete on its own; stems are only required for the normal pipeline.
+        self.stems_exist(hash) || transcript_marks_no_stems(&transcript)
     }
 
     pub fn delete_song_cache(&self, hash: &str) {
@@ -169,6 +175,21 @@ impl CacheDir {
 fn stem_suffix<'a>(name: &'a str, prefix: &str) -> Option<&'a str> {
     name.strip_prefix(prefix)
         .and_then(|tail| tail.strip_suffix(".mp3"))
+}
+
+/// True when a transcript file was built from provided LRC without stem
+/// separation (`"no_stems": true`), meaning it is playable without stems.
+fn transcript_marks_no_stems(path: &Path) -> bool {
+    #[derive(serde::Deserialize)]
+    struct NoStemsProbe {
+        #[serde(default)]
+        no_stems: bool,
+    }
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|data| serde_json::from_str::<NoStemsProbe>(&data).ok())
+        .map(|probe| probe.no_stems)
+        .unwrap_or(false)
 }
 
 fn is_variant_transcript_file(name: &str, hash: &str) -> bool {
