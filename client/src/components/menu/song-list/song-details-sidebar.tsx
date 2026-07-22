@@ -2,8 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { QueuedStatus } from "@/types/QueuedStatus";
 import type { Song } from "@/types/Song";
+import { SONGS } from "@/queries/keys";
+import { useQueryClient } from "@tanstack/react-query";
 import { PlayIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { ActionsSection } from "./details/actions-section";
 import { KeyTempoSection } from "./details/key-tempo-section";
@@ -20,6 +22,7 @@ interface SongDetailsSidebarProps {
 
 export const SongDetailsSidebar = ({ song, queueStatus, onClose }: SongDetailsSidebarProps) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { detailsRef, closeDetails } = useSongDetailsNav(onClose);
   const [shifting, setShifting] = useState<Record<ShiftType, boolean>>({
     tempo: false,
@@ -28,8 +31,23 @@ export const SongDetailsSidebar = ({ song, queueStatus, onClose }: SongDetailsSi
 
   const status = getSongStatusInfo(song.is_analyzed, queueStatus);
   const analysisBusy = queueStatus === "Queued" || Boolean(status.isAnalyzing);
-  const supportsShifts = song.is_analyzed && song.transcript_source !== "Usdx";
+  // LRC songs played over the original mix are marked ready immediately while
+  // their key is still being detected off-queue. Until the key lands, treat the
+  // key/tempo section like an in-progress analysis rather than showing controls.
+  const keyPending =
+    song.is_analyzed && song.transcript_source === "Lrc" && song.no_stems && song.key === null;
+  const supportsShifts = song.is_analyzed && song.transcript_source !== "Usdx" && !keyPending;
   const supportsAnalysisActions = Boolean(status.isReady) && song.transcript_source !== "Usdx";
+
+  // Off-queue key detection doesn't invalidate any query, so poll the song list
+  // while the key is pending to pick it up and unlock the shift controls.
+  useEffect(() => {
+    if (!keyPending) return;
+    const interval = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: SONGS });
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [keyPending, queryClient]);
 
   return (
     <aside

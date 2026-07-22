@@ -334,18 +334,6 @@ pub fn mark_stems_only(file_hash: &str) {
     STEMS_ONLY.lock().unwrap().insert(file_hash.to_string());
 }
 
-/// Hashes whose queued job should only detect the musical key (no separation,
-/// no transcription) so LRC-provided songs played over the original mix still
-/// support key/tempo shifting.
-static KEY_ONLY: LazyLock<Mutex<HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
-
-/// Mark a hash so its next analysis pass only detects the key, keeping the
-/// LRC-provided transcript and the song's `no_stems` playback mode intact.
-pub fn mark_key_only(file_hash: &str) {
-    KEY_ONLY.lock().unwrap().insert(file_hash.to_string());
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 fn update_queue_status(file_hash: &str, status: QueuedStatus) {
@@ -670,11 +658,7 @@ fn process_song(initial_hash: &str, cache: &CacheDir) {
         let mut set = STEMS_ONLY.lock().unwrap();
         set.remove(file_hash) || set.remove(initial_hash)
     };
-    let key_only = {
-        let mut set = KEY_ONLY.lock().unwrap();
-        set.remove(file_hash) || set.remove(initial_hash)
-    };
-    if (stems_only || key_only) && file_hash != initial_hash {
+    if stems_only && file_hash != initial_hash {
         // Move the pre-written transcript to the rekeyed hash so the pass can
         // patch it in place.
         let _ = std::fs::rename(
@@ -684,7 +668,7 @@ fn process_song(initial_hash: &str, cache: &CacheDir) {
     }
 
     let config = AppConfig::load();
-    let skip_lrclib = stems_only || key_only || FORCE_TRANSCRIBE.lock().unwrap().remove(file_hash);
+    let skip_lrclib = stems_only || FORCE_TRANSCRIBE.lock().unwrap().remove(file_hash);
     let lyrics_path = if skip_lrclib {
         None
     } else {
@@ -707,10 +691,6 @@ fn process_song(initial_hash: &str, cache: &CacheDir) {
 
     if stems_only {
         cmd_json["skip_transcription"] = serde_json::json!(true);
-    }
-    if key_only {
-        cmd_json["skip_transcription"] = serde_json::json!(true);
-        cmd_json["skip_separation"] = serde_json::json!(true);
     }
 
     if let Some(ref lp) = lyrics_path {
@@ -743,7 +723,7 @@ fn process_song(initial_hash: &str, cache: &CacheDir) {
         }
 
         let server = guard.as_mut().unwrap();
-        match send_and_monitor(server, &json_str, file_hash) {
+        match send_and_monitor(server, &json_str, Some(file_hash)) {
             Ok(SongResult::Done) => {
                 finalize_song(file_hash, cache);
                 return;
@@ -806,6 +786,102 @@ fn finalize_song(file_hash: &str, cache: &CacheDir) {
             file_hash,
             QueuedStatus::Failed("Transcript file not found after analysis".into()),
         );
+    }
+}
+
+// ─── Off-queue key detection ─────────────────────────────────────────
+
+/// Detect the musical key for a song that is already marked ready (LRC over the
+/// original mix) without routing it through the analysis status queue. Runs in
+/// the background; once the key lands it is patched onto the song row so the
+/// key/tempo shift controls unlock.
+pub fn detect_key_async(file_hash: &str) {
+    if is_usdx_song(file_hash) {
+        return;
+    }
+    let file_hash = file_hash.to_string();
+    std::thread::spawn(move || {
+        let cache = CacheDir::new();
+        run_key_detection(&file_hash, &cache);
+    });
+}
+
+fn run_key_detection(initial_hash: &str, cache: &CacheDir) {
+    let Some(song) = library_db::load_song_by_hash(initial_hash).ok().flatten() else {
+        return;
+    };
+
+    let (_song, local_path, file_hash_owned) = match prepare_audio_for_analysis(&song, cache) {
+        Ok(out) => out,
+        Err(e) => {
+            warn!("[analyzer] Key detection audio prep failed for {initial_hash}: {e}");
+            return;
+        }
+    };
+    let file_hash = file_hash_owned.as_str();
+
+    // A remote rekey moves the row to the content hash — carry the transcript we
+    // wrote under the placeholder hash across so the key pass can patch it.
+    if file_hash != initial_hash {
+        let _ = std::fs::rename(
+            cache.transcript_path(initial_hash),
+            cache.transcript_path(file_hash),
+        );
+    }
+
+    let config = AppConfig::load();
+    let cmd_json = serde_json::json!({
+        "type": "analyze",
+        "audio_path": local_path.to_string_lossy(),
+        "cache_path": cache.path.to_string_lossy(),
+        "hash": file_hash,
+        "model": config.whisper_model(),
+        "beam_size": config.beam_size(),
+        "batch_size": config.batch_size(),
+        "separator": config.separator(),
+        "engine": config.asr_engine(),
+        "align_backend": config.align_backend(),
+        "vocal_detection_threshold_pct": config.vocal_detection_threshold_pct(),
+        // Key only: keep the provided LRC transcript and the original mix.
+        "skip_transcription": true,
+        "skip_separation": true,
+    });
+    let json_str = serde_json::to_string(&cmd_json).unwrap();
+
+    let mut retried = false;
+    loop {
+        let mut guard = ANALYZER_SERVER.lock().unwrap();
+        if let Err(e) = ensure_server(&mut guard) {
+            warn!("[analyzer] Key detection server start failed for {file_hash}: {e}");
+            return;
+        }
+        let server = guard.as_mut().unwrap();
+        // `None` progress hash keeps this off the status pipe (no queue rows).
+        match send_and_monitor(server, &json_str, None) {
+            Ok(SongResult::Done) => {
+                drop(guard);
+                let meta = read_transcript_meta(cache, file_hash);
+                if let Some(mut updated) = library_db::load_song_by_hash(file_hash).ok().flatten() {
+                    updated.key = meta.key;
+                    let _ = library_db::update_song_fields(file_hash, &updated);
+                }
+                info!("[analyzer] Key detection complete for {file_hash}");
+                return;
+            }
+            Ok(SongResult::Oom) | Err(_) => {
+                *guard = None;
+                if !retried {
+                    retried = true;
+                    continue;
+                }
+                warn!("[analyzer] Key detection failed for {file_hash} after retry");
+                return;
+            }
+            Ok(SongResult::Error(msg)) => {
+                warn!("[analyzer] Key detection error for {file_hash}: {msg}");
+                return;
+            }
+        }
     }
 }
 
@@ -898,7 +974,7 @@ enum ServerEvent {
 fn send_and_monitor(
     server: &mut ServerProcess,
     json_cmd: &str,
-    file_hash: &str,
+    progress_hash: Option<&str>,
 ) -> Result<SongResult, NightingaleError> {
     server.writer.write_all(json_cmd.as_bytes())?;
     server.writer.write_all(b"\n")?;
@@ -931,7 +1007,9 @@ fn send_and_monitor(
                 if !msg.is_empty() {
                     info!("[analyzer] progress {pct}% {msg}");
                 }
-                update_queue_status(file_hash, QueuedStatus::Analyzing(pct as usize));
+                if let Some(hash) = progress_hash {
+                    update_queue_status(hash, QueuedStatus::Analyzing(pct as usize));
+                }
             }
             ServerEvent::Done { .. } => return Ok(SongResult::Done),
             ServerEvent::Error { kind, msg } => {

@@ -44,6 +44,7 @@ export interface MenuFocusContextValue {
   scrollTopRef: RefObject<number>;
   sidebarScrollRef: RefObject<HTMLElement | null>;
   sidebarScrollTopRef: RefObject<number>;
+  selectedSongKeyRef: RefObject<string | null>;
 }
 
 const MenuFocusContext = createContext<MenuFocusContextValue | null>(null);
@@ -77,6 +78,7 @@ export function MenuFocusProvider({ children }: { children: ReactNode }) {
   const scrollTopRef = useRef<number>(0);
   const sidebarScrollRef = useRef<HTMLElement | null>(null);
   const sidebarScrollTopRef = useRef<number>(0);
+  const selectedSongKeyRef = useRef<string | null>(null);
 
   const setFocus = useCallback((updater: (prev: MenuFocus) => MenuFocus) => {
     setFocusState(updater);
@@ -101,6 +103,7 @@ export function MenuFocusProvider({ children }: { children: ReactNode }) {
       scrollTopRef,
       sidebarScrollRef,
       sidebarScrollTopRef,
+      selectedSongKeyRef,
     }),
     [focus, setFocus, activate, deactivate],
   );

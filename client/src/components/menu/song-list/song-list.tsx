@@ -1,3 +1,4 @@
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useMenuFocus } from "@/contexts/menu-focus-context";
@@ -10,6 +11,7 @@ import { useAnalysisQueue, useSongs } from "@/queries/use-songs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Filters, type SongListView } from "./filters";
 import { Progress } from "./progress";
+import { songKey } from "./shared/song-key";
 import { SongDetailsSidebar } from "./song-details-sidebar";
 import type { SongItemProps } from "./types";
 import { SongGrid } from "./views/song-grid";
@@ -19,27 +21,32 @@ export const SongList = () => {
   const { data: queue } = useAnalysisQueue();
   const { data: config } = useConfig();
   const { mutate: saveConfig, isPending: isSavingView } = useConfigMutation();
-  const { focus, actionsRef, setFocus } = useMenuFocus();
+  const { focus, actionsRef, setFocus, selectedSongKeyRef } = useMenuFocus();
   const { setScrollContainer, resetScroll } = usePersistentScroll("songList");
   const { search } = useSearch();
-  const { artist, album, query } = useLibraryFilter();
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useSongs();
-  const [selectedSongHash, setSelectedSongHash] = useState<string | null>(null);
+  const { artist, album, playlist, query } = useLibraryFilter();
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useSongs();
+  // Track the selection by a rekey-stable key (see `songKey`) rather than by
+  // file_hash, and seed from the persisted ref so returning from playback
+  // restores the open sidebar and the selected row/card highlight.
+  const [selectedKey, setSelectedKey] = useState<string | null>(() => selectedSongKeyRef.current);
 
   const view: SongListView = config?.song_list_view === "grid" ? "grid" : "table";
   const songs = useMemo(() => data?.pages.flatMap((page) => page.processed) ?? [], [data]);
-  const foundSong = songs.find((song) => song.file_hash === selectedSongHash) ?? null;
+  const foundSong = songs.find((song) => songKey(song) === selectedKey) ?? null;
   // Keep the details sidebar open even when the selected song temporarily drops
   // out of the loaded pages — e.g. it leaves the analysis queue and re-sorts to
   // a position we haven't paged to yet. Fall back to the last snapshot for the
-  // same hash so the sidebar doesn't flicker closed on status transitions.
+  // same key so the sidebar doesn't flicker closed on status transitions.
   const lastSelectedSongRef = useRef<(typeof songs)[number] | null>(null);
   if (foundSong) {
     lastSelectedSongRef.current = foundSong;
   }
   const selectedSong =
     foundSong ??
-    (selectedSongHash && lastSelectedSongRef.current?.file_hash === selectedSongHash
+    (selectedKey &&
+    lastSelectedSongRef.current &&
+    songKey(lastSelectedSongRef.current) === selectedKey
       ? lastSelectedSongRef.current
       : null);
   const isFirstFilterRun = useRef(true);
@@ -52,10 +59,14 @@ export const SongList = () => {
       isFirstFilterRun.current = false;
       return;
     }
-    setSelectedSongHash(null);
+    setSelectedKey(null);
     resetScroll();
     setFocus((previous) => ({ ...previous, songIndex: 0 }));
   }, [search, artist, album, query, resetScroll, setFocus]);
+
+  useEffect(() => {
+    selectedSongKeyRef.current = selectedKey;
+  }, [selectedKey, selectedSongKeyRef]);
 
   useEffect(() => {
     actionsRef.current.songCount = songs.length;
@@ -66,7 +77,7 @@ export const SongList = () => {
       const song = songsRef.current[index];
       if (!song) return;
 
-      setSelectedSongHash(song.file_hash);
+      setSelectedKey(songKey(song));
     };
     return () => {
       actionsRef.current.onConfirmSong = null;
@@ -89,15 +100,17 @@ export const SongList = () => {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, view]);
 
   const isSongListActive = focus.active && focus.panel === "songList";
-  const selectSong = (fileHash: string) => setSelectedSongHash(fileHash);
+  const hasActiveFilter = Boolean(search.trim() || artist || album || playlist || query);
+  const showEmptyState = songs.length === 0 && !isLoading;
+  const selectSong = (song: (typeof songs)[number]) => setSelectedKey(songKey(song));
 
   const getItemProps = (song: (typeof songs)[number], index: number): SongItemProps => ({
     song,
     queueStatus: queue?.entries[song.file_hash],
     index,
-    isSelected: selectedSongHash === song.file_hash,
+    isSelected: selectedKey === songKey(song),
     isFocused: isSongListActive && !focus.analyzeAllFocused && focus.songIndex === index,
-    onSelect: () => selectSong(song.file_hash),
+    onSelect: () => selectSong(song),
   });
 
   return (
@@ -115,26 +128,39 @@ export const SongList = () => {
         />
         <Separator />
         <Progress />
-        <div
-          ref={setScrollContainer}
-          data-song-layout={view}
-          className="song-table-shell min-h-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-        >
-          {view === "table" ? (
-            <SongTable songs={songs} getItemProps={getItemProps} />
-          ) : (
-            <SongGrid songs={songs} getItemProps={getItemProps} />
-          )}
-          <div ref={sentinelRef} className="h-1" aria-hidden="true" />
-        </div>
+        {showEmptyState ? (
+          <Empty className="px-4">
+            <EmptyHeader>
+              <EmptyTitle>{hasActiveFilter ? "No results" : "No songs found"}</EmptyTitle>
+              <EmptyDescription>
+                {hasActiveFilter
+                  ? "No songs match your search or filters. Try adjusting them."
+                  : "This library is empty or still being scanned."}
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <div
+            ref={setScrollContainer}
+            data-song-layout={view}
+            className="song-table-shell min-h-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          >
+            {view === "table" ? (
+              <SongTable songs={songs} getItemProps={getItemProps} />
+            ) : (
+              <SongGrid songs={songs} getItemProps={getItemProps} />
+            )}
+            <div ref={sentinelRef} className="h-1" aria-hidden="true" />
+          </div>
+        )}
       </main>
 
       {selectedSong ? (
         <SongDetailsSidebar
-          key={selectedSong.file_hash}
+          key={songKey(selectedSong)}
           song={selectedSong}
           queueStatus={queue?.entries[selectedSong.file_hash]}
-          onClose={() => setSelectedSongHash(null)}
+          onClose={() => setSelectedKey(null)}
         />
       ) : null}
     </div>

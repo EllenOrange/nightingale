@@ -5,7 +5,7 @@ use tracing::{info, warn};
 use ts_rs::TS;
 
 use crate::analyzer::{
-    enqueue_one, is_usdx_song, mark_key_only, mark_stems_only, update_song_analyzed,
+    detect_key_async, enqueue_one, is_usdx_song, mark_stems_only, update_song_analyzed,
 };
 use crate::cache::CacheDir;
 use crate::library_db;
@@ -239,11 +239,20 @@ pub fn provide_lrc(file_hash: &str, lrc_text: &str, separate_stems: bool) -> Res
         let value = build_lrc_transcript(&parsed, language.as_deref(), None, 1.0, true);
         write_transcript_json(&cache, file_hash, &value)
             .map_err(|e| format!("Failed to write transcript: {e}"))?;
-        // Stays not-analyzed until the lightweight key-detection pass finishes,
-        // which then marks the song ready (source=Lrc, no_stems) with its key.
-        update_song_analyzed(file_hash, false, language, None, None, None);
-        mark_key_only(file_hash);
-        enqueue_one(file_hash);
+        // Playing over the original mix needs no separation, so mark the song
+        // ready right away (source=Lrc, no_stems) instead of routing it through
+        // the analysis status queue. The key is still unknown, so detect it in
+        // the background; once it lands the key/tempo shift controls unlock.
+        let mut updated = song;
+        updated.is_analyzed = true;
+        updated.transcript_source = Some(TranscriptSource::Lrc);
+        updated.key = None;
+        updated.override_key = None;
+        updated.tempo = 1.0;
+        updated.key_offset = 0;
+        updated.no_stems = true;
+        library_db::update_song_fields(file_hash, &updated).map_err(|e| e.to_string())?;
+        detect_key_async(file_hash);
     }
 
     Ok(())

@@ -26,25 +26,26 @@ export const KeyTempoSection = ({
       <h3 id="song-adjustments-heading" className="mb-2 text-xs font-semibold">
         Key & tempo
       </h3>
-      <Shifts
-        song={song}
-        status={shifting}
-        onStart={(type) => setShifting((current) => ({ ...current, [type]: true }))}
-        onSuccess={(message, type) => {
-          toast.success(message);
-          queryClient.invalidateQueries({ queryKey: SONGS });
-          setShifting((current) => ({ ...current, [type]: false }));
-        }}
-        onError={(message, type) => {
-          toast.error(message);
-          setShifting((current) => ({ ...current, [type]: false }));
-        }}
-      />
-      {!supportsShifts ? (
+      {supportsShifts ? (
+        <Shifts
+          song={song}
+          status={shifting}
+          onStart={(type) => setShifting((current) => ({ ...current, [type]: true }))}
+          onSuccess={(message, type) => {
+            toast.success(message);
+            queryClient.invalidateQueries({ queryKey: SONGS });
+            setShifting((current) => ({ ...current, [type]: false }));
+          }}
+          onError={(message, type) => {
+            toast.error(message);
+            setShifting((current) => ({ ...current, [type]: false }));
+          }}
+        />
+      ) : (
         <p className="max-w-72 text-xs leading-relaxed text-muted-foreground">
           Key and tempo controls become available after compatible analysis.
         </p>
-      ) : null}
+      )}
     </section>
   );
 };
