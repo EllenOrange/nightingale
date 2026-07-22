@@ -1,0 +1,16 @@
+import type { Song } from "@/types/Song";
+import type { SongItemProps } from "../types";
+import { SongGridCard } from "./song-grid-card";
+
+interface SongGridProps {
+  songs: Song[];
+  getItemProps: (song: Song, index: number) => SongItemProps;
+}
+
+export const SongGrid = ({ songs, getItemProps }: SongGridProps) => (
+  <div role="list" className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3 p-1">
+    {songs.map((song, index) => (
+      <SongGridCard key={song.file_hash} {...getItemProps(song, index)} />
+    ))}
+  </div>
+);

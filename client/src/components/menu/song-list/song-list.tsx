@@ -10,8 +10,10 @@ import { useAnalysisQueue, useSongs } from "@/queries/use-songs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Filters, type SongListView } from "./filters";
 import { Progress } from "./progress";
-import { SongGridCard, SongTableRow } from "./song-card";
 import { SongDetailsSidebar } from "./song-details-sidebar";
+import type { SongItemProps } from "./types";
+import { SongGrid } from "./views/song-grid";
+import { SongTable } from "./views/song-table";
 
 export const SongList = () => {
   const { data: queue } = useAnalysisQueue();
@@ -76,6 +78,15 @@ export const SongList = () => {
   const isSongListActive = focus.active && focus.panel === "songList";
   const selectSong = (fileHash: string) => setSelectedSongHash(fileHash);
 
+  const getItemProps = (song: (typeof songs)[number], index: number): SongItemProps => ({
+    song,
+    queueStatus: queue?.entries[song.file_hash],
+    index,
+    isSelected: selectedSongHash === song.file_hash,
+    isFocused: isSongListActive && !focus.analyzeAllFocused && focus.songIndex === index,
+    onSelect: () => selectSong(song.file_hash),
+  });
+
   return (
     <div className="flex min-h-0 w-full flex-1 overflow-hidden">
       <main
@@ -97,56 +108,9 @@ export const SongList = () => {
           className="song-table-shell min-h-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto pb-[max(0.75rem,env(safe-area-inset-bottom))]"
         >
           {view === "table" ? (
-            <table className="w-full table-fixed border-separate border-spacing-0 text-xs">
-              <thead className="song-table__header">
-                <tr className="text-left text-muted-foreground">
-                  <th className="song-table__thumbnail px-2 py-2 font-medium">
-                    <span className="sr-only">Cover</span>
-                  </th>
-                  <th className="song-table__song px-2 py-2 font-medium">Song</th>
-                  <th className="song-table__band px-2 py-2 font-medium">Band</th>
-                  <th className="song-table__album px-2 py-2 font-medium">Album</th>
-                  <th className="song-table__duration px-2 py-2 font-medium">Duration</th>
-                  <th className="song-table__status px-2 py-2 text-right font-medium">
-                    Analysis status
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {songs.map((song, index) => (
-                  <SongTableRow
-                    key={song.file_hash}
-                    song={song}
-                    queueStatus={queue?.entries[song.file_hash]}
-                    index={index}
-                    isSelected={selectedSongHash === song.file_hash}
-                    isFocused={
-                      isSongListActive && !focus.analyzeAllFocused && focus.songIndex === index
-                    }
-                    onSelect={() => selectSong(song.file_hash)}
-                  />
-                ))}
-              </tbody>
-            </table>
+            <SongTable songs={songs} getItemProps={getItemProps} />
           ) : (
-            <div
-              role="list"
-              className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3 p-1"
-            >
-              {songs.map((song, index) => (
-                <SongGridCard
-                  key={song.file_hash}
-                  song={song}
-                  queueStatus={queue?.entries[song.file_hash]}
-                  index={index}
-                  isSelected={selectedSongHash === song.file_hash}
-                  isFocused={
-                    isSongListActive && !focus.analyzeAllFocused && focus.songIndex === index
-                  }
-                  onSelect={() => selectSong(song.file_hash)}
-                />
-              ))}
-            </div>
+            <SongGrid songs={songs} getItemProps={getItemProps} />
           )}
           <div ref={sentinelRef} className="h-1" aria-hidden="true" />
         </div>

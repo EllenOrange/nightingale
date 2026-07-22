@@ -6,6 +6,25 @@ import { Stepper } from "./stepper";
 
 export type ShiftType = "tempo" | "key";
 
+interface ShiftListener {
+  register: typeof onShiftKeyDone;
+  successMessage: string;
+  errorMessage: (error: string) => string;
+}
+
+const SHIFT_LISTENERS: Record<ShiftType, ShiftListener> = {
+  key: {
+    register: onShiftKeyDone,
+    successMessage: "Song key shifted successfully",
+    errorMessage: (error) => `Error while shifting the key: ${error}`,
+  },
+  tempo: {
+    register: onShiftTempoDone,
+    successMessage: "Song tempo shifted successfully",
+    errorMessage: (error) => `Error while shifting the tempo: ${error}`,
+  },
+};
+
 interface Props {
   song: Song;
   status: Record<ShiftType, boolean>;
@@ -19,26 +38,6 @@ export const Shifts = ({ song, status, onSuccess, onError, onStart }: Props) => 
   const onErrorRef = useRef(onError);
   onSuccessRef.current = onSuccess;
   onErrorRef.current = onError;
-
-  const listeners: Record<
-    ShiftType,
-    {
-      register: typeof onShiftKeyDone;
-      successMessage: string;
-      errorMessage: (error: string) => string;
-    }
-  > = {
-    key: {
-      register: onShiftKeyDone,
-      successMessage: "Song key shifted successfully",
-      errorMessage: (error) => `Error while shifting the key: ${error}`,
-    },
-    tempo: {
-      register: onShiftTempoDone,
-      successMessage: "Song tempo shifted successfully",
-      errorMessage: (error) => `Error while shifting the tempo: ${error}`,
-    },
-  };
 
   const withOnStart = (callback: () => void, shiftType: ShiftType) => () => {
     onStart(shiftType);
@@ -55,7 +54,7 @@ export const Shifts = ({ song, status, onSuccess, onError, onStart }: Props) => 
     let cancelled = false;
     const unlisteners: Partial<Record<ShiftType, () => void>> = {};
 
-    (Object.entries(listeners) as Array<[ShiftType, (typeof listeners)[ShiftType]]>).forEach(
+    (Object.entries(SHIFT_LISTENERS) as Array<[ShiftType, ShiftListener]>).forEach(
       ([shiftType, config]) => {
         config
           .register(({ file_hash, error }) => {

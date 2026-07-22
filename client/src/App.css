@@ -201,6 +201,10 @@
     width: 9rem;
   }
 
+  .song-table__header {
+    background-color: var(--background);
+  }
+
   .song-table__header th {
     position: sticky;
     top: 0;
