@@ -1,8 +1,8 @@
-import { Song } from "@/types/Song";
-import { Stepper } from "./stepper";
 import { onShiftKeyDone, onShiftTempoDone, shiftKey, shiftTempo } from "@/bridge/analysis";
-import { useEffect, useRef } from "react";
+import type { Song } from "@/types/Song";
 import { calculateKeyShift } from "@/utils/shift-key";
+import { useEffect, useRef } from "react";
+import { Stepper } from "./stepper";
 
 export type ShiftType = "tempo" | "key";
 
@@ -47,8 +47,7 @@ export const Shifts = ({ song, status, onSuccess, onError, onStart }: Props) => 
       callback();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-
-      onErrorRef.current(`Error while shifting the tempo: ${message}`, shiftType);
+      onErrorRef.current(`Error while shifting the ${shiftType}: ${message}`, shiftType);
     }
   };
 
@@ -60,71 +59,54 @@ export const Shifts = ({ song, status, onSuccess, onError, onStart }: Props) => 
       ([shiftType, config]) => {
         config
           .register(({ file_hash, error }) => {
-            if (file_hash !== song.file_hash) {
-              return;
-            }
+            if (file_hash !== song.file_hash) return;
 
-            if (!error) {
-              onSuccessRef.current(config.successMessage, shiftType);
-            } else {
-              onErrorRef.current(config.errorMessage(error), shiftType);
-            }
+            if (!error) onSuccessRef.current(config.successMessage, shiftType);
+            else onErrorRef.current(config.errorMessage(error), shiftType);
           })
-          .then((fn) => {
-            if (cancelled) {
-              fn();
-
-              return;
-            }
-
-            unlisteners[shiftType] = fn;
+          .then((unlisten) => {
+            if (cancelled) unlisten();
+            else unlisteners[shiftType] = unlisten;
           });
       },
     );
 
     return () => {
       cancelled = true;
-
       unlisteners.tempo?.();
       unlisteners.key?.();
     };
   }, [song.file_hash]);
 
-  if (!song.is_analyzed || song.transcript_source === "Usdx") {
-    return null;
-  }
+  if (!song.is_analyzed || song.transcript_source === "Usdx") return null;
 
   const loading = status.key || status.tempo;
 
   const onShiftKey = (direction: "up" | "down") => {
-    if (!song.key) {
-      return;
-    }
+    if (!song.key) return;
 
     const { key, keyOffset, pitchRatio } = calculateKeyShift(
       song.key,
       song.key_offset + (direction === "up" ? 1 : -1),
     );
-
     shiftKey(song.file_hash, key, pitchRatio, keyOffset);
   };
 
-  const stepperConfigs = [
+  const controls = [
     {
       shiftType: "tempo" as const,
-      label: song.tempo.toFixed(1),
-      tooltip: "Click +/- to shift the song tempo",
+      title: "Tempo",
+      description: "Adjust playback speed in 0.1× steps.",
+      value: `${song.tempo.toFixed(1)}×`,
       onPlus: () => shiftTempo(song.file_hash, song.tempo + 0.1),
       onMinus: () => shiftTempo(song.file_hash, song.tempo - 0.1),
-      disabled: {
-        plus: song.tempo >= 2,
-        minus: song.tempo <= 0.5,
-      },
+      disabled: { plus: song.tempo >= 2, minus: song.tempo <= 0.5 },
     },
     {
       shiftType: "key" as const,
-      label: song.override_key ?? song.key,
-      tooltip: `Click +/- to shift the song key. ${song.key ? `Default key is ${song.key}` : "Reanalyze the song to identify the key"}`,
+      title: "Key",
+      description: song.key ? `Original key: ${song.key}` : "Analyze again to detect the key.",
+      value: song.override_key ?? song.key,
       onPlus: () => onShiftKey("up"),
       onMinus: () => onShiftKey("down"),
       disabled: {
@@ -135,22 +117,26 @@ export const Shifts = ({ song, status, onSuccess, onError, onStart }: Props) => 
   ];
 
   return (
-    <div className="flex shrink-0 gap-1">
-      {stepperConfigs.map(({ shiftType, label, tooltip, onPlus, onMinus, disabled }) => (
-        <Stepper
-          key={shiftType}
-          loading={status[shiftType]}
-          label={label}
-          tooltip={tooltip}
-          onClick={{
-            plus: withOnStart(onPlus, shiftType),
-            minus: withOnStart(onMinus, shiftType),
-          }}
-          disabled={{
-            plus: loading || disabled.plus,
-            minus: loading || disabled.minus,
-          }}
-        />
+    <div className="divide-y">
+      {controls.map(({ shiftType, title, description, value, onPlus, onMinus, disabled }) => (
+        <div key={shiftType} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2">
+          <div className="min-w-0 basis-48 flex-1">
+            <p className="text-xs font-medium">{title}</p>
+            <p className="mt-0.5 text-[0.625rem] leading-snug text-muted-foreground">
+              {description}
+            </p>
+          </div>
+          <Stepper
+            ariaLabel={title.toLowerCase()}
+            loading={status[shiftType]}
+            label={value}
+            onClick={{
+              plus: withOnStart(onPlus, shiftType),
+              minus: withOnStart(onMinus, shiftType),
+            }}
+            disabled={{ plus: loading || disabled.plus, minus: loading || disabled.minus }}
+          />
+        </div>
       ))}
     </div>
   );

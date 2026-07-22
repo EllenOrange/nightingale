@@ -193,6 +193,7 @@ pub struct AppConfig {
     pub align_backend: Option<String>,
     pub vocal_detection_threshold_pct: Option<f64>,
     pub auto_analyze: Option<bool>,
+    pub song_list_view: Option<String>,
     pub language_overrides: Option<HashMap<String, String>>,
 }
 
@@ -227,6 +228,7 @@ impl Default for AppConfig {
             align_backend: None,
             vocal_detection_threshold_pct: None,
             auto_analyze: None,
+            song_list_view: None,
             language_overrides: None,
         }
     }

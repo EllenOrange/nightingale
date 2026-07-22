@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type FocusPanel = "songList" | "sidebar";
+export type FocusPanel = "songList" | "sidebar" | "songDetails";
 export type FocusSource = "mouse" | "nav";
 
 export interface MenuFocus {
@@ -28,6 +28,7 @@ export interface MenuFocusActions {
   onConfirmAnalyzeAll: (() => void) | null;
   onSidebarBack: (() => boolean) | null;
   isSidebarBusy: (() => boolean) | null;
+  hasSongDetails: boolean;
   songCount: number;
   sidebarCount: number;
   sidebarSubCountByIndex: Map<number, number>;
@@ -63,6 +64,7 @@ const INITIAL_ACTIONS: MenuFocusActions = {
   onConfirmAnalyzeAll: null,
   onSidebarBack: null,
   isSidebarBusy: null,
+  hasSongDetails: false,
   songCount: 0,
   sidebarCount: 0,
   sidebarSubCountByIndex: new Map(),

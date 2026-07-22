@@ -3,7 +3,7 @@ import { blurActiveTextInput } from "./dom";
 import type { MenuNavHookOptions } from "./types";
 
 export function useTabPanelSwitch({ menuFocus, refs, lock }: MenuNavHookOptions) {
-  const { activate, setFocus } = menuFocus;
+  const { activate, actionsRef, setFocus } = menuFocus;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -17,16 +17,24 @@ export function useTabPanelSwitch({ menuFocus, refs, lock }: MenuNavHookOptions)
       lock.lockTemporarily();
       blurActiveTextInput();
 
-      setFocus((prev) => ({
-        ...prev,
-        active: true,
-        analyzeAllFocused: false,
-        panel: prev.panel === "songList" ? "sidebar" : "songList",
-        source: "nav",
-      }));
+      setFocus((prev) => {
+        let panel = prev.panel;
+        if (prev.panel === "sidebar") panel = "songList";
+        else if (prev.panel === "songList" && actionsRef.current.hasSongDetails) {
+          panel = "songDetails";
+        } else panel = "sidebar";
+
+        return {
+          ...prev,
+          active: true,
+          analyzeAllFocused: false,
+          panel,
+          source: "nav",
+        };
+      });
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activate, lock, refs, setFocus]);
+  }, [actionsRef, activate, lock, refs, setFocus]);
 }

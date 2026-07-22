@@ -1,62 +1,26 @@
+import { convertFileSrc } from "@/bridge/media";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { Stars } from "@/components/shared/stars";
-import { useAnalysis } from "@/hooks/use-analysis";
+import { cn } from "@/lib/utils";
+import { ANALYSIS_STATUS_STYLES } from "@/lib/analysis-status-styles";
+import { getLanguageName } from "@/lib/languages";
 import type { QueuedStatus } from "@/types/QueuedStatus";
 import type { Song } from "@/types/Song";
-import { ANALYSIS_STATUS_STYLES } from "@/lib/analysis-status-styles";
-import { convertFileSrc } from "@/bridge/media";
-import {
-  AlignLeftIcon,
-  AudioLinesIcon,
-  LanguagesIcon,
-  LoaderCircleIcon,
-  MenuIcon,
-  MicIcon,
-  MusicIcon,
-  PencilLineIcon,
-  RefreshCwIcon,
-  Trash2Icon,
-  VideoIcon,
-} from "lucide-react";
-import { memo, MouseEvent, useState } from "react";
-import { useNavigate } from "react-router";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { useDialog } from "@/hooks/use-dialog";
-import { Shifts, ShiftType } from "./shifts";
-import { useQueryClient } from "@tanstack/react-query";
-import { SONGS } from "@/queries/keys";
+import { LoaderCircleIcon, MusicIcon, VideoIcon } from "lucide-react";
+import { memo, type KeyboardEvent } from "react";
 
-function formatSeconds(seconds: number): string {
+export function formatSeconds(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const secs = Math.floor(seconds) % 60;
-
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
 }
 
 function formatTranscriptSource(source: Song["transcript_source"]): string {
-  switch (source) {
-    case "Lyrics":
-      return "Lyrics";
-    case "Usdx":
-      return "USDX";
-    default:
-      return "Generated";
-  }
+  if (source === "Lyrics") return "Lyrics";
+  if (source === "Usdx") return "USDX";
+  return "Generated";
 }
 
-type StatusInfo = {
+export type SongStatusInfo = {
   label: string;
   variant: "default" | "secondary" | "destructive" | "outline";
   className?: string;
@@ -64,30 +28,21 @@ type StatusInfo = {
   isReady?: boolean;
 };
 
-function getStatusInfo(isAnalyzed: boolean, queueStatus?: QueuedStatus): StatusInfo {
-  if (queueStatus) {
-    if (queueStatus === "Queued") {
+export function getSongStatusInfo(isAnalyzed: boolean, queueStatus?: QueuedStatus): SongStatusInfo {
+  if (queueStatus === "Queued") {
+    return { label: "Queued", variant: "secondary", className: ANALYSIS_STATUS_STYLES.queued };
+  }
+
+  if (typeof queueStatus === "object") {
+    if ("Analyzing" in queueStatus) {
       return {
-        label: "Queued",
-        variant: "secondary",
-        className: ANALYSIS_STATUS_STYLES.queued,
+        label: `Analyzing ${queueStatus.Analyzing}%`,
+        variant: "default",
+        className: `${ANALYSIS_STATUS_STYLES.analysing} animate-pulse`,
+        isAnalyzing: true,
       };
     }
-
-    if (typeof queueStatus === "object") {
-      if ("Analyzing" in queueStatus) {
-        return {
-          label: `Analyzing ${queueStatus.Analyzing}%`,
-          variant: "default",
-          className: `${ANALYSIS_STATUS_STYLES.analysing} animate-pulse`,
-          isAnalyzing: true,
-        };
-      }
-
-      if ("Failed" in queueStatus) {
-        return { label: "Failed", variant: "destructive" };
-      }
-    }
+    if ("Failed" in queueStatus) return { label: "Failed", variant: "destructive" };
   }
 
   if (isAnalyzed) {
@@ -99,213 +54,146 @@ function getStatusInfo(isAnalyzed: boolean, queueStatus?: QueuedStatus): StatusI
     };
   }
 
-  return { label: "Not Analyzed", variant: "outline" };
+  return { label: "Not analyzed", variant: "outline" };
 }
 
-interface SongCardProps {
+function SongThumbnail({ song, className }: { song: Song; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "relative shrink-0 overflow-hidden rounded-md bg-muted text-muted-foreground",
+        className,
+      )}
+    >
+      {song.album_art_path ? (
+        <img
+          src={convertFileSrc(song.album_art_path)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="size-full object-cover"
+        />
+      ) : (
+        <MusicIcon className="absolute inset-0 m-auto size-5" aria-hidden="true" />
+      )}
+      {song.is_video ? (
+        <VideoIcon className="absolute right-1 bottom-1 size-3 rounded-sm bg-background/85 p-0.5" />
+      ) : null}
+    </div>
+  );
+}
+
+export function StatusBadge({ song, queueStatus }: { song: Song; queueStatus?: QueuedStatus }) {
+  const status = getSongStatusInfo(song.is_analyzed, queueStatus);
+  const source = status.isReady ? ` (${formatTranscriptSource(song.transcript_source)})` : "";
+
+  return (
+    <Badge variant={status.variant} className={cn("border-foreground/15", status.className)}>
+      {status.isAnalyzing ? <LoaderCircleIcon className="animate-spin" /> : null}
+      {status.label}
+      {source}
+    </Badge>
+  );
+}
+
+export function LanguageBadge({ language }: { language?: string | null }) {
+  if (!language) return null;
+
+  const shortCode = language.slice(0, 2).toUpperCase();
+
+  return (
+    <span
+      className="inline-grid size-5 shrink-0 place-items-center rounded-sm bg-foreground/8 p-0 text-center font-mono text-[0.5625rem] leading-none font-semibold tracking-tight text-muted-foreground ring-1 ring-foreground/10 ring-inset"
+      title={getLanguageName(language)}
+      aria-label={`Language: ${getLanguageName(language)}`}
+    >
+      {shortCode}
+    </span>
+  );
+}
+
+interface SongItemProps {
   song: Song;
   queueStatus?: QueuedStatus;
-  bestScore?: number;
   index: number;
   isFocused: boolean;
+  isSelected: boolean;
+  onSelect: () => void;
 }
 
-export const SongCard = memo(
-  ({ song, queueStatus, bestScore, index, isFocused }: SongCardProps) => {
-    const [shifting, setShifting] = useState<Record<ShiftType, boolean>>({
-      tempo: false,
-      key: false,
-    });
-
-    const navigate = useNavigate();
-    const { setMode } = useDialog();
-    const queryClient = useQueryClient();
-    const {
-      enqueueOne,
-      deleteSongCache,
-      reanalyzeFull,
-      reanalyzeTranscript,
-      realign,
-      reanalyzeForceTranscribe,
-    } = useAnalysis();
-    const { label, variant, className, isAnalyzing, isReady } = getStatusInfo(
-      song.is_analyzed,
-      queueStatus,
-    );
-
-    const isUsdx = song.transcript_source === "Usdx";
-    const displaySource = isReady ? ` (${formatTranscriptSource(song.transcript_source)})` : "";
-
-    const disabled = shifting.tempo || shifting.key;
-
-    const setShiftStatus = (type: ShiftType, isShifting: boolean) => {
-      setShifting((prev) => ({ ...prev, [type]: isShifting }));
-    };
-
-    const withMenuAction = (action: () => void | Promise<void>) => async (e: MouseEvent) => {
-      e.stopPropagation();
-      await action();
+export const SongTableRow = memo(
+  ({ song, queueStatus, index, isFocused, isSelected, onSelect }: SongItemProps) => {
+    const onKeyDown = (event: KeyboardEvent<HTMLTableRowElement>) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      onSelect();
     };
 
     return (
-      <Item
-        variant="outline"
-        role="listitem"
+      <tr
+        tabIndex={0}
         data-song-index={index}
+        aria-selected={isSelected}
+        onClick={onSelect}
+        onKeyDown={onKeyDown}
         className={cn(
-          "flex flex-nowrap cursor-pointer items-start gap-2 bg-card transition-colors hover:ring-primary focus-visible:ring-0 focus-visible:border-border sm:items-center",
-          isFocused && "ring-2 ring-primary bg-muted",
-          disabled && "bd-muted",
+          "cursor-pointer border-b border-border/70 outline-none [&>td]:bg-background [&>td]:transition-colors hover:[&>td]:bg-accent focus-visible:[&>td]:bg-primary/15",
+          (isFocused || isSelected) && "[&>td]:bg-primary/15 hover:[&>td]:bg-primary/20",
         )}
-        onClick={() => {
-          if (disabled) {
-            return;
-          }
-
-          if (isReady) {
-            return navigate("/playback", { state: { song } });
-          }
-
-          enqueueOne(song.file_hash);
-        }}
       >
-        <ItemMedia variant="image" className="size-14 sm:size-16">
-          {song.album_art_path ? (
-            <img
-              src={convertFileSrc(song.album_art_path)}
-              alt={song.title}
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
-            <MusicIcon />
-          )}
-        </ItemMedia>
-
-        <ItemContent className="min-w-0">
-          {song.is_video && (
-            <Badge variant="outline">
-              <VideoIcon /> Video
-            </Badge>
-          )}
-          <ItemTitle className="flex min-w-0 flex-row flex-wrap items-center gap-2">
-            <span className="line-clamp-1 min-w-0">{song.title}</span>
-            {bestScore != null ? <Stars score={bestScore} size="sm" className="shrink-0" /> : null}
-          </ItemTitle>
-          <ItemDescription>
-            {song.artist} &bull; {song.album} &bull; {formatSeconds(song.duration_secs)}
-            {song.language ? ` • ${song.language.toUpperCase()}` : ""}
-          </ItemDescription>
-        </ItemContent>
-
-        <ItemContent className="min-w-0 flex-none flex-col items-end gap-1">
-          <div className="flex items-center gap-1">
-            <Badge variant={variant} className={`border-foreground/15 ${className ?? ""}`}>
-              {isAnalyzing && <LoaderCircleIcon className="size-3 animate-spin" />}
-              {label}
-              {displaySource}
-            </Badge>
+        <td className="song-table__thumbnail py-1.5 pr-2 pl-2">
+          <SongThumbnail song={song} className="size-10" />
+        </td>
+        <td className="song-table__song px-2 py-2 align-middle font-medium">
+          <div className="flex h-5 min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate leading-5">{song.title}</span>
+            <LanguageBadge language={song.language} />
           </div>
-          {!isUsdx && isReady && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="xs" disabled={disabled}>
-                  <MenuIcon /> Actions
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="bottom" align="start" className="min-w-56">
-                <DropdownMenuLabel>Analysis</DropdownMenuLabel>
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={withMenuAction(async () => {
-                      realign(song.file_hash);
-                      toast.info(`Realigning "${song.title}"`);
-                    })}
-                  >
-                    <AlignLeftIcon />
-                    Realign
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={withMenuAction(async () => {
-                      reanalyzeTranscript(song.file_hash);
-                      toast.info(`Refetching lyrics & aligning "${song.title}"`);
-                    })}
-                  >
-                    <RefreshCwIcon />
-                    Refetch lyrics & align
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={withMenuAction(async () => {
-                      reanalyzeForceTranscribe(song.file_hash);
-                      toast.info(`Force transcribing "${song.title}"`);
-                    })}
-                  >
-                    <MicIcon />
-                    Force transcribe
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={withMenuAction(async () => {
-                      reanalyzeFull(song.file_hash);
-                      toast.info(`Full reanalysis (w/ stems) for "${song.title}"`);
-                    })}
-                  >
-                    <AudioLinesIcon />
-                    Full reanalysis (w/ stems)
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Manage</DropdownMenuLabel>
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={withMenuAction(async () => {
-                      setMode({ mode: "edit-lyrics", song });
-                    })}
-                  >
-                    <PencilLineIcon />
-                    Edit lyrics
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={withMenuAction(async () => {
-                      setMode({ mode: "language", song });
-                    })}
-                  >
-                    <LanguagesIcon />
-                    Change language
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={withMenuAction(async () => {
-                      await deleteSongCache(song.file_hash);
-                      toast.info(`Cache deleted for "${song.title}"`);
-                    })}
-                  >
-                    <Trash2Icon />
-                    Delete cache
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </ItemContent>
-        <Shifts
-          song={song}
-          status={shifting}
-          onStart={(type: ShiftType) => {
-            setShiftStatus(type, true);
-          }}
-          onSuccess={(message, type: ShiftType) => {
-            toast.success(message);
-            queryClient.invalidateQueries({ queryKey: SONGS });
-            setShiftStatus(type, false);
-          }}
-          onError={(message, type: ShiftType) => {
-            toast.error(message);
-            setShiftStatus(type, false);
-          }}
-        />
-      </Item>
+        </td>
+        <td className="song-table__band px-2 py-2 text-muted-foreground">
+          <span className="block truncate">{song.artist || "—"}</span>
+        </td>
+        <td className="song-table__album px-2 py-2 text-muted-foreground">
+          <span className="block truncate">{song.album || "—"}</span>
+        </td>
+        <td className="song-table__duration px-2 py-2 font-variant-numeric tabular-nums text-muted-foreground">
+          {formatSeconds(song.duration_secs)}
+        </td>
+        <td className="song-table__status px-2 py-2 text-right">
+          <StatusBadge song={song} queueStatus={queueStatus} />
+        </td>
+      </tr>
     );
   },
+);
+
+export const SongGridCard = memo(
+  ({ song, queueStatus, index, isFocused, isSelected, onSelect }: SongItemProps) => (
+    <button
+      type="button"
+      data-song-index={index}
+      aria-pressed={isSelected}
+      onClick={onSelect}
+      className={cn(
+        "group flex min-h-32 min-w-0 cursor-pointer items-start gap-3 rounded-lg border bg-card p-3 text-left outline-none transition-colors hover:border-ring hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30",
+        (isFocused || isSelected) && "border-ring bg-muted ring-2 ring-ring/30",
+      )}
+    >
+      <SongThumbnail song={song} className="size-24" />
+      <div className="flex min-w-0 flex-1 self-stretch flex-col py-0.5">
+        <div className="line-clamp-2 text-sm leading-snug font-semibold">{song.title}</div>
+        <p className="mt-1 truncate text-xs text-muted-foreground">{song.artist || "—"}</p>
+        <p className="truncate text-xs text-muted-foreground">{song.album || "—"}</p>
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-2">
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {formatSeconds(song.duration_secs)}
+          </span>
+          <div className="flex items-center gap-1">
+            <LanguageBadge language={song.language} />
+            <StatusBadge song={song} queueStatus={queueStatus} />
+          </div>
+        </div>
+      </div>
+    </button>
+  ),
 );

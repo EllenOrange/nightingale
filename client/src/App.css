@@ -171,6 +171,78 @@
   }
 }
 
+@layer components {
+  .song-table-shell {
+    container-type: inline-size;
+  }
+
+  .song-table__thumbnail {
+    width: 3.5rem;
+  }
+
+  .song-table__song {
+    width: 16rem;
+  }
+
+  .song-table__band {
+    width: 12rem;
+  }
+
+  /* Flexible column: absorbs all leftover width so fixed columns never grow. */
+  .song-table__album {
+    width: auto;
+  }
+
+  .song-table__duration {
+    width: 5rem;
+  }
+
+  .song-table__status {
+    width: 9rem;
+  }
+
+  .song-table__header th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--background);
+    box-shadow: 0 1px 0 var(--border);
+  }
+
+  @container (max-width: 1100px) {
+    .song-table__album {
+      display: none;
+    }
+
+    /* Hand the absorber role to Song so the thumbnail stays fixed. */
+    .song-table__song {
+      width: auto;
+    }
+  }
+
+  @container (max-width: 920px) {
+    .song-table__band {
+      display: none;
+    }
+  }
+
+  @container (max-width: 700px) {
+    .song-table__duration {
+      display: none;
+    }
+  }
+
+  @container (max-width: 520px) {
+    .song-table__thumbnail {
+      display: none;
+    }
+
+    .song-table__status {
+      width: 7.5rem;
+    }
+  }
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none;

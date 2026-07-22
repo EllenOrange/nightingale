@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { NavAction } from "@/contexts/nav-input-context";
 import { useNavInput } from "../use-nav-input";
-import { blurActiveTextInput } from "./dom";
+import { blurActiveTextInput, getSongGridTarget, isSongGrid, type SongGridDirection } from "./dom";
 import type { MenuNavHookOptions } from "./types";
 
 const CONFIRM_COOLDOWN_MS = 140;
@@ -20,7 +20,11 @@ export function useMenuNavInput({ menuFocus, refs, lock, scrollToSong }: UseMenu
   useNavInput(
     useCallback(
       (action) => {
-        if (refs.overlayOpenRef.current || !hasInput(action)) {
+        if (
+          refs.overlayOpenRef.current ||
+          !hasInput(action) ||
+          menuFocus.focus.panel === "songDetails"
+        ) {
           return;
         }
 
@@ -45,6 +49,13 @@ export function useMenuNavInput({ menuFocus, refs, lock, scrollToSong }: UseMenu
           return;
         }
 
+        if (
+          (action.up || action.down || action.left || action.right) &&
+          handleSongGridAction(action, menuFocus, scrollToSong)
+        ) {
+          return;
+        }
+
         if (action.left || action.right) {
           if (handleHorizontalAction(action, menuFocus)) {
             return;
@@ -61,28 +72,84 @@ export function useMenuNavInput({ menuFocus, refs, lock, scrollToSong }: UseMenu
 }
 
 function handleConfirmAction(
-  { actionsRef, setFocus }: Pick<MenuNavHookOptions["menuFocus"], "actionsRef" | "setFocus">,
+  { actionsRef, focus }: Pick<MenuNavHookOptions["menuFocus"], "actionsRef" | "focus">,
   refs: MenuNavHookOptions["refs"],
 ) {
   const now = performance.now();
+  if (!focus.active) return;
+  if (now - refs.lastConfirmAtRef.current < CONFIRM_COOLDOWN_MS) return;
+  refs.lastConfirmAtRef.current = now;
 
-  setFocus((prev) => {
-    if (!prev.active) return prev;
-    if (now - refs.lastConfirmAtRef.current < CONFIRM_COOLDOWN_MS) return prev;
-    refs.lastConfirmAtRef.current = now;
+  if (focus.panel === "songList") {
+    if (focus.analyzeAllFocused) actionsRef.current.onConfirmAnalyzeAll?.();
+    else actionsRef.current.onConfirmSong?.(focus.songIndex);
+    return;
+  }
 
-    if (prev.panel === "songList") {
-      if (prev.analyzeAllFocused) {
-        actionsRef.current.onConfirmAnalyzeAll?.();
-      } else {
-        actionsRef.current.onConfirmSong?.(prev.songIndex);
-      }
-    } else if (prev.panel === "sidebar") {
-      actionsRef.current.onConfirmSidebar?.(prev.sidebarIndex);
-    }
+  if (focus.panel === "sidebar") {
+    actionsRef.current.onConfirmSidebar?.(focus.sidebarIndex);
+  }
+}
 
-    return prev;
+function getGridDirection(action: NavAction): SongGridDirection | null {
+  if (action.up) return "up";
+  if (action.down) return "down";
+  if (action.left) return "left";
+  if (action.right) return "right";
+  return null;
+}
+
+function handleSongGridAction(
+  action: NavAction,
+  {
+    focus,
+    actionsRef,
+    scrollRef,
+    setFocus,
+  }: Pick<MenuNavHookOptions["menuFocus"], "focus" | "actionsRef" | "scrollRef" | "setFocus">,
+  scrollToSong: (index: number) => void,
+): boolean {
+  const direction = getGridDirection(action);
+  const container = scrollRef.current;
+  if (
+    !direction ||
+    focus.panel !== "songList" ||
+    focus.analyzeAllFocused ||
+    !isSongGrid(container)
+  ) {
+    return false;
+  }
+
+  const targetIndex = getSongGridTarget(container, focus.songIndex, direction);
+  if (targetIndex !== null) {
+    setFocus((previous) => ({
+      ...previous,
+      active: true,
+      songIndex: targetIndex,
+      analyzeAllFocused: false,
+      source: "nav",
+    }));
+    scrollToSong(targetIndex);
+    return true;
+  }
+
+  setFocus((previous) => {
+    let panel = previous.panel;
+    let analyzeAllFocused = false;
+
+    if (direction === "left") panel = "sidebar";
+    else if (direction === "right" && actionsRef.current.hasSongDetails) panel = "songDetails";
+    else if (direction === "up") analyzeAllFocused = true;
+
+    return {
+      ...previous,
+      active: true,
+      panel,
+      analyzeAllFocused,
+      source: "nav",
+    };
   });
+  return true;
 }
 
 function handleHorizontalAction(
@@ -117,7 +184,7 @@ function handleHorizontalAction(
   if (action.left) {
     setFocus((prev) => ({
       ...prev,
-      panel: "sidebar",
+      panel: prev.panel === "songList" ? "sidebar" : prev.panel,
       analyzeAllFocused: false,
       active: true,
       source: "nav",
@@ -125,7 +192,21 @@ function handleHorizontalAction(
     return true;
   }
 
-  setFocus((prev) => ({ ...prev, panel: "songList", active: true, source: "nav" }));
+  setFocus((prev) => {
+    let panel = prev.panel;
+    if (prev.panel === "sidebar") panel = "songList";
+    else if (prev.panel === "songList" && actionsRef.current.hasSongDetails) {
+      panel = "songDetails";
+    }
+
+    return {
+      ...prev,
+      panel,
+      analyzeAllFocused: false,
+      active: true,
+      source: "nav",
+    };
+  });
   return true;
 }
 

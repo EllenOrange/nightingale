@@ -1,46 +1,46 @@
-import { useBestScoresBySongForActiveProfile } from "@/hooks/use-best-scores-by-song";
-import { useEffect, useMemo, useRef } from "react";
-import { SongCard } from "./song-card";
-import { Filters } from "./filters";
-import { Progress } from "./progress";
-import { useAnalysisQueue, useSongs } from "@/queries/use-songs";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { useMenuFocus } from "@/contexts/menu-focus-context";
 import { useLibraryFilter } from "@/hooks/use-library-filter";
-import { useAnalysis } from "@/hooks/use-analysis";
 import { usePersistentScroll } from "@/hooks/use-persistent-scroll";
 import { useSearch } from "@/hooks/use-search";
-import { useNavigate } from "react-router";
+import { useConfigMutation } from "@/mutations/use-config-mutation";
+import { useConfig } from "@/queries/use-config";
+import { useAnalysisQueue, useSongs } from "@/queries/use-songs";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Filters, type SongListView } from "./filters";
+import { Progress } from "./progress";
+import { SongGridCard, SongTableRow } from "./song-card";
+import { SongDetailsSidebar } from "./song-details-sidebar";
 
 export const SongList = () => {
-  const navigate = useNavigate();
-  const { enqueueOne } = useAnalysis();
   const { data: queue } = useAnalysisQueue();
+  const { data: config } = useConfig();
+  const { mutate: saveConfig, isPending: isSavingView } = useConfigMutation();
   const { focus, actionsRef, setFocus } = useMenuFocus();
   const { setScrollContainer, resetScroll } = usePersistentScroll("songList");
   const { search } = useSearch();
   const { artist, album, query } = useLibraryFilter();
-  const bestBySong = useBestScoresBySongForActiveProfile();
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useSongs();
+  const [selectedSongHash, setSelectedSongHash] = useState<string | null>(null);
 
+  const view: SongListView = config?.song_list_view === "grid" ? "grid" : "table";
+  const songs = useMemo(() => data?.pages.flatMap((page) => page.processed) ?? [], [data]);
+  const selectedSong = songs.find((song) => song.file_hash === selectedSongHash) ?? null;
   const isFirstFilterRun = useRef(true);
+  const songsRef = useRef(songs);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  songsRef.current = songs;
+
   useEffect(() => {
     if (isFirstFilterRun.current) {
       isFirstFilterRun.current = false;
       return;
     }
-
+    setSelectedSongHash(null);
     resetScroll();
-    setFocus((prev) => ({ ...prev, songIndex: 0 }));
+    setFocus((previous) => ({ ...previous, songIndex: 0 }));
   }, [search, artist, album, query, resetScroll, setFocus]);
-
-  const songs = useMemo(() => data?.pages.flatMap((page) => page.processed) ?? [], [data]);
-
-  // Register song activation callback and count with MenuFocus context
-  const queueRef = useRef(queue);
-  queueRef.current = queue;
-  const songsRef = useRef(songs);
-  songsRef.current = songs;
-  const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     actionsRef.current.songCount = songs.length;
@@ -51,72 +51,115 @@ export const SongList = () => {
       const song = songsRef.current[index];
       if (!song) return;
 
-      const isAnalyzed = song.is_analyzed;
-      const queueStatus = queueRef.current?.entries[song.file_hash];
-      const isReady =
-        isAnalyzed &&
-        (!queueStatus || (typeof queueStatus === "object" && "Failed" in queueStatus));
-
-      if (isReady) {
-        navigate("/playback", { state: { song } });
-      } else if (!queueStatus || queueStatus === "Queued") {
-        enqueueOne(song.file_hash);
-      }
+      setSelectedSongHash(song.file_hash);
     };
-
     return () => {
       actionsRef.current.onConfirmSong = null;
     };
-  }, [actionsRef, navigate, enqueueOne]);
+  }, [actionsRef]);
 
   useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) {
-      return;
-    }
+    const element = sentinelRef.current;
+    if (!element) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-          fetchNextPage();
-        }
+        if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) fetchNextPage();
       },
       { rootMargin: "200px" },
     );
 
-    observer.observe(el);
+    observer.observe(element);
     return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, view]);
 
   const isSongListActive = focus.active && focus.panel === "songList";
+  const selectSong = (fileHash: string) => setSelectedSongHash(fileHash);
 
   return (
-    <div className="flex min-h-0 w-full flex-1 justify-center">
-      <div className="flex min-h-0 w-full flex-col gap-3 p-3 sm:gap-4 sm:p-4 md:w-11/12 lg:w-4/5 xl:w-3/5">
-        <Filters />
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <Progress />
-          <div
-            ref={setScrollContainer}
-            className="no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-            role="list"
-          >
-            {songs.map((song, index) => (
-              <SongCard
-                key={song.file_hash}
-                song={song}
-                queueStatus={queue?.entries[song.file_hash]}
-                bestScore={bestBySong.get(song.file_hash)}
-                index={index}
-                isFocused={
-                  isSongListActive && !focus.analyzeAllFocused && focus.songIndex === index
-                }
-              />
-            ))}
-            <div ref={sentinelRef} className="h-1 shrink-0" />
-          </div>
+    <div className="flex min-h-0 w-full flex-1 overflow-hidden">
+      <main
+        className={cn(
+          "min-w-0 flex-1 flex-col gap-3 p-3 sm:p-4",
+          selectedSong ? "hidden xl:flex" : "flex",
+        )}
+      >
+        <Filters
+          view={view}
+          isSavingView={isSavingView}
+          onViewChange={(nextView) => saveConfig({ song_list_view: nextView })}
+        />
+        <Separator />
+        <Progress />
+        <div
+          ref={setScrollContainer}
+          data-song-layout={view}
+          className="song-table-shell min-h-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+        >
+          {view === "table" ? (
+            <table className="w-full table-fixed border-separate border-spacing-0 text-xs">
+              <thead className="song-table__header">
+                <tr className="text-left text-muted-foreground">
+                  <th className="song-table__thumbnail px-2 py-2 font-medium">
+                    <span className="sr-only">Cover</span>
+                  </th>
+                  <th className="song-table__song px-2 py-2 font-medium">Song</th>
+                  <th className="song-table__band px-2 py-2 font-medium">Band</th>
+                  <th className="song-table__album px-2 py-2 font-medium">Album</th>
+                  <th className="song-table__duration px-2 py-2 font-medium">Duration</th>
+                  <th className="song-table__status px-2 py-2 text-right font-medium">
+                    Analysis status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {songs.map((song, index) => (
+                  <SongTableRow
+                    key={song.file_hash}
+                    song={song}
+                    queueStatus={queue?.entries[song.file_hash]}
+                    index={index}
+                    isSelected={selectedSongHash === song.file_hash}
+                    isFocused={
+                      isSongListActive && !focus.analyzeAllFocused && focus.songIndex === index
+                    }
+                    onSelect={() => selectSong(song.file_hash)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div
+              role="list"
+              className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-3 p-1"
+            >
+              {songs.map((song, index) => (
+                <SongGridCard
+                  key={song.file_hash}
+                  song={song}
+                  queueStatus={queue?.entries[song.file_hash]}
+                  index={index}
+                  isSelected={selectedSongHash === song.file_hash}
+                  isFocused={
+                    isSongListActive && !focus.analyzeAllFocused && focus.songIndex === index
+                  }
+                  onSelect={() => selectSong(song.file_hash)}
+                />
+              ))}
+            </div>
+          )}
+          <div ref={sentinelRef} className="h-1" aria-hidden="true" />
         </div>
-      </div>
+      </main>
+
+      {selectedSong ? (
+        <SongDetailsSidebar
+          key={selectedSong.file_hash}
+          song={selectedSong}
+          queueStatus={queue?.entries[selectedSong.file_hash]}
+          onClose={() => setSelectedSongHash(null)}
+        />
+      ) : null}
     </div>
   );
 };

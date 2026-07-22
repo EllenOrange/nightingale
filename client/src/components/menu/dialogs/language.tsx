@@ -22,32 +22,9 @@ import { DialogMode, useDialog } from "@/hooks/use-dialog";
 import { useDialogNav } from "@/hooks/navigation/use-dialog-nav";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { LANGUAGES } from "@/lib/languages";
 import { realign, reanalyzeTranscript } from "@/bridge/analysis";
 import { Song } from "@/types/Song";
-
-const LANGUAGES = [
-  ["en", "English"],
-  ["es", "Spanish"],
-  ["fr", "French"],
-  ["de", "German"],
-  ["it", "Italian"],
-  ["pt", "Portuguese"],
-  ["ru", "Russian"],
-  ["ja", "Japanese"],
-  ["ko", "Korean"],
-  ["zh", "Mandarin"],
-  ["yue", "Cantonese"],
-  ["ar", "Arabic"],
-  ["hi", "Hindi"],
-  ["nl", "Dutch"],
-  ["pl", "Polish"],
-  ["sv", "Swedish"],
-  ["tr", "Turkish"],
-  ["uk", "Ukrainian"],
-  ["cs", "Czech"],
-  ["ro", "Romanian"],
-  ["hu", "Hungarian"],
-];
 
 export function isLanguageDialogMode(mode: DialogMode): mode is { mode: "language"; song: Song } {
   return mode !== null && typeof mode === "object" && mode.mode === "language";
