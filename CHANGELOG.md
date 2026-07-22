@@ -18,6 +18,10 @@ below.
 - Plex Media Server provider — authorize through Plex's hosted PIN flow with account server discovery, or connect a LAN-only PMS directly with its URL and token. Choose one or more music libraries; Nightingale syncs their tracks and associated playable clips, metadata, covers, and read-only audio playlists. Playback and analysis lazily cache original media, video uses the authenticated range proxy, and every normal provider request goes directly to the selected PMS rather than app.plex.tv. Tokens are encrypted at rest and never placed in frontend media URLs.
 - Read-only playlist navigation — the sidebar now imports existing Jellyfin and Navidrome playlists, plus `.m3u`, `.m3u8`, and `.pls` files from folder libraries. Playlist order is preserved, relative local paths are resolved from the playlist file, and missing library entries are skipped.
 
+### Improvements
+
+- Analysis queue navigation — Quick Filters now includes a **Queued** view that shows the active track first followed by pending tracks in queue order. Sidebar counts use one compact segmented badge for total, queued, analysing, and analysed tracks, with matching status colors on song cards.
+
 ## [0.9.0] - 2026-07-06
 
 ### Features

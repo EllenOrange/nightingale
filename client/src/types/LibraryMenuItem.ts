@@ -4,5 +4,7 @@ export type LibraryMenuItem = {
   value: string;
   label: string;
   analysedCount: bigint;
+  queuedCount: bigint;
+  analysingCount: bigint;
   count: bigint;
 };

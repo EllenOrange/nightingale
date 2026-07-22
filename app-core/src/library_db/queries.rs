@@ -165,6 +165,10 @@ fn append_structural_filters(
     if let Some(q) = query.filter(|s| !s.is_empty()) {
         match q {
             "analysed" => where_parts.push("s.is_analyzed = 1".to_string()),
+            "queued" => where_parts.push(
+                "EXISTS (SELECT 1 FROM analysis_queue aq WHERE aq.file_hash = s.file_hash AND aq.status IN ('queued', 'analyzing'))"
+                    .to_string(),
+            ),
             "videos" => where_parts.push("s.is_video = 1".to_string()),
             "usdx" => where_parts.push("s.transcript_source = 'usdx'".to_string()),
             _ => {}
@@ -221,12 +225,17 @@ pub fn load_songs_page(params: &LoadSongsParams) -> rusqlite::Result<SongsStore>
     } else {
         ""
     };
+    let queue_order = if params.filters.query.as_deref() == Some("queued") {
+        "(SELECT CASE aq.status WHEN 'analyzing' THEN 0 ELSE 1 END FROM analysis_queue aq WHERE aq.file_hash = s.file_hash), (SELECT aq.rowid FROM analysis_queue aq WHERE aq.file_hash = s.file_hash), "
+    } else {
+        ""
+    };
 
     let processed = if let Some(ref where_sql) = where_sql {
         let sql = format!(
             "SELECT payload FROM songs s
              WHERE {where_sql}
-             ORDER BY {playlist_order}s.artist COLLATE NOCASE, s.title COLLATE NOCASE
+             ORDER BY {queue_order}{playlist_order}s.artist COLLATE NOCASE, s.title COLLATE NOCASE
              LIMIT {} OFFSET {}",
             params.take as i64, params.skip as i64
         );
@@ -317,73 +326,126 @@ pub fn iter_file_hashes_filtered_not_analyzed(
 
 pub fn query_library_menu_items() -> rusqlite::Result<LibraryMenuItems> {
     with_conn(|c| {
-        let (total, analysed_total, video_total, video_analysed, usdx_total, usdx_analysed): (
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-            i64,
-        ) = c.query_row(
-            "SELECT
-                (SELECT COUNT(*) FROM songs),
-                (SELECT COUNT(*) FROM songs WHERE is_analyzed = 1),
-                (SELECT COUNT(*) FROM songs WHERE is_video = 1),
-                (SELECT COUNT(*) FROM songs WHERE is_video = 1 AND is_analyzed = 1),
-                (SELECT COUNT(*) FROM songs WHERE transcript_source = 'usdx'),
-                (SELECT COUNT(*) FROM songs WHERE transcript_source = 'usdx' AND is_analyzed = 1)",
-            [],
-            |r| {
-                Ok((
-                    r.get(0)?,
-                    r.get(1)?,
-                    r.get(2)?,
-                    r.get(3)?,
-                    r.get(4)?,
-                    r.get(5)?,
-                ))
-            },
-        )?;
+        let (
+            total,
+            analysed_total,
+            queued_total,
+            analysing_total,
+            video_total,
+            video_analysed,
+            video_queued,
+            video_analysing,
+            usdx_total,
+            usdx_analysed,
+            usdx_queued,
+            usdx_analysing,
+        ): (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) = c
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM songs),
+                    (SELECT COUNT(*) FROM songs WHERE is_analyzed = 1),
+                    (SELECT COUNT(*) FROM analysis_queue WHERE status = 'queued'),
+                    (SELECT COUNT(*) FROM analysis_queue WHERE status = 'analyzing'),
+                    (SELECT COUNT(*) FROM songs WHERE is_video = 1),
+                    (SELECT COUNT(*) FROM songs WHERE is_video = 1 AND is_analyzed = 1),
+                    (SELECT COUNT(*) FROM songs s JOIN analysis_queue aq ON aq.file_hash = s.file_hash WHERE s.is_video = 1 AND aq.status = 'queued'),
+                    (SELECT COUNT(*) FROM songs s JOIN analysis_queue aq ON aq.file_hash = s.file_hash WHERE s.is_video = 1 AND aq.status = 'analyzing'),
+                    (SELECT COUNT(*) FROM songs WHERE transcript_source = 'usdx'),
+                    (SELECT COUNT(*) FROM songs WHERE transcript_source = 'usdx' AND is_analyzed = 1),
+                    (SELECT COUNT(*) FROM songs s JOIN analysis_queue aq ON aq.file_hash = s.file_hash WHERE s.transcript_source = 'usdx' AND aq.status = 'queued'),
+                    (SELECT COUNT(*) FROM songs s JOIN analysis_queue aq ON aq.file_hash = s.file_hash WHERE s.transcript_source = 'usdx' AND aq.status = 'analyzing')",
+                [],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                        r.get(9)?,
+                        r.get(10)?,
+                        r.get(11)?,
+                    ))
+                },
+            )?;
 
         let hot = vec![
             LibraryMenuItem {
                 value: "all".into(),
                 label: "All".into(),
                 analysed_count: analysed_total as u64,
+                queued_count: queued_total as u64,
+                analysing_count: analysing_total as u64,
                 count: total as u64,
+            },
+            LibraryMenuItem {
+                value: "queued".into(),
+                label: "Queued".into(),
+                analysed_count: 0,
+                queued_count: queued_total as u64,
+                analysing_count: analysing_total as u64,
+                count: (queued_total + analysing_total) as u64,
             },
             LibraryMenuItem {
                 value: "analysed".into(),
                 label: "Analysed".into(),
                 analysed_count: analysed_total as u64,
+                queued_count: 0,
+                analysing_count: 0,
                 count: analysed_total as u64,
             },
             LibraryMenuItem {
                 value: "videos".into(),
                 label: "Videos".into(),
                 analysed_count: video_analysed as u64,
+                queued_count: video_queued as u64,
+                analysing_count: video_analysing as u64,
                 count: video_total as u64,
             },
             LibraryMenuItem {
                 value: "usdx".into(),
                 label: "USDX".into(),
                 analysed_count: usdx_analysed as u64,
+                queued_count: usdx_queued as u64,
+                analysing_count: usdx_analysing as u64,
                 count: usdx_total as u64,
             },
         ];
 
-        let (unknown_artist_cnt, unknown_artist_an): (i64, i64) = c.query_row(
-            "SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_analyzed = 1 THEN 1 ELSE 0 END), 0)
-             FROM songs WHERE artist = 'Unknown Artist'",
+        let (unknown_artist_cnt, unknown_artist_an, unknown_artist_q, unknown_artist_ing): (
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = c.query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN s.is_analyzed = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN aq.status = 'queued' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN aq.status = 'analyzing' THEN 1 ELSE 0 END), 0)
+             FROM songs s LEFT JOIN analysis_queue aq ON aq.file_hash = s.file_hash
+             WHERE s.artist = 'Unknown Artist'",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )?;
 
-        let (unknown_album_cnt, unknown_album_an): (i64, i64) = c.query_row(
-            "SELECT COUNT(*), COALESCE(SUM(CASE WHEN is_analyzed = 1 THEN 1 ELSE 0 END), 0)
-             FROM songs WHERE album = 'Unknown Album'",
+        let (unknown_album_cnt, unknown_album_an, unknown_album_q, unknown_album_ing): (
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = c.query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN s.is_analyzed = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN aq.status = 'queued' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN aq.status = 'analyzing' THEN 1 ELSE 0 END), 0)
+             FROM songs s LEFT JOIN analysis_queue aq ON aq.file_hash = s.file_hash
+             WHERE s.album = 'Unknown Album'",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )?;
 
         let no_metadata = vec![
@@ -391,43 +453,55 @@ pub fn query_library_menu_items() -> rusqlite::Result<LibraryMenuItems> {
                 value: "unknown_artist".into(),
                 label: "Unknown Artist".into(),
                 analysed_count: unknown_artist_an as u64,
+                queued_count: unknown_artist_q as u64,
+                analysing_count: unknown_artist_ing as u64,
                 count: unknown_artist_cnt as u64,
             },
             LibraryMenuItem {
                 value: "unknown_album".into(),
                 label: "Unknown Album".into(),
                 analysed_count: unknown_album_an as u64,
+                queued_count: unknown_album_q as u64,
+                analysing_count: unknown_album_ing as u64,
                 count: unknown_album_cnt as u64,
             },
         ];
 
         let mut stmt = c.prepare(
-            "SELECT artist, COUNT(*) AS cnt,
-                    COALESCE(SUM(CASE WHEN is_analyzed = 1 THEN 1 ELSE 0 END), 0) AS analysed
-             FROM songs
-             GROUP BY artist
-             ORDER BY artist COLLATE NOCASE",
+            "SELECT s.artist, COUNT(*) AS cnt,
+                    COALESCE(SUM(CASE WHEN s.is_analyzed = 1 THEN 1 ELSE 0 END), 0) AS analysed,
+                    COALESCE(SUM(CASE WHEN aq.status = 'queued' THEN 1 ELSE 0 END), 0) AS queued,
+                    COALESCE(SUM(CASE WHEN aq.status = 'analyzing' THEN 1 ELSE 0 END), 0) AS analysing
+             FROM songs s LEFT JOIN analysis_queue aq ON aq.file_hash = s.file_hash
+             GROUP BY s.artist
+             ORDER BY s.artist COLLATE NOCASE",
         )?;
         let artists: Vec<LibraryMenuItem> = stmt
             .query_map([], |r| {
                 let artist: String = r.get(0)?;
                 let cnt: i64 = r.get(1)?;
                 let analysed: i64 = r.get(2)?;
+                let queued: i64 = r.get(3)?;
+                let analysing: i64 = r.get(4)?;
                 Ok(LibraryMenuItem {
                     value: artist.clone(),
                     label: artist,
                     analysed_count: analysed as u64,
+                    queued_count: queued as u64,
+                    analysing_count: analysing as u64,
                     count: cnt as u64,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut stmt = c.prepare(
-            "SELECT artist, album, COUNT(*) AS cnt,
-                    COALESCE(SUM(CASE WHEN is_analyzed = 1 THEN 1 ELSE 0 END), 0) AS analysed
-             FROM songs
-             GROUP BY artist, album
-             ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE",
+            "SELECT s.artist, s.album, COUNT(*) AS cnt,
+                    COALESCE(SUM(CASE WHEN s.is_analyzed = 1 THEN 1 ELSE 0 END), 0) AS analysed,
+                    COALESCE(SUM(CASE WHEN aq.status = 'queued' THEN 1 ELSE 0 END), 0) AS queued,
+                    COALESCE(SUM(CASE WHEN aq.status = 'analyzing' THEN 1 ELSE 0 END), 0) AS analysing
+             FROM songs s LEFT JOIN analysis_queue aq ON aq.file_hash = s.file_hash
+             GROUP BY s.artist, s.album
+             ORDER BY s.artist COLLATE NOCASE, s.album COLLATE NOCASE",
         )?;
         let albums: Vec<LibraryMenuItem> = stmt
             .query_map([], |r| {
@@ -435,10 +509,14 @@ pub fn query_library_menu_items() -> rusqlite::Result<LibraryMenuItems> {
                 let album: String = r.get(1)?;
                 let cnt: i64 = r.get(2)?;
                 let analysed: i64 = r.get(3)?;
+                let queued: i64 = r.get(4)?;
+                let analysing: i64 = r.get(5)?;
                 Ok(LibraryMenuItem {
                     value: format!("{artist}\x1f{album}"),
                     label: format!("{album} — {artist}"),
                     analysed_count: analysed as u64,
+                    queued_count: queued as u64,
+                    analysing_count: analysing as u64,
                     count: cnt as u64,
                 })
             })?
@@ -446,10 +524,13 @@ pub fn query_library_menu_items() -> rusqlite::Result<LibraryMenuItems> {
 
         let mut stmt = c.prepare(
             "SELECT p.id, p.name, COUNT(ps.song_id) AS cnt,
-                    COALESCE(SUM(CASE WHEN s.is_analyzed = 1 THEN 1 ELSE 0 END), 0) AS analysed
+                    COALESCE(SUM(CASE WHEN s.is_analyzed = 1 THEN 1 ELSE 0 END), 0) AS analysed,
+                    COALESCE(SUM(CASE WHEN aq.status = 'queued' THEN 1 ELSE 0 END), 0) AS queued,
+                    COALESCE(SUM(CASE WHEN aq.status = 'analyzing' THEN 1 ELSE 0 END), 0) AS analysing
              FROM playlists p
              JOIN playlist_songs ps ON ps.playlist_id = p.id
              JOIN songs s ON s.id = ps.song_id
+             LEFT JOIN analysis_queue aq ON aq.file_hash = s.file_hash
              GROUP BY p.id, p.name
              ORDER BY p.name COLLATE NOCASE",
         )?;
@@ -460,6 +541,8 @@ pub fn query_library_menu_items() -> rusqlite::Result<LibraryMenuItems> {
                     label: r.get(1)?,
                     count: r.get::<_, i64>(2)? as u64,
                     analysed_count: r.get::<_, i64>(3)? as u64,
+                    queued_count: r.get::<_, i64>(4)? as u64,
+                    analysing_count: r.get::<_, i64>(5)? as u64,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

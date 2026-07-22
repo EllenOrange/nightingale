@@ -66,28 +66,26 @@ export const useSongs = () => {
 
 export const useAnalysisQueue = () => {
   const queryClient = useQueryClient();
-  const prevKeysRef = useRef<Set<string>>(new Set());
+  const prevEntriesRef = useRef<string | null>(null);
 
   return useQuery({
     queryKey: ANALYSIS_QUEUE,
     queryFn: loadAnalysisQueue,
     refetchInterval: 2500,
     onSuccess: (data: AnalysisQueue) => {
-      const currentKeys = new Set(Object.keys(data.entries));
-      const prevKeys = prevKeysRef.current;
+      const entries = Object.entries(data.entries)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([hash, status]) => `${hash}:${JSON.stringify(status)}`)
+        .join("|");
+      const previous = prevEntriesRef.current;
 
-      if (prevKeys.size > 0) {
-        for (const key of prevKeys) {
-          if (!currentKeys.has(key)) {
-            queryClient.invalidateQueries({ queryKey: SONGS });
-            queryClient.invalidateQueries({ queryKey: MENU });
-            queryClient.invalidateQueries({ queryKey: SONGS_META });
-            break;
-          }
-        }
+      if (previous !== null && previous !== entries) {
+        queryClient.invalidateQueries({ queryKey: SONGS });
+        queryClient.invalidateQueries({ queryKey: MENU });
+        queryClient.invalidateQueries({ queryKey: SONGS_META });
       }
 
-      prevKeysRef.current = currentKeys;
+      prevEntriesRef.current = entries;
     },
   });
 };

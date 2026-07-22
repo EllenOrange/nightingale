@@ -8,6 +8,10 @@ pub struct LibraryMenuItem {
     pub label: String,
     #[serde(rename = "analysedCount")]
     pub analysed_count: u64,
+    #[serde(rename = "queuedCount")]
+    pub queued_count: u64,
+    #[serde(rename = "analysingCount")]
+    pub analysing_count: u64,
     pub count: u64,
 }
 

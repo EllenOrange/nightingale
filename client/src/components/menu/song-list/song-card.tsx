@@ -14,6 +14,7 @@ import { Stars } from "@/components/shared/stars";
 import { useAnalysis } from "@/hooks/use-analysis";
 import type { QueuedStatus } from "@/types/QueuedStatus";
 import type { Song } from "@/types/Song";
+import { ANALYSIS_STATUS_STYLES } from "@/lib/analysis-status-styles";
 import { convertFileSrc } from "@/bridge/media";
 import {
   AlignLeftIcon,
@@ -66,7 +67,11 @@ type StatusInfo = {
 function getStatusInfo(isAnalyzed: boolean, queueStatus?: QueuedStatus): StatusInfo {
   if (queueStatus) {
     if (queueStatus === "Queued") {
-      return { label: "Queued", variant: "secondary" };
+      return {
+        label: "Queued",
+        variant: "secondary",
+        className: ANALYSIS_STATUS_STYLES.queued,
+      };
     }
 
     if (typeof queueStatus === "object") {
@@ -74,7 +79,7 @@ function getStatusInfo(isAnalyzed: boolean, queueStatus?: QueuedStatus): StatusI
         return {
           label: `Analyzing ${queueStatus.Analyzing}%`,
           variant: "default",
-          className: "animate-pulse",
+          className: `${ANALYSIS_STATUS_STYLES.analysing} animate-pulse`,
           isAnalyzing: true,
         };
       }
@@ -89,7 +94,7 @@ function getStatusInfo(isAnalyzed: boolean, queueStatus?: QueuedStatus): StatusI
     return {
       label: "Analyzed",
       variant: "default",
-      className: "bg-green-600 text-white",
+      className: ANALYSIS_STATUS_STYLES.analysed,
       isReady: true,
     };
   }
@@ -195,7 +200,7 @@ export const SongCard = memo(
 
         <ItemContent className="min-w-0 flex-none flex-col items-end gap-1">
           <div className="flex items-center gap-1">
-            <Badge variant={variant} className={className}>
+            <Badge variant={variant} className={`border-foreground/15 ${className ?? ""}`}>
               {isAnalyzing && <LoaderCircleIcon className="size-3 animate-spin" />}
               {label}
               {displaySource}
