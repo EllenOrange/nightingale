@@ -1,5 +1,5 @@
-//! Source-agnostic scan dispatcher. The actual file walking lives in
-//! `source::folder`; Jellyfin lives in `source::jellyfin`. This module owns:
+//! Source-agnostic scan dispatcher. File walking and remote-provider sync
+//! live in their respective `source` adapters. This module owns:
 //!  - resolving the configured `LibrarySource` and instantiating the right adapter
 //!  - bumping the cancellation generation
 //!  - spawning the scan thread

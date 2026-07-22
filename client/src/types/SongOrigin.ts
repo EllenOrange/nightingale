@@ -2,8 +2,8 @@
 
 /**
  * Where the bytes for a song actually live. `LocalFile` means `Song.path` is the
- * real source-of-truth on disk; the remote variants (`Jellyfin`, `Navidrome`)
- * mean `Song.path` is a placeholder inside `cache/sources/` that the source
+ * real source-of-truth on disk; the remote variants (`Jellyfin`, `Navidrome`,
+ * `Plex`) mean `Song.path` is a placeholder inside `cache/sources/` that the source
  * adapter will materialise on demand.
  *
  * The server's base URL deliberately does NOT live on the origin: it lives on
@@ -29,6 +29,20 @@ export type SongOrigin =
       /**
        * Subsonic `coverArt` id for this song, captured at scan time. We
        * re-fetch the cover only when this value changes.
+       */
+      cover_tag: string | null;
+    }
+  | {
+      kind: "plex";
+      item_id: string;
+      /**
+       * Server-relative original-media part key. Keeping it relative lets
+       * the backend authenticate without exposing a token-bearing URL.
+       */
+      part_key: string;
+      container: string | null;
+      /**
+       * Server-relative Plex thumb path used for cover invalidation.
        */
       cover_tag: string | null;
     };

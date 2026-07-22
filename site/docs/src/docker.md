@@ -63,9 +63,9 @@ A browser file picker can't hand the server an absolute filesystem path, so inst
 -v /path/to/your/music:/songs:ro
 ```
 
-Nightingale configures a folder library source at that path on every startup and rescans if it changed, so your run/compose file is the single source of truth for the library. While it's pinned, the in-app source buttons (folder / Jellyfin / Navidrome) are hidden.
+Nightingale configures a folder library source at that path on every startup and rescans if it changed, so your run/compose file is the single source of truth for the library. While it's pinned, the in-app source buttons (folder / Plex / Jellyfin / Navidrome) are hidden.
 
-To mount your music somewhere else, override the path (`-e NIGHTINGALE_LIBRARY_PATH=/music -v /path/to/music:/music:ro`). To use a remote source (Jellyfin or Navidrome) instead, set it empty (`-e NIGHTINGALE_LIBRARY_PATH=`) and connect from the sidebar as usual.
+To mount your music somewhere else, override the path (`-e NIGHTINGALE_LIBRARY_PATH=/music -v /path/to/music:/music:ro`). To use a remote source (Plex, Jellyfin, or Navidrome) instead, set it empty (`-e NIGHTINGALE_LIBRARY_PATH=`) and connect from the sidebar as usual. For a LAN-only Plex server, ensure the container can reach its PMS URL (for example `http://192.168.1.20:32400`); the advanced PMS URL + token flow then operates directly against that server without requiring plex.tv after connection.
 
 ## GPU
 

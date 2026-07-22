@@ -765,7 +765,7 @@ fn prepare_audio_for_analysis(
         SongOrigin::LocalFile => Ok((song.clone(), song.path.clone(), song.file_hash.clone())),
         // Both remote origins go through the active source's
         // `ensure_local_media` and then get rekeyed to the true Blake3 hash.
-        SongOrigin::Jellyfin { .. } | SongOrigin::Navidrome { .. } => {
+        SongOrigin::Jellyfin { .. } | SongOrigin::Navidrome { .. } | SongOrigin::Plex { .. } => {
             let source = active_source()?
                 .ok_or_else(|| NightingaleError::Other("no active library source".into()))?;
             let downloaded_path = source.ensure_local_media(song, cache)?;

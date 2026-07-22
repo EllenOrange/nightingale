@@ -6,6 +6,10 @@ import type { JellyfinLoginResult } from "@/types/JellyfinLoginResult";
 import type { LibrarySource } from "@/types/LibrarySource";
 import type { NavidromeHealth } from "@/types/NavidromeHealth";
 import type { NavidromeLoginResult } from "@/types/NavidromeLoginResult";
+import type { PlexHealth } from "@/types/PlexHealth";
+import type { PlexPinPollResult } from "@/types/PlexPinPollResult";
+import type { PlexPinStart } from "@/types/PlexPinStart";
+import type { PlexServer } from "@/types/PlexServer";
 
 import { invoke, isTauri } from "./runtime";
 
@@ -65,4 +69,27 @@ export const navidromeLogin = async (params: {
 
 export const navidromePing = async (): Promise<NavidromeHealth> => {
   return await invoke<NavidromeHealth>("navidrome_ping");
+};
+
+export const plexBeginPin = async (clientId?: string): Promise<PlexPinStart> => {
+  return await invoke<PlexPinStart>("plex_begin_pin", { clientId });
+};
+
+export const plexPollPin = async (params: {
+  pinId: string;
+  clientId: string;
+}): Promise<PlexPinPollResult> => {
+  return await invoke<PlexPinPollResult>("plex_poll_pin", params);
+};
+
+export const plexManualLogin = async (params: {
+  baseUrl: string;
+  accessToken: string;
+  clientId?: string;
+}): Promise<PlexServer> => {
+  return await invoke<PlexServer>("plex_manual_login", params);
+};
+
+export const plexPing = async (): Promise<PlexHealth> => {
+  return await invoke<PlexHealth>("plex_ping");
 };

@@ -44,8 +44,8 @@ pub use profile::ProfileStore;
 pub use scanner::start_scan;
 pub use song::SongOrigin;
 pub use source::{
-    JellyfinAuth, JellyfinSource, MediaSource, NavidromeAuth, NavidromeSource, SourceKind,
-    active_source,
+    JellyfinAuth, JellyfinSource, MediaSource, NavidromeAuth, NavidromeSource, PlexAuth,
+    PlexSource, SourceKind, active_source,
     jellyfin::{
         JellyfinHealth, JellyfinLoginResult, login as jellyfin_login, ping as jellyfin_ping,
         ping_current as jellyfin_ping_current,
@@ -53,6 +53,11 @@ pub use source::{
     navidrome::{
         NavidromeHealth, NavidromeLoginResult, login as navidrome_login, ping as navidrome_ping,
         ping_current as navidrome_ping_current,
+    },
+    plex::{
+        PlexHealth, PlexPinPollResult, PlexPinStart, PlexSection, PlexServer,
+        begin_pin as plex_begin_pin, manual_login as plex_manual_login, ping as plex_ping,
+        ping_current as plex_ping_current, poll_pin as plex_poll_pin,
     },
 };
 pub use vendor::{

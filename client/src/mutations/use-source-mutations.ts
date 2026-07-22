@@ -19,6 +19,7 @@ import {
   JELLYFIN_HEALTH,
   MENU,
   NAVIDROME_HEALTH,
+  PLEX_HEALTH,
   SONGS,
   SONGS_META,
 } from "@/queries/keys";
@@ -27,6 +28,8 @@ import type { JellyfinHealth } from "@/types/JellyfinHealth";
 import type { JellyfinLoginResult } from "@/types/JellyfinLoginResult";
 import type { NavidromeHealth } from "@/types/NavidromeHealth";
 import type { NavidromeLoginResult } from "@/types/NavidromeLoginResult";
+import type { PlexHealth } from "@/types/PlexHealth";
+import type { PlexServer } from "@/types/PlexServer";
 
 const useInvalidateLibrary = () => {
   const queryClient = useQueryClient();
@@ -39,6 +42,7 @@ const useInvalidateLibrary = () => {
     queryClient.invalidateQueries({ queryKey: ANALYSIS_QUEUE });
     queryClient.invalidateQueries({ queryKey: JELLYFIN_HEALTH });
     queryClient.invalidateQueries({ queryKey: NAVIDROME_HEALTH });
+    queryClient.invalidateQueries({ queryKey: PLEX_HEALTH });
   };
 };
 
@@ -218,6 +222,48 @@ export const useConnectNavidrome = () => {
         error: undefined,
       });
 
+      resetNavigation();
+      invalidateLibrary();
+    },
+  });
+};
+
+/** Persist a discovered/verified Plex server and the user's selected music sections. */
+export const useConnectPlex = () => {
+  const queryClient = useQueryClient();
+  const invalidateLibrary = useInvalidateLibrary();
+  const resetNavigation = useResetLibraryNavigation();
+
+  return useMutation<
+    { config: AppConfig; server: PlexServer },
+    Error,
+    { server: PlexServer; sectionIds: string[] }
+  >({
+    mutationFn: async ({ server, sectionIds }) => {
+      if (sectionIds.length === 0) {
+        throw new Error("Select at least one music library");
+      }
+      const config = await setLibrarySource({
+        kind: "plex",
+        base_url: server.server_url,
+        server_name: server.server_name,
+        machine_id: server.server_id,
+        username: server.username,
+        access_token: server.access_token,
+        client_id: server.client_id,
+        section_ids: sectionIds,
+      });
+      return { config, server };
+    },
+    onSuccess: ({ config, server }) => {
+      queryClient.setQueryData(CONFIG, config);
+      queryClient.setQueryData<PlexHealth>(PLEX_HEALTH, {
+        reachable: true,
+        server_name: server.server_name,
+        version: undefined,
+        server_id: server.server_id,
+        error: undefined,
+      });
       resetNavigation();
       invalidateLibrary();
     },

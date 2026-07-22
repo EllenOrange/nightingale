@@ -227,6 +227,7 @@ pub fn ensure_playable_source_video(file_hash: &str) -> Result<Option<String>, N
 
     // For remote-origin songs we have to materialise the underlying media
     // file before we can decide whether it needs ffmpeg transcoding. Folder
+    // file before we can decide whether it needs ffmpeg transcoding. Folder
     // sources are no-ops here (the trait just hands `song.path` back).
     let materialised = if matches!(song.origin, crate::song::SongOrigin::LocalFile) {
         None

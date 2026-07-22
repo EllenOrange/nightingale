@@ -17,7 +17,7 @@
 
 ---
 
-Nightingale scans your music folder, Jellyfin server, Navidrome server, or self-hosted web library; separates lead vocals from instrumentals using the [UVR Karaoke model](https://github.com/Anjok07/ultimatevocalremovergui) (or [Demucs](https://github.com/facebookresearch/demucs)); transcribes lyrics with word-level timestamps via [WhisperX](https://github.com/m-bain/whisperX); and plays it all back with synchronized highlighting, pitch scoring, key/tempo controls, profiles, and dynamic backgrounds.
+Nightingale scans your music folder, Plex Media Server, Jellyfin server, Navidrome server, or self-hosted web library; separates lead vocals from instrumentals using the [UVR Karaoke model](https://github.com/Anjok07/ultimatevocalremovergui) (or [Demucs](https://github.com/facebookresearch/demucs)); transcribes lyrics with word-level timestamps via [WhisperX](https://github.com/m-bain/whisperX); and plays it all back with synchronized highlighting, pitch scoring, key/tempo controls, profiles, and dynamic backgrounds.
 
 Ships as a single binary. No manual installation of Python, ffmpeg, or ML models required — everything is downloaded and bootstrapped automatically on first launch.
 
@@ -27,13 +27,15 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 
 📁 **Folder library** — point at any folder and Nightingale scans supported audio, video, and UltraStar files inside.
 
+🟠 **Plex** — connect to a local, remote, or LAN-only Plex Media Server, select one or more music libraries, and import tracks, associated music video clips, covers, and read-only playlists. Hosted Plex sign-in discovers servers; an advanced PMS URL + token flow works without plex.tv during normal operation.
+
 🎬 **Jellyfin** — play straight from your Jellyfin library. Songs cache locally on first play so karaoke runs the same as a folder library.
 
 💿 **Navidrome** — connect to Navidrome for audio libraries. Login details are kept encrypted on disk.
 
 🌐 **Self-hosted web mode** — run Nightingale on a Linux box on your home network and open it from phones, laptops, tablets, and TVs at `<hostname>.local`. See [docs/self-hosted](site/docs/src/self-hosted.md). Also runs in [Docker](site/docs/src/docker.md) (CPU or CUDA/GPU).
 
-🧭 **Sidebar + library filters** — browse by quick filters, metadata cleanup buckets, artists, albums, and existing playlists from Jellyfin, Navidrome, or folder-library `.m3u` / `.m3u8` / `.pls` files. **Analyze All** and optional auto-analysis help queue your library faster, and the sidebar/song list remember scroll position when you come back.
+🧭 **Sidebar + library filters** — browse by quick filters, metadata cleanup buckets, artists, albums, and existing playlists from Plex, Jellyfin, Navidrome, or folder-library `.m3u` / `.m3u8` / `.pls` files. **Analyze All** and optional auto-analysis help queue your library faster, and the sidebar/song list remember scroll position when you come back.
 
 🗂️ **Flexible storage** — choose the main data folder during setup, then split cache, models, videos, and vendor tools into separate folders from Settings when needed.
 

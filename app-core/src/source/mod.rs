@@ -3,7 +3,7 @@
 //! Each source knows how to enumerate songs for the library and how to make a
 //! local file appear on disk when the analyzer/player needs to read bytes.
 //! The folder source is the original "Select folder" behavior; the Jellyfin
-//! and Navidrome (Subsonic) sources talk to a remote server over HTTP. The
+//! and Jellyfin, Navidrome (Subsonic), and Plex sources talk to remote servers over HTTP. The
 //! trait stays small so additional servers (Plex, generic Subsonic forks)
 //! can drop in without touching downstream code.
 
@@ -19,10 +19,12 @@ use crate::song::Song;
 pub mod folder;
 pub mod jellyfin;
 pub mod navidrome;
+pub mod plex;
 
 pub use folder::FolderSource;
 pub use jellyfin::{JellyfinAuth, JellyfinSource};
 pub use navidrome::{NavidromeAuth, NavidromeSource};
+pub use plex::{PlexAuth, PlexSource};
 
 /// How many songs we buffer in memory before flushing them to the library DB
 /// during a scan. Small enough to keep memory bounded, large enough to avoid
@@ -35,6 +37,7 @@ pub enum SourceKind {
     Folder,
     Jellyfin,
     Navidrome,
+    Plex,
 }
 
 /// Context passed to a source while it is running a scan. Implementations
@@ -133,6 +136,11 @@ pub fn active_source_from_config(
             let auth = NavidromeAuth::from_source(src)
                 .ok_or_else(|| NightingaleError::Other("invalid navidrome source".into()))?;
             Ok(Some(Box::new(NavidromeSource::new(auth))))
+        }
+        LibrarySource::Plex { .. } => {
+            let auth = PlexAuth::from_source(src)
+                .ok_or_else(|| NightingaleError::Other("invalid plex source".into()))?;
+            Ok(Some(Box::new(PlexSource::new(auth))))
         }
     }
 }

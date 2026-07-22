@@ -166,6 +166,46 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
         "navidrome_ping" => {
             Ok(serde_json::to_value(app_core::navidrome_ping_current()).map_err(serde_err)?)
         }
+        "plex_begin_pin" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                #[serde(default)]
+                client_id: Option<String>,
+            }
+            let args: Args = deserialize(payload)?;
+            let result = app_core::plex_begin_pin(args.client_id)
+                .map_err(|error| ApiError::bad_request(error.to_string()))?;
+            Ok(serde_json::to_value(result).map_err(serde_err)?)
+        }
+        "plex_poll_pin" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                pin_id: String,
+                client_id: String,
+            }
+            let args: Args = deserialize(payload)?;
+            let result = app_core::plex_poll_pin(&args.pin_id, &args.client_id)
+                .map_err(|error| ApiError::bad_request(error.to_string()))?;
+            Ok(serde_json::to_value(result).map_err(serde_err)?)
+        }
+        "plex_manual_login" => {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args {
+                base_url: String,
+                access_token: String,
+                #[serde(default)]
+                client_id: Option<String>,
+            }
+            let args: Args = deserialize(payload)?;
+            let result =
+                app_core::plex_manual_login(&args.base_url, &args.access_token, args.client_id)
+                    .map_err(|error| ApiError::bad_request(error.to_string()))?;
+            Ok(serde_json::to_value(result).map_err(serde_err)?)
+        }
+        "plex_ping" => Ok(serde_json::to_value(app_core::plex_ping_current()).map_err(serde_err)?),
         "load_songs" => {
             #[derive(Deserialize)]
             struct Args {

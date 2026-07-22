@@ -2,6 +2,7 @@ import { useMemo, type ComponentType, type SVGProps } from "react";
 import { Disc3Icon, FolderIcon, RefreshCwIcon } from "lucide-react";
 
 import { JellyfinIcon } from "@/components/icons/jellyfin";
+import { PlexIcon } from "@/components/icons/plex";
 import type { BadgeTone } from "@/components/menu/sidebar/source-action-button";
 import { useDialog } from "@/hooks/use-dialog";
 import { useLibrarySourceActions } from "@/hooks/use-library-source-actions";
@@ -67,8 +68,10 @@ export const useSourceButtons = (): SourceButton[] => {
     libraryPinned,
     jellyfinSource,
     navidromeSource,
+    plexSource,
     jellyfinHealth,
     navidromeHealth,
+    plexHealth,
   } = useLibrarySourceActions();
 
   const jellyfin = useMemo(
@@ -91,12 +94,31 @@ export const useSourceButtons = (): SourceButton[] => {
     [navidromeSource, navidromeHealth],
   );
 
+  const plex = useMemo(
+    () =>
+      remoteBadge({
+        label: "Plex",
+        baseUrl: plexSource?.base_url,
+        health: plexHealth,
+      }),
+    [plexSource, plexHealth],
+  );
+
   return useMemo<SourceButton[]>(() => {
     // Operator pinned the library folder: source switching is disabled, only
     // the rescan action stays available.
     const buttons: SourceButton[] = libraryPinned
       ? []
       : [
+          {
+            key: "plex",
+            icon: PlexIcon,
+            label: "Connect Plex",
+            tooltip: plex.tooltip,
+            handler: () => setMode("plex-connect"),
+            disabled: isPending,
+            badge: plex.badge,
+          },
           {
             key: "navidrome",
             icon: Disc3Icon,
@@ -143,6 +165,7 @@ export const useSourceButtons = (): SourceButton[] => {
     isPending,
     jellyfin,
     navidrome,
+    plex,
     rescan,
     rescanDisabled,
     selectFolder,

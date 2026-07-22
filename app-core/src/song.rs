@@ -24,8 +24,8 @@ pub enum TranscriptSource {
 }
 
 /// Where the bytes for a song actually live. `LocalFile` means `Song.path` is the
-/// real source-of-truth on disk; the remote variants (`Jellyfin`, `Navidrome`)
-/// mean `Song.path` is a placeholder inside `cache/sources/` that the source
+/// real source-of-truth on disk; the remote variants (`Jellyfin`, `Navidrome`,
+/// `Plex`) mean `Song.path` is a placeholder inside `cache/sources/` that the source
 /// adapter will materialise on demand.
 ///
 /// The server's base URL deliberately does NOT live on the origin: it lives on
@@ -54,6 +54,17 @@ pub enum SongOrigin {
         #[serde(default)]
         cover_tag: Option<String>,
     },
+    Plex {
+        item_id: String,
+        /// Server-relative original-media part key. Keeping it relative lets
+        /// the backend authenticate without exposing a token-bearing URL.
+        part_key: String,
+        #[serde(default)]
+        container: Option<String>,
+        /// Server-relative Plex thumb path used for cover invalidation.
+        #[serde(default)]
+        cover_tag: Option<String>,
+    },
 }
 
 pub(crate) fn default_origin() -> SongOrigin {
@@ -68,7 +79,9 @@ impl SongOrigin {
     pub fn cover_tag_mut(&mut self) -> Option<&mut Option<String>> {
         match self {
             Self::LocalFile => None,
-            Self::Jellyfin { cover_tag, .. } | Self::Navidrome { cover_tag, .. } => Some(cover_tag),
+            Self::Jellyfin { cover_tag, .. }
+            | Self::Navidrome { cover_tag, .. }
+            | Self::Plex { cover_tag, .. } => Some(cover_tag),
         }
     }
 }

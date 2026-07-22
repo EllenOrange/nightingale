@@ -3,13 +3,19 @@ const groups = [
   {
     heading: "Library & sources",
     description:
-      "Pick where Nightingale reads your music from — a local folder, or a Jellyfin or Navidrome server. Run it as the desktop app, or self-host the web build so any device in the house can open it.",
+      "Pick where Nightingale reads your music from — a local folder, Plex Media Server, Jellyfin, or Navidrome. Run it as the desktop app, or self-host the web build so any device in the house can open it.",
     items: [
       {
         icon: "📁",
         title: "Folder library",
         description:
           "Point at any folder and Nightingale scans the supported audio, video, and UltraStar files inside.",
+      },
+      {
+        icon: "🟠",
+        title: "Plex",
+        description:
+          "Select music libraries on a local or remote Plex Media Server. Hosted discovery and direct LAN URL + token connection are both supported.",
       },
       {
         icon: "🎬",

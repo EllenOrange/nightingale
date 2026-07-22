@@ -9,7 +9,7 @@ use crate::secret;
 
 /// Where the user wants Nightingale to source songs from. Persisted in
 /// `config.json` and consumed by both the scanner and the analyzer.
-#[derive(Debug, Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, TS, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[ts(export)]
 pub enum LibrarySource {
@@ -38,6 +38,71 @@ pub enum LibrarySource {
         /// token is `MD5(password + salt)` with a fresh salt per call.
         password: String,
     },
+    Plex {
+        base_url: String,
+        server_name: String,
+        machine_id: String,
+        username: String,
+        /// PMS access token obtained through hosted PIN linking or entered in
+        /// the advanced manual flow. It is encrypted in `config.json` and is
+        /// never placed in provider/media URLs.
+        access_token: String,
+        /// Stable install identity sent in Plex request headers.
+        client_id: String,
+        /// One or more explicitly selected Plex music section keys.
+        section_ids: Vec<String>,
+    },
+}
+
+impl std::fmt::Debug for LibrarySource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Folder { path } => formatter
+                .debug_struct("Folder")
+                .field("path", path)
+                .finish(),
+            Self::Jellyfin {
+                base_url,
+                user_id,
+                username,
+                device_id,
+                ..
+            } => formatter
+                .debug_struct("Jellyfin")
+                .field("base_url", base_url)
+                .field("user_id", user_id)
+                .field("username", username)
+                .field("access_token", &"[REDACTED]")
+                .field("device_id", device_id)
+                .finish(),
+            Self::Navidrome {
+                base_url, username, ..
+            } => formatter
+                .debug_struct("Navidrome")
+                .field("base_url", base_url)
+                .field("username", username)
+                .field("password", &"[REDACTED]")
+                .finish(),
+            Self::Plex {
+                base_url,
+                server_name,
+                machine_id,
+                username,
+                client_id,
+                section_ids,
+                ..
+            } => formatter
+                .debug_struct("Plex")
+                .field("base_url", base_url)
+                .field("server_name", server_name)
+                .field("machine_id", machine_id)
+                .field("username", username)
+                .field("access_token", &"[REDACTED]")
+                .field("client_id", client_id)
+                .field("section_ids", section_ids)
+                .finish(),
+        }
+    }
 }
 
 impl LibrarySource {
@@ -69,6 +134,23 @@ impl LibrarySource {
                 base_url,
                 username,
                 password: transform(&password),
+            },
+            Self::Plex {
+                base_url,
+                server_name,
+                machine_id,
+                username,
+                access_token,
+                client_id,
+                section_ids,
+            } => Self::Plex {
+                base_url,
+                server_name,
+                machine_id,
+                username,
+                access_token: transform(&access_token),
+                client_id,
+                section_ids,
             },
         }
     }
@@ -340,6 +422,7 @@ fn has_plaintext_secret(src: &LibrarySource) -> bool {
         LibrarySource::Folder { .. } => return false,
         LibrarySource::Jellyfin { access_token, .. } => access_token,
         LibrarySource::Navidrome { password, .. } => password,
+        LibrarySource::Plex { access_token, .. } => access_token,
     };
     !secret.is_empty() && !secret::is_encrypted(secret)
 }

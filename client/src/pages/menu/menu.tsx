@@ -5,6 +5,7 @@ import { ExitDialog } from "@/components/menu/dialogs/exit";
 import { InfoDialog } from "@/components/menu/dialogs/info";
 import { JellyfinConnectDialog } from "@/components/menu/dialogs/remote-source/jellyfin-connect";
 import { NavidromeConnectDialog } from "@/components/menu/dialogs/remote-source/navidrome-connect";
+import { PlexConnectDialog } from "@/components/menu/dialogs/remote-source/plex-connect";
 import { SelectLanguageDialog } from "@/components/menu/dialogs/language";
 import { CreateProfileDialog } from "@/components/menu/dialogs/profile/create";
 import { SelectProfileDialog } from "@/components/menu/dialogs/profile/select";
@@ -75,6 +76,7 @@ export const MenuLayout = () => {
       <ClearCacheDialog />
       <JellyfinConnectDialog />
       <NavidromeConnectDialog />
+      <PlexConnectDialog />
       <Setup />
       <SidebarInset>
         <Outlet />

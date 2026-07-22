@@ -1,6 +1,7 @@
 import { useConfig } from "@/queries/use-config";
 import { useJellyfinHealth } from "@/queries/use-jellyfin-health";
 import { useNavidromeHealth } from "@/queries/use-navidrome-health";
+import { usePlexHealth } from "@/queries/use-plex-health";
 import {
   useDisconnectSource,
   useRescan,
@@ -18,6 +19,7 @@ export const useLibrarySourceActions = () => {
   const { data: config } = useConfig();
   const { data: jellyfinHealth } = useJellyfinHealth();
   const { data: navidromeHealth } = useNavidromeHealth();
+  const { data: plexHealth } = usePlexHealth();
 
   const folderMutation = useSelectFolderSource();
   const rescanMutation = useRescan();
@@ -30,9 +32,11 @@ export const useLibrarySourceActions = () => {
   const hasSource = !!config?.library_source;
   const jellyfinSource = getSource(config, "jellyfin");
   const navidromeSource = getSource(config, "navidrome");
+  const plexSource = getSource(config, "plex");
   const isFolderSource = config?.library_source?.kind === "folder";
   const isJellyfinSource = jellyfinSource !== null;
   const isNavidromeSource = navidromeSource !== null;
+  const isPlexSource = plexSource !== null;
 
   const isPending =
     folderMutation.isPending || rescanMutation.isPending || disconnectMutation.isPending;
@@ -45,20 +49,23 @@ export const useLibrarySourceActions = () => {
     !hasSource ||
     rescanMutation.isPending ||
     (isJellyfinSource && jellyfinHealth?.reachable === false) ||
-    (isNavidromeSource && navidromeHealth?.reachable === false);
+    (isNavidromeSource && navidromeHealth?.reachable === false) ||
+    (isPlexSource && plexHealth?.reachable === false);
 
   return {
     config,
-    health: jellyfinHealth,
     jellyfinHealth,
     navidromeHealth,
+    plexHealth,
     hasSource,
     libraryPinned,
     jellyfinSource,
     navidromeSource,
+    plexSource,
     isFolderSource,
     isJellyfinSource,
     isNavidromeSource,
+    isPlexSource,
     selectFolder: () => folderMutation.mutate(),
     rescan: () => rescanMutation.mutate(),
     disconnectSource: () => disconnectMutation.mutate(),

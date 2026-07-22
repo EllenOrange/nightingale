@@ -18,6 +18,13 @@ pub enum NightingaleError {
         stage: &'static str,
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
+    /// A Plex account or PMS request/parsing failure. Tokens are always sent
+    /// in headers, so the wrapped transport error cannot contain credentials
+    /// in its request URL.
+    Plex {
+        stage: &'static str,
+        source: Box<dyn std::error::Error + Send + Sync + 'static>,
+    },
     Other(String),
 }
 
@@ -28,6 +35,7 @@ impl fmt::Display for NightingaleError {
             Self::Json(e) => write!(f, "{e}"),
             Self::Jellyfin { stage, source } => write!(f, "Jellyfin {stage}: {source}"),
             Self::Navidrome { stage, source } => write!(f, "Navidrome {stage}: {source}"),
+            Self::Plex { stage, source } => write!(f, "Plex {stage}: {source}"),
             Self::Other(msg) => write!(f, "{msg}"),
         }
     }
@@ -40,6 +48,7 @@ impl std::error::Error for NightingaleError {
             Self::Json(e) => Some(e),
             Self::Jellyfin { source, .. } => Some(source.as_ref()),
             Self::Navidrome { source, .. } => Some(source.as_ref()),
+            Self::Plex { source, .. } => Some(source.as_ref()),
             Self::Other(_) => None,
         }
     }
@@ -61,6 +70,16 @@ impl NightingaleError {
         E: std::error::Error + Send + Sync + 'static,
     {
         Self::Navidrome {
+            stage,
+            source: Box::new(source),
+        }
+    }
+
+    pub fn plex<E>(stage: &'static str, source: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self::Plex {
             stage,
             source: Box::new(source),
         }

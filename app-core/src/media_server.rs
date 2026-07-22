@@ -1,5 +1,5 @@
 //! Local-only media server used by the Tauri webview to fetch song stems,
-//! source videos, and (for Jellyfin) authenticated remote streams.
+//! source videos, and authenticated remote-provider streams.
 //!
 //! Security model:
 //!  - The server binds on `127.0.0.1`, so only same-host processes can reach
@@ -12,11 +12,11 @@
 //!    requested path against an allowed-roots list (data dir, default
 //!    nightingale dir, configured library folder) and refuses anything
 //!    outside.
-//!  - The Jellyfin proxy route (`/s/<token>/remote/jellyfin/<item_id>`) looks
-//!    up the active `LibrarySource::Jellyfin` config server-side, opens an
-//!    authenticated stream, and proxies bytes. **The token never appears in
-//!    any URL or log line** — it lives only in the `X-Emby-Token` header that
-//!    we add inside this process.
+//!  - The provider-neutral proxy route (`/s/<token>/remote/<file_hash>`)
+//!    looks up the active source server-side, opens an authenticated stream,
+//!    and proxies bytes. **Provider credentials never appear in a URL or log
+//!    line** — adapters add them as upstream request headers inside this
+//!    process.
 
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};

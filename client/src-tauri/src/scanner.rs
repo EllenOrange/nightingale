@@ -1,6 +1,7 @@
 use app_core::{
     AnalysisQueue, AppConfig, JellyfinHealth, JellyfinLoginResult, LibraryMenuItems, LibrarySource,
-    LoadSongsParams, NavidromeHealth, NavidromeLoginResult, SongsMeta, SongsStore,
+    LoadSongsParams, NavidromeHealth, NavidromeLoginResult, PlexHealth, PlexPinPollResult,
+    PlexPinStart, PlexServer, SongsMeta, SongsStore,
 };
 
 #[tauri::command]
@@ -53,6 +54,31 @@ pub fn navidrome_login(
 #[tauri::command]
 pub fn navidrome_ping() -> NavidromeHealth {
     app_core::navidrome_ping_current()
+}
+
+#[tauri::command]
+pub fn plex_begin_pin(client_id: Option<String>) -> Result<PlexPinStart, String> {
+    app_core::plex_begin_pin(client_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn plex_poll_pin(pin_id: String, client_id: String) -> Result<PlexPinPollResult, String> {
+    app_core::plex_poll_pin(&pin_id, &client_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn plex_manual_login(
+    base_url: String,
+    access_token: String,
+    client_id: Option<String>,
+) -> Result<PlexServer, String> {
+    app_core::plex_manual_login(&base_url, &access_token, client_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn plex_ping() -> PlexHealth {
+    app_core::plex_ping_current()
 }
 
 #[tauri::command]

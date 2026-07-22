@@ -11,6 +11,8 @@ function sourceLabel(source: LibrarySource | null | undefined): string {
       return "Jellyfin";
     case "navidrome":
       return "Navidrome";
+    case "plex":
+      return "Plex Media Server";
     case "folder":
       return "library folder";
     default:
@@ -32,7 +34,7 @@ export const Progress = () => {
   // hasn't told us how big the catalogue is yet, so the determinate bar
   // would be `max=0`. Show an indeterminate "Connecting…" hint so the user
   // knows something is happening during the initial round-trip (Jellyfin
-  // `/Items`, Navidrome `getAlbumList2`).
+  // `/Items`, Navidrome `getAlbumList2`, Plex section metadata).
   if (folder && count === 0 && processed_count === 0) {
     return (
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
