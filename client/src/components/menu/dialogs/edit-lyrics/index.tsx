@@ -152,6 +152,12 @@ export const EditLyricsDialog = () => {
   const lrcLevel = useMemo(() => detectLrcLevel(editor.text), [editor.text]);
   const hasLrc = lrcLevel !== "none";
   const useProvidedTiming = hasLrc && timingChoice === "provided";
+  // Stems already exist only for analyzed tracks that weren't kept on the
+  // original mix. Those can't change their audio mode by re-editing lyrics.
+  const stemsSeparated = isAnalyzed && !(song?.no_stems ?? false);
+  // Separation runs when the user opts in and the track doesn't already have
+  // stems: a fresh track, or re-separating an LRC/original-mix track.
+  const willSeparate = useProvidedTiming && separateStems && !stemsSeparated;
 
   const saving =
     provideLrcMutation.isLoading || applyTimedMutation.isLoading || saveLyricsMutation.isLoading;
@@ -159,10 +165,10 @@ export const EditLyricsDialog = () => {
     !saving && !editor.loadingInitial && editor.isDirty && editor.text.trim().length > 0;
 
   const saveLabel = useProvidedTiming
-    ? isAnalyzed
-      ? "Use timed lyrics"
-      : separateStems
-        ? "Save & separate stems"
+    ? willSeparate
+      ? "Save & separate stems"
+      : isAnalyzed
+        ? "Use timed lyrics"
         : "Save timed lyrics"
     : isAnalyzed
       ? "Save & realign"
@@ -175,7 +181,7 @@ export const EditLyricsDialog = () => {
     if (useProvidedTiming && lrcLevel === "line") {
       footerHints.push("Line-level LRC highlights whole lines — no per-word timing.");
     }
-    if (useProvidedTiming && !isAnalyzed && !separateStems) {
+    if (useProvidedTiming && !willSeparate && !stemsSeparated) {
       footerHints.push("Original mix is used, so pitch scoring will likely be inaccurate.");
     }
   }
@@ -187,11 +193,16 @@ export const EditLyricsDialog = () => {
     const title = song.title;
 
     if (useProvidedTiming) {
-      if (isAnalyzed) {
+      if (willSeparate) {
+        provideLrcMutation.mutate(
+          { hash, lrcText: editor.text, separateStems: true, title },
+          { onSuccess: close },
+        );
+      } else if (isAnalyzed) {
         applyTimedMutation.mutate({ hash, lrcText: editor.text, title }, { onSuccess: close });
       } else {
         provideLrcMutation.mutate(
-          { hash, lrcText: editor.text, separateStems, title },
+          { hash, lrcText: editor.text, separateStems: false, title },
           { onSuccess: close },
         );
       }
@@ -217,7 +228,7 @@ export const EditLyricsDialog = () => {
   };
 
   const timingNav = hasLrc && !saving;
-  const audioNav = useProvidedTiming && !isAnalyzed && !saving;
+  const audioNav = useProvidedTiming && !stemsSeparated && !saving;
 
   const currentCandidate =
     candidateCount > 0 ? candidates[Math.min(carouselIndex, candidateCount - 1)] : undefined;
@@ -338,7 +349,7 @@ export const EditLyricsDialog = () => {
       />
       <LrcOptions
         level={lrcLevel}
-        isAnalyzed={isAnalyzed}
+        stemsSeparated={stemsSeparated}
         timingChoice={timingChoice}
         onTimingChoiceChange={setTimingChoice}
         separateStems={separateStems}

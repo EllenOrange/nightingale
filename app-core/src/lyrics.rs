@@ -5,7 +5,7 @@ use tracing::{info, warn};
 use ts_rs::TS;
 
 use crate::analyzer::{
-    detect_key_async, enqueue_one, is_usdx_song, mark_stems_only, update_song_analyzed,
+    enqueue_one, is_usdx_song, mark_stems_only, prepare_lrc_no_stems, update_song_analyzed,
 };
 use crate::cache::CacheDir;
 use crate::library_db;
@@ -239,20 +239,11 @@ pub fn provide_lrc(file_hash: &str, lrc_text: &str, separate_stems: bool) -> Res
         let value = build_lrc_transcript(&parsed, language.as_deref(), None, 1.0, true);
         write_transcript_json(&cache, file_hash, &value)
             .map_err(|e| format!("Failed to write transcript: {e}"))?;
-        // Playing over the original mix needs no separation, so mark the song
-        // ready right away (source=Lrc, no_stems) instead of routing it through
-        // the analysis status queue. The key is still unknown, so detect it in
-        // the background; once it lands the key/tempo shift controls unlock.
-        let mut updated = song;
-        updated.is_analyzed = true;
-        updated.transcript_source = Some(TranscriptSource::Lrc);
-        updated.key = None;
-        updated.override_key = None;
-        updated.tempo = 1.0;
-        updated.key_offset = 0;
-        updated.no_stems = true;
-        library_db::update_song_fields(file_hash, &updated).map_err(|e| e.to_string())?;
-        detect_key_async(file_hash);
+        // Playing over the original mix needs no separation. Prepare everything
+        // synchronously (materialize audio, detect the key) and only then mark
+        // the song ready — no status-queue pass, and no transient window where
+        // playback assets aren't in place yet.
+        prepare_lrc_no_stems(file_hash).map_err(|e| e.to_string())?;
     }
 
     Ok(())

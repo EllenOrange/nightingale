@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{LazyLock, Mutex};
@@ -789,46 +789,78 @@ fn finalize_song(file_hash: &str, cache: &CacheDir) {
     }
 }
 
-// ─── Off-queue key detection ─────────────────────────────────────────
+// ─── LRC (play-original) preparation ─────────────────────────────────
 
-/// Detect the musical key for a song that is already marked ready (LRC over the
-/// original mix) without routing it through the analysis status queue. Runs in
-/// the background; once the key lands it is patched onto the song row so the
-/// key/tempo shift controls unlock.
-pub fn detect_key_async(file_hash: &str) {
-    if is_usdx_song(file_hash) {
-        return;
-    }
-    let file_hash = file_hash.to_string();
-    std::thread::spawn(move || {
-        let cache = CacheDir::new();
-        run_key_detection(&file_hash, &cache);
-    });
-}
-
-fn run_key_detection(initial_hash: &str, cache: &CacheDir) {
-    let Some(song) = library_db::load_song_by_hash(initial_hash).ok().flatten() else {
-        return;
+/// Prepare an LRC-provided song that plays over its original mix, without
+/// routing it through the analysis status queue.
+///
+/// The analyzer-free work runs synchronously so the song is immediately
+/// playable: materialize the audio, rekey remote rows to the content hash, and
+/// mark the song ready (source=Lrc, no_stems). None of this touches the
+/// analyzer server, so it never stalls behind a running analysis.
+///
+/// The musical key is then detected on a background thread (which contends on
+/// the analyzer server) and patched in once it lands, so the key/tempo controls
+/// unlock later without blocking playback.
+pub fn prepare_lrc_no_stems(file_hash: &str) -> Result<(), NightingaleError> {
+    let cache = CacheDir::new();
+    let Some(song) = library_db::load_song_by_hash(file_hash).ok().flatten() else {
+        return Err(NightingaleError::Other("Song not found".into()));
     };
 
-    let (_song, local_path, file_hash_owned) = match prepare_audio_for_analysis(&song, cache) {
-        Ok(out) => out,
-        Err(e) => {
-            warn!("[analyzer] Key detection audio prep failed for {initial_hash}: {e}");
-            return;
-        }
-    };
-    let file_hash = file_hash_owned.as_str();
+    // Materialize the audio and, for remote sources, rekey the row to the
+    // content hash so all downstream cache files follow the usual layout.
+    let (mut song, local_path, real_hash) = prepare_audio_for_analysis(&song, &cache)?;
+    let real_hash = real_hash.to_string();
 
-    // A remote rekey moves the row to the content hash — carry the transcript we
-    // wrote under the placeholder hash across so the key pass can patch it.
-    if file_hash != initial_hash {
+    // A rekey moves the row — carry the transcript we wrote under the original
+    // hash across so the key pass can patch it in place.
+    if real_hash != file_hash {
         let _ = std::fs::rename(
-            cache.transcript_path(initial_hash),
             cache.transcript_path(file_hash),
+            cache.transcript_path(&real_hash),
         );
     }
 
+    // Mark ready right away (key still unknown) so playback over the original
+    // mix is available immediately, before the key detection runs.
+    song.is_analyzed = true;
+    song.transcript_source = Some(TranscriptSource::Lrc);
+    song.key = None;
+    song.override_key = None;
+    song.tempo = 1.0;
+    song.key_offset = 0;
+    song.no_stems = true;
+    library_db::update_song_fields(&real_hash, &song)
+        .map_err(|e| NightingaleError::Other(e.to_string()))?;
+    let _ = crate::playback::ensure_playable_source_video(&real_hash);
+
+    // Detect the key off-queue in the background; patch it onto the row once it
+    // lands so the key/tempo shift controls unlock without blocking playback.
+    std::thread::spawn(move || {
+        let cache = CacheDir::new();
+        if let Err(e) = run_key_pass(&cache, &local_path, &real_hash) {
+            warn!("[analyzer] LRC key detection failed for {real_hash}: {e}");
+            return;
+        }
+        let meta = read_transcript_meta(&cache, &real_hash);
+        if let Some(mut updated) = library_db::load_song_by_hash(&real_hash).ok().flatten() {
+            updated.key = meta.key;
+            let _ = library_db::update_song_fields(&real_hash, &updated);
+        }
+        info!("[analyzer] LRC key detection complete for {real_hash}");
+    });
+    Ok(())
+}
+
+/// Run a key-only analysis pass (no transcription, no stem separation) against
+/// the running analyzer server, keeping it off the status queue. On success the
+/// detected key is patched into the existing transcript by the pipeline.
+fn run_key_pass(
+    cache: &CacheDir,
+    local_path: &Path,
+    file_hash: &str,
+) -> Result<(), NightingaleError> {
     let config = AppConfig::load();
     let cmd_json = serde_json::json!({
         "type": "analyze",
@@ -851,35 +883,21 @@ fn run_key_detection(initial_hash: &str, cache: &CacheDir) {
     let mut retried = false;
     loop {
         let mut guard = ANALYZER_SERVER.lock().unwrap();
-        if let Err(e) = ensure_server(&mut guard) {
-            warn!("[analyzer] Key detection server start failed for {file_hash}: {e}");
-            return;
-        }
+        ensure_server(&mut guard)?;
         let server = guard.as_mut().unwrap();
         // `None` progress hash keeps this off the status pipe (no queue rows).
         match send_and_monitor(server, &json_str, None) {
-            Ok(SongResult::Done) => {
-                drop(guard);
-                let meta = read_transcript_meta(cache, file_hash);
-                if let Some(mut updated) = library_db::load_song_by_hash(file_hash).ok().flatten() {
-                    updated.key = meta.key;
-                    let _ = library_db::update_song_fields(file_hash, &updated);
-                }
-                info!("[analyzer] Key detection complete for {file_hash}");
-                return;
-            }
+            Ok(SongResult::Done) => return Ok(()),
             Ok(SongResult::Oom) | Err(_) => {
                 *guard = None;
                 if !retried {
                     retried = true;
                     continue;
                 }
-                warn!("[analyzer] Key detection failed for {file_hash} after retry");
-                return;
+                return Err(NightingaleError::Other("key detection failed".into()));
             }
             Ok(SongResult::Error(msg)) => {
-                warn!("[analyzer] Key detection error for {file_hash}: {msg}");
-                return;
+                return Err(NightingaleError::Other(msg));
             }
         }
     }

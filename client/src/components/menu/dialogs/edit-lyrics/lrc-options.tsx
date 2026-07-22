@@ -77,7 +77,7 @@ function RadioRow<T extends string>({
 
 interface LrcOptionsProps {
   level: LrcLevel;
-  isAnalyzed: boolean;
+  stemsSeparated: boolean;
   timingChoice: TimingChoice;
   onTimingChoiceChange: (choice: TimingChoice) => void;
   separateStems: boolean;
@@ -90,7 +90,7 @@ interface LrcOptionsProps {
 
 export const LrcOptions = ({
   level,
-  isAnalyzed,
+  stemsSeparated,
   timingChoice,
   onTimingChoiceChange,
   separateStems,
@@ -104,11 +104,13 @@ export const LrcOptions = ({
   const timingDisabled = Boolean(disabled) || !hasLrc;
   const displayTiming: TimingChoice = hasLrc ? timingChoice : "align";
   const useProvided = displayTiming === "provided";
-  const audioDisabled = Boolean(disabled) || isAnalyzed || !useProvided;
-  // Analyzed songs already have separated stems, and running alignment needs
-  // them, so force "Separate stems" selected in those (disabled) cases.
+  // Only lock the audio choice when the track already has separated stems (that
+  // mode is fixed) or when running alignment (which requires stems). An LRC
+  // track played over the original mix stays editable so it doesn't wrongly
+  // default to "Separate stems".
+  const audioDisabled = Boolean(disabled) || stemsSeparated || !useProvided;
   const displayAudio: "separate" | "skip" =
-    isAnalyzed || !useProvided ? "separate" : separateStems ? "separate" : "skip";
+    stemsSeparated || !useProvided ? "separate" : separateStems ? "separate" : "skip";
 
   return (
     <div className="mt-3 flex flex-col divide-y divide-border">

@@ -31,9 +31,9 @@ export const SongDetailsSidebar = ({ song, queueStatus, onClose }: SongDetailsSi
 
   const status = getSongStatusInfo(song.is_analyzed, queueStatus);
   const analysisBusy = queueStatus === "Queued" || Boolean(status.isAnalyzing);
-  // LRC songs played over the original mix are marked ready immediately while
-  // their key is still being detected off-queue. Until the key lands, treat the
-  // key/tempo section like an in-progress analysis rather than showing controls.
+  // LRC songs played over the original mix are playable immediately while their
+  // key is still being detected off-queue. Until the key lands, treat the
+  // key/tempo section as pending rather than showing controls.
   const keyPending =
     song.is_analyzed && song.transcript_source === "Lrc" && song.no_stems && song.key === null;
   const supportsShifts = song.is_analyzed && song.transcript_source !== "Usdx" && !keyPending;
