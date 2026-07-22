@@ -10,6 +10,7 @@ export const useLibraryFilter = () => {
   return {
     artist: filter.artist,
     album: filter.album,
+    playlist: filter.playlist,
     query: filter.query,
     setLibraryFilter,
   };

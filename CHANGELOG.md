@@ -13,6 +13,10 @@ below.
 
 ## [Unreleased]
 
+### Features
+
+- Read-only playlist navigation — the sidebar now imports existing Jellyfin and Navidrome playlists, plus `.m3u`, `.m3u8`, and `.pls` files from folder libraries. Playlist order is preserved, relative local paths are resolved from the playlist file, and missing library entries are skipped.
+
 ## [0.9.0] - 2026-07-06
 
 ### Features

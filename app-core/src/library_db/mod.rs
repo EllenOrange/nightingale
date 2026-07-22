@@ -24,6 +24,7 @@ use crate::cache::nightingale_dir;
 mod analysis_queue;
 mod connection;
 mod migrations;
+mod playlists;
 mod queries;
 mod rebase;
 pub mod remote;
@@ -34,6 +35,7 @@ pub use analysis_queue::{
     analysis_queue_save_rows, analysis_queue_upsert_row,
 };
 pub use migrations::rewrite_legacy_jellyfin_paths;
+pub use playlists::{PlaylistDefinition, PlaylistSongKeyKind, replace_all_playlists};
 pub use queries::{
     iter_file_hashes_filtered_not_analyzed, load_meta_sql, load_songs_page,
     query_library_menu_items,

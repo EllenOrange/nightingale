@@ -22,13 +22,13 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, warn};
 use ts_rs::TS;
 
 use crate::cache::CacheDir;
 use crate::config::{AppConfig, LibrarySource};
 use crate::error::NightingaleError;
-use crate::library_db;
+use crate::library_db::{self, PlaylistDefinition, PlaylistSongKeyKind};
 use crate::song::{Song, SongOrigin};
 
 use super::{MediaSource, SCAN_BATCH_SIZE, ScanContext, SourceKind, flush_batch};
@@ -121,6 +121,40 @@ impl NavidromeSource {
             self.client
                 .get_json("list album songs", "/rest/getAlbum", &[("id", album_id)])?;
         Ok(result.album)
+    }
+
+    fn fetch_playlists(&self) -> Result<Vec<PlaylistDefinition>, NightingaleError> {
+        let result: PlaylistsResult =
+            self.client
+                .get_json("list playlists", "/rest/getPlaylists", &[])?;
+        let mut playlists = Vec::new();
+        for playlist in result.playlists.playlist {
+            if playlist.id.is_empty() {
+                continue;
+            }
+            let detail: PlaylistResult = match self.client.get_json(
+                "list playlist songs",
+                "/rest/getPlaylist",
+                &[("id", playlist.id.as_str())],
+            ) {
+                Ok(detail) => detail,
+                Err(error) => {
+                    warn!("[navidrome] skipping playlist {}: {error}", playlist.id);
+                    continue;
+                }
+            };
+            playlists.push(PlaylistDefinition {
+                id: format!("navidrome:{}", playlist.id),
+                name: pick_string(Some(&playlist.name), "Playlist"),
+                song_keys: detail
+                    .playlist
+                    .entry
+                    .into_iter()
+                    .filter_map(|song| (!song.id.is_empty()).then_some(song.id))
+                    .collect(),
+            });
+        }
+        Ok(playlists)
     }
 
     fn build_song(&self, item: &SubsonicSong, cache: &CacheDir) -> Option<Song> {
@@ -328,6 +362,20 @@ impl MediaSource for NavidromeSource {
         let _ = library_db::update_library_meta(&folder_label, seen_ids.len());
         let _ = library_db::remote::delete_remote_songs_not_in_item_ids(ORIGIN_KIND, &seen_ids);
 
+        match self.fetch_playlists() {
+            Ok(playlists) => {
+                if let Err(error) = library_db::replace_all_playlists(
+                    &playlists,
+                    PlaylistSongKeyKind::RemoteItemId {
+                        origin_kind: ORIGIN_KIND,
+                    },
+                ) {
+                    warn!("[navidrome] failed to store playlists: {error}");
+                }
+            }
+            Err(error) => warn!("[navidrome] failed to sync playlists: {error}"),
+        }
+
         Ok(())
     }
 
@@ -500,6 +548,38 @@ impl PingPayload {
             Some(label.to_string())
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct PlaylistsResult {
+    #[serde(default)]
+    playlists: Playlists,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct Playlists {
+    #[serde(default)]
+    playlist: Vec<PlaylistSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlaylistSummary {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlaylistResult {
+    #[serde(default)]
+    playlist: PlaylistDetail,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PlaylistDetail {
+    #[serde(default)]
+    entry: Vec<SubsonicSong>,
 }
 
 #[derive(Debug, Deserialize)]

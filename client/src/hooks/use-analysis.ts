@@ -15,7 +15,7 @@ import { toast } from "sonner";
 
 export const useAnalysis = () => {
   const queryClient = useQueryClient();
-  const { artist, album, query } = useLibraryFilter();
+  const { artist, album, playlist, query } = useLibraryFilter();
 
   return useMemo(() => {
     const invalidateQueue = () => {
@@ -44,12 +44,12 @@ export const useAnalysis = () => {
 
     return {
       enqueueOne: wrap(enqueueOne, invalidateQueue),
-      enqueueAll: wrap(() => enqueueAll({ artist, album, query }), invalidateQueue),
+      enqueueAll: wrap(() => enqueueAll({ artist, album, playlist, query }), invalidateQueue),
       deleteSongCache: wrap(deleteSongCache, invalidateSongs),
       reanalyzeTranscript: wrap(reanalyzeTranscript, invalidateSongs),
       reanalyzeFull: wrap(reanalyzeFull, invalidateSongs),
       realign: wrap(realign, invalidateSongs),
       reanalyzeForceTranscribe: wrap(reanalyzeForceTranscribe, invalidateSongs),
     };
-  }, [queryClient, artist, album, query]);
+  }, [queryClient, artist, album, playlist, query]);
 };

@@ -3,5 +3,6 @@
 export type LibraryMenuFilters = {
   artist: string | null;
   album: string | null;
+  playlist: string | null;
   query: string | null;
 };

@@ -15,6 +15,7 @@ import {
   Flame,
   FileQuestionMark,
   DiscIcon,
+  ListMusicIcon,
   UserIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -52,6 +53,7 @@ const NAV_SECTIONS: NavSectionConfig[] = [
   { section: "no_metadata", label: "No Metadata", icon: FileQuestionMark },
   { section: "artists", label: "Artists", icon: UserIcon },
   { section: "albums", label: "Albums", icon: DiscIcon },
+  { section: "playlists", label: "Playlists", icon: ListMusicIcon },
 ];
 
 interface MenuItemCountsProps {

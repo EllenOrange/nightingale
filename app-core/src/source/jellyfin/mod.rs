@@ -21,13 +21,13 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, warn};
 use ts_rs::TS;
 
 use crate::cache::CacheDir;
 use crate::config::{AppConfig, LibrarySource};
 use crate::error::NightingaleError;
-use crate::library_db;
+use crate::library_db::{self, PlaylistDefinition, PlaylistSongKeyKind};
 use crate::song::{Song, SongOrigin};
 
 use super::{MediaSource, SCAN_BATCH_SIZE, ScanContext, SourceKind, StreamResponse, flush_batch};
@@ -131,6 +131,49 @@ impl JellyfinSource {
                 ("StartIndex", &start),
             ],
         )
+    }
+
+    fn fetch_playlists(&self) -> Result<Vec<PlaylistDefinition>, NightingaleError> {
+        let path = format!("/Users/{}/Items", self.auth.user_id);
+        let result: ItemQueryResult = self.client.get_json(
+            "list playlists",
+            &path,
+            &[
+                ("Recursive", "true"),
+                ("IncludeItemTypes", "Playlist"),
+                ("SortBy", "SortName"),
+                ("SortOrder", "Ascending"),
+            ],
+        )?;
+
+        let mut playlists = Vec::new();
+        for playlist in result.items {
+            if playlist.id.is_empty() {
+                continue;
+            }
+            let detail_path = format!("/Playlists/{}/Items", urlencoding::encode(&playlist.id));
+            let detail: ItemQueryResult = match self.client.get_json(
+                "list playlist items",
+                &detail_path,
+                &[("UserId", self.auth.user_id.as_str())],
+            ) {
+                Ok(detail) => detail,
+                Err(error) => {
+                    warn!("[jellyfin] skipping playlist {}: {error}", playlist.id);
+                    continue;
+                }
+            };
+            playlists.push(PlaylistDefinition {
+                id: format!("jellyfin:{}", playlist.id),
+                name: pick_string(playlist.name.as_deref(), "Playlist"),
+                song_keys: detail
+                    .items
+                    .into_iter()
+                    .filter_map(|item| (!item.id.is_empty()).then_some(item.id))
+                    .collect(),
+            });
+        }
+        Ok(playlists)
     }
 
     fn build_song(&self, item: &JellyfinItem, cache: &CacheDir) -> Option<Song> {
@@ -360,6 +403,20 @@ impl MediaSource for JellyfinSource {
         let _ =
             library_db::update_library_meta(&folder_label, total_record_count.max(seen_ids.len()));
         let _ = library_db::remote::delete_remote_songs_not_in_item_ids(ORIGIN_KIND, &seen_ids);
+
+        match self.fetch_playlists() {
+            Ok(playlists) => {
+                if let Err(error) = library_db::replace_all_playlists(
+                    &playlists,
+                    PlaylistSongKeyKind::RemoteItemId {
+                        origin_kind: ORIGIN_KIND,
+                    },
+                ) {
+                    warn!("[jellyfin] failed to store playlists: {error}");
+                }
+            }
+            Err(error) => warn!("[jellyfin] failed to sync playlists: {error}"),
+        }
 
         Ok(())
     }

@@ -50,6 +50,14 @@ Nightingale scans albums and songs from the server. Audio downloads only when a 
 
 Navidrome sources are audio-only. Video items are not imported.
 
+## Playlists
+
+Existing playlists appear in a read-only **Playlists** section in the sidebar. Nightingale imports playlists from Jellyfin and Navidrome, while folder libraries discover `.m3u`, `.m3u8`, and `.pls` files recursively.
+
+Playlist order is preserved. Relative paths in folder playlists are resolved from the playlist file's directory, and entries that do not match songs in the active library are skipped. Rescan the library after changing playlist files or remote playlists.
+
+Nightingale uses playlists for navigation only; creating or editing playlists remains in Jellyfin, Navidrome, or your playlist-file editor.
+
 ## Switching sources
 
 Connect a different source whenever you want to change libraries. Nightingale rescans and shows songs from the new source.

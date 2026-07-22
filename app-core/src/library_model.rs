@@ -8,6 +8,7 @@ use crate::song::Song;
 pub struct LibraryMenuFilters {
     pub artist: Option<String>,
     pub album: Option<String>,
+    pub playlist: Option<String>,
     pub query: Option<String>,
 }
 

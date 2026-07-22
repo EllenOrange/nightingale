@@ -128,8 +128,18 @@ fn append_structural_filters(
 ) {
     let artist = filters.artist.as_deref();
     let album = filters.album.as_deref();
+    let playlist = filters.playlist.as_deref();
     let query = filters.query.as_deref();
 
+    // Keep playlist first: its bind is always ?1, allowing the same value to
+    // drive both membership filtering and playlist-position ordering.
+    if let Some(p) = playlist.filter(|s| !s.is_empty()) {
+        where_parts.push(
+            "EXISTS (SELECT 1 FROM playlist_songs ps WHERE ps.song_id = s.id AND ps.playlist_id = ?1)"
+                .to_string(),
+        );
+        bind_strings.push(p.to_string());
+    }
     if let Some(a) = artist.filter(|s| !s.is_empty()) {
         if a == "unknown_artist" {
             where_parts.push("s.artist = ?".to_string());
@@ -170,13 +180,15 @@ fn build_song_where_clause(
     let mut where_parts: Vec<String> = Vec::new();
     let mut bind_strings: Vec<String> = Vec::new();
 
+    // Structural filters come first so a selected playlist owns bind ?1.
+    // Playlist ordering reuses that same numbered bind below.
+    append_structural_filters(filters, &mut where_parts, &mut bind_strings);
+
     if let Some(words) = search_words {
         let (w, mut b) = songs_where_like_words(words);
         where_parts.push(format!("({w})"));
         bind_strings.append(&mut b);
     }
-
-    append_structural_filters(filters, &mut where_parts, &mut bind_strings);
     where_parts.extend(extra_where_parts.iter().map(|part| (*part).to_string()));
 
     if where_parts.is_empty() {
@@ -199,11 +211,22 @@ pub fn load_songs_page(params: &LoadSongsParams) -> rusqlite::Result<SongsStore>
     let (where_sql, bind_strings) =
         build_song_where_clause(search_words.as_deref(), &params.filters, &[]);
 
+    let playlist_order = if params
+        .filters
+        .playlist
+        .as_deref()
+        .is_some_and(|p| !p.is_empty())
+    {
+        "(SELECT ps.position FROM playlist_songs ps WHERE ps.song_id = s.id AND ps.playlist_id = ?1), "
+    } else {
+        ""
+    };
+
     let processed = if let Some(ref where_sql) = where_sql {
         let sql = format!(
             "SELECT payload FROM songs s
              WHERE {where_sql}
-             ORDER BY s.artist COLLATE NOCASE, s.title COLLATE NOCASE
+             ORDER BY {playlist_order}s.artist COLLATE NOCASE, s.title COLLATE NOCASE
              LIMIT {} OFFSET {}",
             params.take as i64, params.skip as i64
         );
@@ -261,10 +284,15 @@ pub fn iter_file_hashes_filtered_not_analyzed(
     let (where_sql, bind_strings) = build_song_where_clause(None, filters, &["s.is_analyzed = 0"]);
 
     if let Some(where_sql) = where_sql {
+        let playlist_order = if filters.playlist.as_deref().is_some_and(|p| !p.is_empty()) {
+            "(SELECT ps.position FROM playlist_songs ps WHERE ps.song_id = s.id AND ps.playlist_id = ?1), "
+        } else {
+            ""
+        };
         let sql = format!(
             "SELECT s.file_hash FROM songs s
              WHERE {where_sql}
-             ORDER BY s.artist COLLATE NOCASE, s.title COLLATE NOCASE"
+             ORDER BY {playlist_order}s.artist COLLATE NOCASE, s.title COLLATE NOCASE"
         );
         with_conn(|c| {
             let mut stmt = c.prepare(&sql)?;
@@ -416,11 +444,32 @@ pub fn query_library_menu_items() -> rusqlite::Result<LibraryMenuItems> {
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
+        let mut stmt = c.prepare(
+            "SELECT p.id, p.name, COUNT(ps.song_id) AS cnt,
+                    COALESCE(SUM(CASE WHEN s.is_analyzed = 1 THEN 1 ELSE 0 END), 0) AS analysed
+             FROM playlists p
+             JOIN playlist_songs ps ON ps.playlist_id = p.id
+             JOIN songs s ON s.id = ps.song_id
+             GROUP BY p.id, p.name
+             ORDER BY p.name COLLATE NOCASE",
+        )?;
+        let playlists: Vec<LibraryMenuItem> = stmt
+            .query_map([], |r| {
+                Ok(LibraryMenuItem {
+                    value: r.get(0)?,
+                    label: r.get(1)?,
+                    count: r.get::<_, i64>(2)? as u64,
+                    analysed_count: r.get::<_, i64>(3)? as u64,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
         Ok(LibraryMenuItems {
             hot,
             no_metadata,
             artists,
             albums,
+            playlists,
         })
     })
 }

@@ -24,7 +24,7 @@ use crate::song::{Song, SongOrigin};
 use super::connection::{with_conn, with_conn_mut};
 use super::songs::{append_songs, update_library_meta};
 
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 
 static MIGRATING: AtomicBool = AtomicBool::new(false);
 static MIGRATION_TOTAL: AtomicUsize = AtomicUsize::new(0);
@@ -102,6 +102,26 @@ pub(super) fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {
                 analyzing_pct INTEGER,
                 failed_message TEXT
             );
+        ",
+        )?;
+    }
+    if v < 2 {
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS playlists (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS playlist_songs (
+                playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+                song_id INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                PRIMARY KEY (playlist_id, song_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_playlist_songs_order
+                ON playlist_songs(playlist_id, position);
+            CREATE INDEX IF NOT EXISTS idx_playlist_songs_song
+                ON playlist_songs(song_id);
         ",
         )?;
     }
