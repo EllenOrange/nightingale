@@ -39,10 +39,10 @@ export const useSongsMeta = () => {
 
 export const useSongs = () => {
   const { search } = useSearch();
-  const { artist, album, playlist, query } = useLibraryFilter();
+  const { artist, album, playlist, query, status, transcript_source } = useLibraryFilter();
 
   return useInfiniteQuery({
-    queryKey: [...SONGS, search, artist, album, playlist, query],
+    queryKey: [...SONGS, search, artist, album, playlist, query, status, transcript_source],
     queryFn: ({ pageParam = 0 }) => {
       const params: LoadSongsParams = {
         search: search || null,
@@ -51,6 +51,9 @@ export const useSongs = () => {
           album: album ?? null,
           playlist: playlist ?? null,
           query: query ?? null,
+          status: status ?? null,
+          transcript_source: transcript_source ?? null,
+          search: null,
         },
         skip: pageParam,
         take: PAGE_SIZE,

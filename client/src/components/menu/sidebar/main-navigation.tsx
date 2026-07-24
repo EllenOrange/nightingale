@@ -221,7 +221,11 @@ export const MainNavigation = ({
 
   const selectMenuItem = useCallback(
     (section: LibraryMenuSection, item: LibraryMenuItem) => {
-      setLibraryFilter(libraryFilterFromMenuSelection(section, item));
+      setLibraryFilter((current) => ({
+        ...libraryFilterFromMenuSelection(section, item),
+        status: current.status,
+        transcript_source: current.transcript_source,
+      }));
       if (isMobile) {
         setOpen(false);
       }

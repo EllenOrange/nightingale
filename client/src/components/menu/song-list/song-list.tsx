@@ -24,7 +24,7 @@ export const SongList = () => {
   const { focus, actionsRef, setFocus, selectedSongKeyRef } = useMenuFocus();
   const { setScrollContainer, resetScroll } = usePersistentScroll("songList");
   const { search } = useSearch();
-  const { artist, album, playlist, query } = useLibraryFilter();
+  const { artist, album, playlist, query, status, transcript_source } = useLibraryFilter();
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useSongs();
   // Track the selection by a rekey-stable key (see `songKey`) rather than by
   // file_hash, and seed from the persisted ref so returning from playback
@@ -62,7 +62,7 @@ export const SongList = () => {
     setSelectedKey(null);
     resetScroll();
     setFocus((previous) => ({ ...previous, songIndex: 0 }));
-  }, [search, artist, album, query, resetScroll, setFocus]);
+  }, [search, artist, album, playlist, query, status, transcript_source, resetScroll, setFocus]);
 
   useEffect(() => {
     selectedSongKeyRef.current = selectedKey;
@@ -100,7 +100,9 @@ export const SongList = () => {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage, view]);
 
   const isSongListActive = focus.active && focus.panel === "songList";
-  const hasActiveFilter = Boolean(search.trim() || artist || album || playlist || query);
+  const hasActiveFilter = Boolean(
+    search.trim() || artist || album || playlist || query || status || transcript_source,
+  );
   const showEmptyState = songs.length === 0 && !isLoading;
   const selectSong = (song: (typeof songs)[number]) => setSelectedKey(songKey(song));
 

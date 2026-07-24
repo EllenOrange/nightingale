@@ -21,7 +21,9 @@ below.
 
 ### Improvements
 
+- Jellyfin library selection — choose which Jellyfin music libraries Nightingale syncs instead of importing every library.
 - Analysis queue navigation — Quick Filters now includes a **Queued** view that shows the active track first followed by pending tracks in queue order. Sidebar counts use one compact segmented badge for total, queued, analysing, and analysed tracks, with matching status colors on song cards.
+- Song list filtering — the responsive top toolbar can filter songs by analysis status and transcript type (**Generated**, **AI Aligned**, or **LRC**). Filters combine with search and sidebar selections, and **Analyze all** now respects the complete filtered view.
 
 ## [0.9.0] - 2026-07-06
 

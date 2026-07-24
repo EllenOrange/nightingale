@@ -314,7 +314,6 @@ function SidebarInset({ className, children, ...props }: React.ComponentProps<"m
       )}
       {...props}
     >
-      <SidebarTrigger className="absolute top-3 left-3 z-30 size-7 md:hidden" />
       {children}
     </main>
   );

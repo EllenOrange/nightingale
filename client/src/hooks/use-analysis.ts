@@ -1,5 +1,6 @@
 import { ANALYSIS_QUEUE, MENU, SONGS, SONGS_META } from "@/queries/keys";
 import { useLibraryFilter } from "@/hooks/use-library-filter";
+import { useSearch } from "@/hooks/use-search";
 import {
   deleteSongCache,
   enqueueAll,
@@ -15,7 +16,8 @@ import { toast } from "sonner";
 
 export const useAnalysis = () => {
   const queryClient = useQueryClient();
-  const { artist, album, playlist, query } = useLibraryFilter();
+  const { artist, album, playlist, query, status, transcript_source } = useLibraryFilter();
+  const { search } = useSearch();
 
   return useMemo(() => {
     const invalidateQueue = () => {
@@ -44,12 +46,24 @@ export const useAnalysis = () => {
 
     return {
       enqueueOne: wrap(enqueueOne, invalidateQueue),
-      enqueueAll: wrap(() => enqueueAll({ artist, album, playlist, query }), invalidateQueue),
+      enqueueAll: wrap(
+        () =>
+          enqueueAll({
+            artist,
+            album,
+            playlist,
+            query,
+            status,
+            transcript_source,
+            search: search || null,
+          }),
+        invalidateQueue,
+      ),
       deleteSongCache: wrap(deleteSongCache, invalidateSongs),
       reanalyzeTranscript: wrap(reanalyzeTranscript, invalidateSongs),
       reanalyzeFull: wrap(reanalyzeFull, invalidateSongs),
       realign: wrap(realign, invalidateSongs),
       reanalyzeForceTranscribe: wrap(reanalyzeForceTranscribe, invalidateSongs),
     };
-  }, [queryClient, artist, album, playlist, query]);
+  }, [queryClient, artist, album, playlist, query, status, transcript_source, search]);
 };

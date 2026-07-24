@@ -8,6 +8,9 @@ export const EMPTY_LIBRARY_FILTER: LibraryMenuFilters = {
   album: null,
   playlist: null,
   query: null,
+  status: null,
+  transcript_source: null,
+  search: null,
 };
 
 const HOT_FILTERS: Record<string, LibraryMenuFilters> = {

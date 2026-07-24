@@ -5,4 +5,7 @@ export type LibraryMenuFilters = {
   album: string | null;
   playlist: string | null;
   query: string | null;
+  status: string | null;
+  transcript_source: string | null;
+  search: string | null;
 };

@@ -10,6 +10,12 @@ pub struct LibraryMenuFilters {
     pub album: Option<String>,
     pub playlist: Option<String>,
     pub query: Option<String>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub transcript_source: Option<String>,
+    #[serde(default)]
+    pub search: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

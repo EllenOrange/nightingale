@@ -130,6 +130,9 @@ fn append_structural_filters(
     let album = filters.album.as_deref();
     let playlist = filters.playlist.as_deref();
     let query = filters.query.as_deref();
+    let status = filters.status.as_deref();
+    let transcript_source = filters.transcript_source.as_deref();
+    let search = filters.search.as_deref();
 
     // Keep playlist first: its bind is always ?1, allowing the same value to
     // drive both membership filtering and playlist-position ordering.
@@ -173,6 +176,32 @@ fn append_structural_filters(
             "usdx" => where_parts.push("s.transcript_source = 'usdx'".to_string()),
             _ => {}
         }
+    }
+    if let Some(value) = status.filter(|s| !s.is_empty()) {
+        match value {
+            "not_analyzed" => where_parts.push(
+                "s.is_analyzed = 0 AND NOT EXISTS (SELECT 1 FROM analysis_queue aq WHERE aq.file_hash = s.file_hash)"
+                    .to_string(),
+            ),
+            "queued" | "analyzing" | "failed" => {
+                where_parts.push(
+                    "EXISTS (SELECT 1 FROM analysis_queue aq WHERE aq.file_hash = s.file_hash AND aq.status = ?)"
+                        .to_string(),
+                );
+                bind_strings.push(value.to_string());
+            }
+            "analyzed" => where_parts.push("s.is_analyzed = 1".to_string()),
+            _ => {}
+        }
+    }
+    if let Some(source) = transcript_source.filter(|s| !s.is_empty()) {
+        where_parts.push("s.transcript_source = ?".to_string());
+        bind_strings.push(source.to_string());
+    }
+    if let Some(words) = search.and_then(search_words_from_query) {
+        let (where_sql, mut search_binds) = songs_where_like_words(&words);
+        where_parts.push(format!("({where_sql})"));
+        bind_strings.append(&mut search_binds);
     }
 }
 
