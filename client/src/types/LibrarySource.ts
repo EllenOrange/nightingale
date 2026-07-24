@@ -23,6 +23,12 @@ export type LibrarySource =
        * `X-Emby-Authorization` header. Generated once at connect time.
        */
       device_id: string;
+      /**
+       * Ids of the Jellyfin libraries (user views) the scan is restricted
+       * to. Empty means "every library" — preserves the pre-selection
+       * behaviour for configs written before this field existed.
+       */
+      library_ids: Array<string>;
     }
   | {
       kind: "navidrome";

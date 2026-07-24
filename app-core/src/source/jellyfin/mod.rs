@@ -54,6 +54,9 @@ pub struct JellyfinAuth {
     pub user_id: String,
     pub access_token: String,
     pub device_id: String,
+    /// Libraries (user views) to restrict the scan to. Empty means every
+    /// library.
+    pub library_ids: Vec<String>,
 }
 
 impl JellyfinAuth {
@@ -63,6 +66,7 @@ impl JellyfinAuth {
             user_id,
             access_token,
             device_id,
+            library_ids,
             ..
         } = src
         else {
@@ -73,6 +77,7 @@ impl JellyfinAuth {
             user_id: user_id.clone(),
             access_token: access_token.clone(),
             device_id: device_id.clone(),
+            library_ids: library_ids.clone(),
         })
     }
 
@@ -103,6 +108,16 @@ pub struct JellyfinSource {
     download_client: JellyfinClient,
 }
 
+/// Mutable accumulator threaded through a scan so the per-library drain loops
+/// share one dedupe set, batch buffer and progress total.
+struct JellyfinScanState {
+    known: HashSet<String>,
+    known_covers: std::collections::HashMap<String, Option<String>>,
+    seen_ids: Vec<String>,
+    batch: Vec<Song>,
+    expected_total: usize,
+}
+
 impl JellyfinSource {
     pub fn new(auth: JellyfinAuth) -> Self {
         let client = auth.client();
@@ -114,23 +129,108 @@ impl JellyfinSource {
         }
     }
 
-    fn fetch_page(&self, start_index: usize) -> Result<ItemQueryResult, NightingaleError> {
+    fn fetch_page(
+        &self,
+        start_index: usize,
+        parent_id: Option<&str>,
+    ) -> Result<ItemQueryResult, NightingaleError> {
         let path = format!("/Users/{}/Items", self.auth.user_id);
         let limit = PAGE_SIZE.to_string();
         let start = start_index.to_string();
-        self.client.get_json(
-            "list items",
-            &path,
-            &[
-                ("Recursive", "true"),
-                ("IncludeItemTypes", INCLUDE_ITEM_TYPES),
-                ("Fields", ITEM_FIELDS),
-                ("SortBy", "SortName"),
-                ("SortOrder", "Ascending"),
-                ("Limit", &limit),
-                ("StartIndex", &start),
-            ],
-        )
+        let mut query = vec![
+            ("Recursive", "true"),
+            ("IncludeItemTypes", INCLUDE_ITEM_TYPES),
+            ("Fields", ITEM_FIELDS),
+            ("SortBy", "SortName"),
+            ("SortOrder", "Ascending"),
+            ("Limit", limit.as_str()),
+            ("StartIndex", start.as_str()),
+        ];
+        if let Some(parent_id) = parent_id {
+            query.push(("ParentId", parent_id));
+        }
+        self.client.get_json("list items", &path, &query)
+    }
+
+    /// Paginate one recursive item query — either the whole server
+    /// (`parent_id == None`) or a single library — flushing songs into
+    /// `state` as they arrive.
+    fn drain_parent(
+        &self,
+        parent_id: Option<&str>,
+        folder_label: &str,
+        ctx: &ScanContext<'_>,
+        state: &mut JellyfinScanState,
+    ) -> Result<(), NightingaleError> {
+        let mut start_index = 0usize;
+        let mut parent_total = 0usize;
+
+        loop {
+            if !library_db::scan_generation_is_current(ctx.generation) {
+                return Ok(());
+            }
+            let page = self.fetch_page(start_index, parent_id)?;
+            let page_count = page.total_record_count.max(0) as usize;
+            if page_count > 0 && page_count != parent_total {
+                // Fold this library's reported size into the running total so
+                // the progress-bar denominator grows as we discover libraries
+                // instead of resetting per library. Final reconciliation in
+                // `scan` corrects any divergence from actually-seen ids.
+                state.expected_total = state.expected_total - parent_total + page_count;
+                parent_total = page_count;
+                let _ = library_db::update_library_meta(folder_label, state.expected_total);
+            }
+            let received = page.items.len();
+            if received == 0 {
+                break;
+            }
+
+            for item in page.items {
+                if !library_db::scan_generation_is_current(ctx.generation) {
+                    return Ok(());
+                }
+                if item.id.is_empty() {
+                    continue;
+                }
+                state.seen_ids.push(item.id.clone());
+
+                if state.known.contains(&item.id) {
+                    let upstream_tag = item
+                        .image_tags
+                        .as_ref()
+                        .and_then(|t| t.primary.clone())
+                        .filter(|s| !s.is_empty());
+                    let cached_tag = state.known_covers.get(&item.id).cloned().flatten();
+                    if upstream_tag != cached_tag {
+                        let _ = library_db::remote::refresh_remote_cover_for_item(
+                            ORIGIN_KIND,
+                            &item.id,
+                            |item_id| {
+                                upstream_tag
+                                    .as_deref()
+                                    .and_then(|t| self.fetch_cover(ctx.cache, item_id, t))
+                            },
+                        );
+                    }
+                    continue;
+                }
+
+                if let Some(song) = self.build_song(&item, ctx.cache) {
+                    state.batch.push(song);
+                }
+
+                if state.batch.len() >= SCAN_BATCH_SIZE {
+                    flush_batch(&mut state.batch, ctx.generation);
+                }
+            }
+
+            start_index += received;
+            if start_index >= parent_total {
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     fn fetch_playlists(&self) -> Result<Vec<PlaylistDefinition>, NightingaleError> {
@@ -317,93 +417,48 @@ impl MediaSource for JellyfinSource {
 
     fn scan(&self, ctx: &ScanContext<'_>) -> Result<(), NightingaleError> {
         let folder_label = self.label();
-        let known: HashSet<String> =
-            library_db::remote::load_remote_item_ids(ORIGIN_KIND).unwrap_or_default();
-        let known_covers =
-            library_db::remote::load_remote_cover_tags(ORIGIN_KIND).unwrap_or_default();
+        let mut state = JellyfinScanState {
+            known: library_db::remote::load_remote_item_ids(ORIGIN_KIND).unwrap_or_default(),
+            known_covers: library_db::remote::load_remote_cover_tags(ORIGIN_KIND)
+                .unwrap_or_default(),
+            seen_ids: Vec::new(),
+            batch: Vec::new(),
+            expected_total: 0,
+        };
 
-        let mut seen_ids: Vec<String> = Vec::new();
-        let mut batch: Vec<Song> = Vec::new();
-        let mut start_index = 0usize;
-        let mut total_record_count: usize = 0;
-
-        loop {
-            if !library_db::scan_generation_is_current(ctx.generation) {
-                return Ok(());
-            }
-            let page = self.fetch_page(start_index)?;
-            let page_count = page.total_record_count.max(0) as usize;
-            if page_count > 0 {
-                total_record_count = page_count;
-                // Set the progress-bar denominator as soon as the server tells
-                // us the catalogue size. Otherwise `scan_count` stays at the
-                // 0 that `scanner.rs` reset it to and the UI either hides the
-                // bar entirely or renders one with `max=0`. Final reconciliation
-                // below corrects for any divergence between server count and
-                // actually-seen ids.
-                let _ = library_db::update_library_meta(&folder_label, total_record_count);
-            }
-            let received = page.items.len();
-            if received == 0 {
-                break;
-            }
-
-            for item in page.items {
+        // An empty selection means "scan everything" (a single recursive query
+        // with no `ParentId`), which also keeps configs written before library
+        // selection existed working unchanged. Otherwise we run one paginated
+        // recursive query per chosen library.
+        if self.auth.library_ids.is_empty() {
+            self.drain_parent(None, &folder_label, ctx, &mut state)?;
+        } else {
+            for library_id in &self.auth.library_ids {
                 if !library_db::scan_generation_is_current(ctx.generation) {
                     return Ok(());
                 }
-                if item.id.is_empty() {
-                    continue;
-                }
-                seen_ids.push(item.id.clone());
-
-                if known.contains(&item.id) {
-                    let upstream_tag = item
-                        .image_tags
-                        .as_ref()
-                        .and_then(|t| t.primary.clone())
-                        .filter(|s| !s.is_empty());
-                    let cached_tag = known_covers.get(&item.id).cloned().flatten();
-                    if upstream_tag != cached_tag {
-                        let _ = library_db::remote::refresh_remote_cover_for_item(
-                            ORIGIN_KIND,
-                            &item.id,
-                            |item_id| {
-                                upstream_tag
-                                    .as_deref()
-                                    .and_then(|t| self.fetch_cover(ctx.cache, item_id, t))
-                            },
-                        );
-                    }
-                    continue;
-                }
-
-                if let Some(song) = self.build_song(&item, ctx.cache) {
-                    batch.push(song);
-                }
-
-                if batch.len() >= SCAN_BATCH_SIZE {
-                    flush_batch(&mut batch, ctx.generation);
-                }
-            }
-
-            start_index += received;
-            if start_index >= total_record_count {
-                break;
+                self.drain_parent(Some(library_id), &folder_label, ctx, &mut state)?;
             }
         }
 
-        flush_batch(&mut batch, ctx.generation);
+        flush_batch(&mut state.batch, ctx.generation);
+
+        if !library_db::scan_generation_is_current(ctx.generation) {
+            return Ok(());
+        }
 
         info!(
             "[jellyfin] Sync done — saw {} items, server reports {}",
-            seen_ids.len(),
-            total_record_count
+            state.seen_ids.len(),
+            state.expected_total
         );
 
+        let _ = library_db::update_library_meta(
+            &folder_label,
+            state.expected_total.max(state.seen_ids.len()),
+        );
         let _ =
-            library_db::update_library_meta(&folder_label, total_record_count.max(seen_ids.len()));
-        let _ = library_db::remote::delete_remote_songs_not_in_item_ids(ORIGIN_KIND, &seen_ids);
+            library_db::remote::delete_remote_songs_not_in_item_ids(ORIGIN_KIND, &state.seen_ids);
 
         match self.fetch_playlists() {
             Ok(playlists) => {
@@ -469,6 +524,18 @@ pub fn source_cache_path(cache: &CacheDir, file_hash: &str, container: Option<&s
 
 // ─── Authentication ──────────────────────────────────────────────────
 
+/// A Jellyfin library (user view) the user can pick from at connect time.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct JellyfinLibrary {
+    pub id: String,
+    pub name: String,
+    /// Jellyfin's `CollectionType` (e.g. `music`, `movies`, `tvshows`). Absent
+    /// for mixed-content libraries.
+    #[ts(optional)]
+    pub collection_type: Option<String>,
+}
+
 /// Public auth response surfaced to the UI after a successful login.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -479,6 +546,9 @@ pub struct JellyfinLoginResult {
     pub username: String,
     pub access_token: String,
     pub device_id: String,
+    /// Libraries the authenticated user can see, so the connect dialog can let
+    /// them narrow the import. Empty if the listing call failed.
+    pub libraries: Vec<JellyfinLibrary>,
 }
 
 /// Authenticate against a Jellyfin server. Generates a stable per-install
@@ -531,6 +601,10 @@ pub fn login(
     let server_name = fetch_public_info(&authed_client)
         .ok()
         .and_then(|i| i.server_name);
+    let libraries = fetch_libraries(&authed_client, &user_id).unwrap_or_else(|error| {
+        warn!("[jellyfin] failed to list libraries: {error}");
+        Vec::new()
+    });
 
     Ok(JellyfinLoginResult {
         server_url,
@@ -539,7 +613,29 @@ pub fn login(
         username: resolved_username,
         access_token: auth.access_token,
         device_id,
+        libraries,
     })
+}
+
+/// List the user's libraries (collection folders) via `/Users/{id}/Views`.
+fn fetch_libraries(
+    client: &JellyfinClient,
+    user_id: &str,
+) -> Result<Vec<JellyfinLibrary>, NightingaleError> {
+    let path = format!("/Users/{}/Views", urlencoding::encode(user_id));
+    let result: ItemQueryResult = client.get_json("list libraries", &path, &[])?;
+    Ok(result
+        .items
+        .into_iter()
+        .filter(|item| !item.id.is_empty())
+        .map(|item| JellyfinLibrary {
+            name: pick_string(item.name.as_deref(), "Library"),
+            collection_type: item
+                .collection_type
+                .filter(|value| !value.is_empty()),
+            id: item.id,
+        })
+        .collect())
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -660,6 +756,8 @@ struct JellyfinItem {
     media_sources: Option<Vec<JellyfinMediaSource>>,
     #[serde(rename = "ImageTags", default)]
     image_tags: Option<ImageTags>,
+    #[serde(rename = "CollectionType", default)]
+    collection_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

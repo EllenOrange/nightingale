@@ -6,5 +6,11 @@ export type LrclibCandidate = {
   album_name: string;
   duration_secs: number;
   lines: Array<string>;
+  /**
+   * Raw LRC (line-level synced lyrics) from LRCLIB, when available. Exposed
+   * to the frontend so the editor can offer timed lyrics without alignment.
+   * `alias` (not `rename`) so it deserializes from LRCLIB's `syncedLyrics`
+   * but still serializes as `synced_lyrics` for the frontend type.
+   */
   synced_lyrics: string | null;
 };

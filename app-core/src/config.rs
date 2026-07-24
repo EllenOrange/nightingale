@@ -28,6 +28,11 @@ pub enum LibrarySource {
         /// Stable per-install identifier we hand to Jellyfin in the
         /// `X-Emby-Authorization` header. Generated once at connect time.
         device_id: String,
+        /// Ids of the Jellyfin libraries (user views) the scan is restricted
+        /// to. Empty means "every library" — preserves the pre-selection
+        /// behaviour for configs written before this field existed.
+        #[serde(default)]
+        library_ids: Vec<String>,
     },
     Navidrome {
         base_url: String,
@@ -66,6 +71,7 @@ impl std::fmt::Debug for LibrarySource {
                 user_id,
                 username,
                 device_id,
+                library_ids,
                 ..
             } => formatter
                 .debug_struct("Jellyfin")
@@ -74,6 +80,7 @@ impl std::fmt::Debug for LibrarySource {
                 .field("username", username)
                 .field("access_token", &"[REDACTED]")
                 .field("device_id", device_id)
+                .field("library_ids", library_ids)
                 .finish(),
             Self::Navidrome {
                 base_url, username, ..
@@ -119,12 +126,14 @@ impl LibrarySource {
                 username,
                 access_token,
                 device_id,
+                library_ids,
             } => Self::Jellyfin {
                 base_url,
                 user_id,
                 username,
                 access_token: transform(&access_token),
                 device_id,
+                library_ids,
             },
             Self::Navidrome {
                 base_url,

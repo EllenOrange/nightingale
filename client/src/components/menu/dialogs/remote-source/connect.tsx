@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "r
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -36,6 +37,10 @@ type RemoteLoginResult = {
   server_url: string;
 };
 
+type SelectableItem = { id: string; label: string };
+
+type ConnectVariables = RemoteSourceForm & { selectedIds: string[] };
+
 type RemoteSourceConnectDialogProps<TLogin extends RemoteLoginResult> = {
   mode: "jellyfin-connect" | "navidrome-connect";
   title: string;
@@ -45,7 +50,17 @@ type RemoteSourceConnectDialogProps<TLogin extends RemoteLoginResult> = {
   usernameInputId: string;
   passwordInputId: string;
   useLogin: () => UseMutationResult<TLogin, Error, RemoteSourceForm>;
-  useConnect: () => UseMutationResult<{ login: TLogin }, Error, RemoteSourceForm>;
+  useConnect: () => UseMutationResult<{ login: TLogin }, Error, ConnectVariables>;
+  /**
+   * Optional post-test selection step. When the test succeeds and this yields
+   * items, the dialog shows a checkbox list and only enables Connect once at
+   * least one item is picked. The chosen ids are forwarded to `useConnect`.
+   */
+  selection?: {
+    label: string;
+    emptyMessage: ReactNode;
+    getItems: (login: TLogin) => SelectableItem[];
+  };
 };
 
 export const RemoteSourceConnectDialog = <TLogin extends RemoteLoginResult>({
@@ -58,37 +73,48 @@ export const RemoteSourceConnectDialog = <TLogin extends RemoteLoginResult>({
   passwordInputId,
   useLogin,
   useConnect,
+  selection,
 }: RemoteSourceConnectDialogProps<TLogin>) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const { mode, close } = useDialog();
   const open = mode === dialogMode;
 
   const [form, setForm] = useState<RemoteSourceForm>(EMPTY_FORM);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const testMutation = useLogin();
   const connectMutation = useConnect();
 
   // Editing any field resets the test pill back to idle so the user doesn't
   // get a stale green check on credentials that no longer match what they
-  // typed.
+  // typed — and clears any selection made against the old server.
   const updateField =
     <K extends keyof RemoteSourceForm>(key: K) =>
     (e: ChangeEvent<HTMLInputElement>) => {
       setForm((prev) => ({ ...prev, [key]: e.target.value }));
       if (testMutation.status !== "idle") {
         testMutation.reset();
+        setSelectedIds([]);
       }
     };
 
   useEffect(() => {
     if (!open) {
       setForm(EMPTY_FORM);
+      setSelectedIds([]);
       testMutation.reset();
       connectMutation.reset();
     }
     // mutation refs are stable across renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  const selectableItems =
+    selection && testMutation.isSuccess ? selection.getItems(testMutation.data) : [];
+  // Only force a choice when there's actually something to choose. A server
+  // that exposes no libraries (or a failed listing) falls back to importing
+  // everything.
+  const selectionRequired = !!selection && selectableItems.length > 0;
 
   const { focusedIndex } = useDialogNav({
     open,
@@ -102,41 +128,43 @@ export const RemoteSourceConnectDialog = <TLogin extends RemoteLoginResult>({
 
   const isBusy = testMutation.isPending || connectMutation.isPending;
 
-  const submit =
-    <TData,>({
-      mutation,
-      onSuccess,
-      onError,
-    }: {
-      mutation: UseMutationResult<TData, Error, RemoteSourceForm>;
-      onSuccess?: (data: TData) => void;
-      onError?: (error: Error) => void;
-    }) =>
-    () => {
-      if (!canSubmit || isBusy) return;
-      mutation.mutate(
-        {
-          baseUrl: normaliseUrl(form.baseUrl),
-          username: form.username.trim(),
-          password: form.password,
+  const credentials = () => ({
+    baseUrl: normaliseUrl(form.baseUrl),
+    username: form.username.trim(),
+    password: form.password,
+  });
+
+  const handleTest = () => {
+    if (!canSubmit || isBusy) return;
+    testMutation.mutate(credentials(), {
+      onError: (e) => toast.error(`Could not reach server: ${e.message}`),
+    });
+  };
+
+  const canConnect =
+    canSubmit &&
+    !isBusy &&
+    testMutation.isSuccess &&
+    (!selectionRequired || selectedIds.length > 0);
+
+  const handleConnect = () => {
+    if (!canConnect) return;
+    connectMutation.mutate(
+      { ...credentials(), selectedIds },
+      {
+        onSuccess: ({ login }) => {
+          toast.success(`Library now reads from ${login.server_name ?? login.server_url}`);
+          close();
         },
-        { onSuccess, onError },
-      );
-    };
+        onError: (e) => toast.error(`Login failed: ${e.message}`),
+      },
+    );
+  };
 
-  const handleTest = submit({
-    mutation: testMutation,
-    onError: (e) => toast.error(`Could not reach server: ${e.message}`),
-  });
-
-  const handleConnect = submit({
-    mutation: connectMutation,
-    onSuccess: ({ login }) => {
-      toast.success(`Library now reads from ${login.server_name ?? login.server_url}`);
-      close();
-    },
-    onError: (e) => toast.error(`Login failed: ${e.message}`),
-  });
+  const toggleSelected = (id: string, checked: boolean) =>
+    setSelectedIds((current) =>
+      checked ? [...current, id] : current.filter((existing) => existing !== id),
+    );
 
   const reachedHost = testMutation.data?.server_name ?? testMutation.data?.server_url;
 
@@ -206,6 +234,28 @@ export const RemoteSourceConnectDialog = <TLogin extends RemoteLoginResult>({
               />
             </Field>
           </FieldGroup>
+          {selection && testMutation.isSuccess && (
+            <div className="space-y-2">
+              <Label>{selection.label}</Label>
+              {selectableItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{selection.emptyMessage}</p>
+              ) : (
+                <div className="flex max-h-48 flex-wrap content-start gap-x-4 gap-y-2 overflow-y-auto overscroll-contain">
+                  {selectableItems.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        className="after:inset-0"
+                        checked={selectedIds.includes(item.id)}
+                        onCheckedChange={(checked) => toggleSelected(item.id, checked === true)}
+                        disabled={isBusy}
+                      />
+                      {item.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <DialogFooter>
             <div
               ref={containerRef}
@@ -243,7 +293,7 @@ export const RemoteSourceConnectDialog = <TLogin extends RemoteLoginResult>({
                 <TooltipContent>{testState.tooltip}</TooltipContent>
               </Tooltip>
               <Button
-                disabled={!canSubmit || isBusy || !testMutation.isSuccess}
+                disabled={!canConnect}
                 onClick={handleConnect}
                 className={cn(
                   "focus-visible:ring-0 focus-visible:border-transparent",

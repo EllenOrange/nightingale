@@ -142,9 +142,9 @@ export const useConnectJellyfin = () => {
   return useMutation<
     { config: AppConfig; login: JellyfinLoginResult },
     Error,
-    { baseUrl: string; username: string; password: string }
+    { baseUrl: string; username: string; password: string; selectedIds: string[] }
   >({
-    mutationFn: async (params) => {
+    mutationFn: async ({ selectedIds, ...params }) => {
       const login = await jellyfinLogin(params);
       const config = await setLibrarySource({
         kind: "jellyfin",
@@ -153,6 +153,7 @@ export const useConnectJellyfin = () => {
         username: login.username,
         access_token: login.access_token,
         device_id: login.device_id,
+        library_ids: selectedIds,
       });
       return { config, login };
     },
@@ -200,9 +201,9 @@ export const useConnectNavidrome = () => {
   return useMutation<
     { config: AppConfig; login: NavidromeLoginResult },
     Error,
-    { baseUrl: string; username: string; password: string }
+    { baseUrl: string; username: string; password: string; selectedIds: string[] }
   >({
-    mutationFn: async (params) => {
+    mutationFn: async ({ selectedIds: _selectedIds, ...params }) => {
       const login = await navidromeLogin(params);
       const config = await setLibrarySource({
         kind: "navidrome",

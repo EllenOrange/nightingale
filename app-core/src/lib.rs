@@ -49,8 +49,8 @@ pub use source::{
     JellyfinAuth, JellyfinSource, MediaSource, NavidromeAuth, NavidromeSource, PlexAuth,
     PlexSource, SourceKind, active_source,
     jellyfin::{
-        JellyfinHealth, JellyfinLoginResult, login as jellyfin_login, ping as jellyfin_ping,
-        ping_current as jellyfin_ping_current,
+        JellyfinHealth, JellyfinLibrary, JellyfinLoginResult, login as jellyfin_login,
+        ping as jellyfin_ping, ping_current as jellyfin_ping_current,
     },
     navidrome::{
         NavidromeHealth, NavidromeLoginResult, login as navidrome_login, ping as navidrome_ping,

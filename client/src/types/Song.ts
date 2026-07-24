@@ -21,5 +21,10 @@ export type Song = {
   is_video: boolean;
   usdx: UsdxBundle | null;
   origin: SongOrigin;
+  /**
+   * True when the song was made playable from provided LRC without stem
+   * separation: playback uses the original mix and the guide control is
+   * hidden. Defaults to `false` for stem-separated songs.
+   */
   no_stems: boolean;
 };

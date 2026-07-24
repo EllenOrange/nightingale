@@ -17,5 +17,12 @@ export const JellyfinConnectDialog = () => (
     passwordInputId="jelly-pass"
     useLogin={useJellyfinLogin}
     useConnect={useConnectJellyfin}
+    selection={{
+      label: "Libraries to import",
+      emptyMessage:
+        "This server didn't report any libraries, so everything the account can see will be imported.",
+      getItems: (login) =>
+        login.libraries.map((library) => ({ id: library.id, label: library.name })),
+    }}
   />
 );
