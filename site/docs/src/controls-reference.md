@@ -28,12 +28,17 @@ While a song is playing:
 - **R**: Toggle mic monitoring (live monitor during playback)
 - **F11**: Toggle fullscreen
 
-## Song List Controls
+## Song List and Details Controls
 
-After a song is analyzed, you can use the on-row controls to shift:
+Use the song-list toolbar to switch between table and grid views, filter by analysis status or lyric source, and queue **Analyze All** for the current filtered view. Select a row or card to open its details sidebar before playback.
 
+For an analyzed song, the details sidebar provides:
+
+- **Play**: start playback with the selected settings
 - **Tempo**: adjust playback speed in small steps
 - **Key**: transpose to a more comfortable vocal range
+- **Lyrics and language actions**: edit or replace lyrics and correct the song language
+- **Analysis actions**: start, retry, or refresh available analysis steps
 
 ## Skip Buttons
 

@@ -43,9 +43,10 @@ Use Jellyfin when your music or music videos live on a Jellyfin server.
 1. Click the Jellyfin button in the **Library** sidebar section.
 2. Enter your server URL, username, and password.
 3. Click **Test connection**.
-4. Click **Connect**.
+4. Choose one or more music libraries.
+5. Click **Connect**.
 
-After connecting, Nightingale lists songs and videos from Jellyfin in your library. Cover art loads as needed. When you analyze or play a song that needs processing, Nightingale downloads the original media once into its local cache. Later analyses reuse that cached copy.
+After connecting, Nightingale lists songs and videos from the selected Jellyfin libraries. Cover art loads as needed. When you analyze or play a song that needs processing, Nightingale downloads the original media once into its local cache. Later analyses reuse that cached copy.
 
 Connection status appears on the Jellyfin button:
 

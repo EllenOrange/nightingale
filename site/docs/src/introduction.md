@@ -12,7 +12,7 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 ## Key Features
 
 - **Stem Separation** — isolates lead vocals from instrumentals
-- **Word-Level Lyrics** — automatic transcription with alignment
+- **Word-Level Lyrics** — automatic transcription with alignment, LRCLIB matches, or your own timed LRC / Enhanced LRC and plain lyrics
 - **CJK Lyrics** — Japanese / Chinese / Cantonese / Korean songs get per-character forced alignment and romanized readings (Hepburn, pinyin, Jyutping, Revised Romanization) above each token
 - **Pluggable ASR** — Whisper (default) or Parakeet v3 (experimental, ~25 European languages)
 - **UltraStar Deluxe Songs (experimental)** — drop USDX folders into your library and play them with their built-in pitch + lyric data
@@ -21,7 +21,8 @@ Ships as a single binary. No manual installation of Python, ffmpeg, or ML models
 - **Profiles** — per-player score tracking
 - **Video Files** — use video files with synchronized background playback
 - **Audio-Reactive Backgrounds** — 10 GPU shaders that react to your mic, 5 Pixabay video flavors, source-video for video files
-- **Sidebar Filters, Playlists + Analyze All** — browse artists, albums, and existing folder/Plex/Jellyfin/Navidrome playlists, then batch-analyze the current selection or enable auto-analysis after scans
+- **Redesigned Song Browser** — switch between table and artwork-grid views, then open a dedicated details sidebar to review status, adjust key/tempo, manage lyrics, and start playback
+- **Sidebar Filters, Playlists + Analyze All** — combine search with artist, album, playlist, analysis-status, and lyric-source filters; browse existing folder/Plex/Jellyfin/Navidrome playlists; then batch-analyze the current selection or enable auto-analysis after scans
 - **Mic Monitoring + Latency Test** — optional live mic monitoring with adjustable gain (0–200%) and calibration
 - **Flexible Storage** — split cache, videos, models, and vendor tools into separate folders
 - **Gamepad + Touch Support** — full gamepad navigation and touch playback controls

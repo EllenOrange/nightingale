@@ -43,7 +43,7 @@ export const SONG_COLUMNS: SongColumn[] = [
   },
   {
     id: "band",
-    header: "Band",
+    header: "Artist",
     thClassName: "song-table__band px-2 py-2 font-medium",
     tdClassName: "song-table__band px-2 py-2 text-muted-foreground",
     cell: (song) => <span className="block truncate">{song.artist || "—"}</span>,

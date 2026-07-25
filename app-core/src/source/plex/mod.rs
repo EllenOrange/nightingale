@@ -629,6 +629,7 @@ pub fn manual_login(
         "Plex account",
         true,
         None,
+        false,
     )
 }
 
@@ -751,6 +752,7 @@ fn discover_servers(
                 username,
                 resource.owned,
                 Some((&resource.name, &resource.client_identifier)),
+                true,
             ) {
                 Ok(server) => {
                     servers.push(server);
@@ -782,8 +784,13 @@ fn probe_server(
     username: &str,
     owned: bool,
     resource_identity: Option<(&str, &str)>,
+    advertised: bool,
 ) -> Result<PlexServer, NightingaleError> {
-    let client = PlexClient::new(base_url, token, client_id);
+    let client = if advertised {
+        PlexClient::for_discovery(base_url, token, client_id)
+    } else {
+        PlexClient::new(base_url, token, client_id)
+    };
     let identity: IdentityEnvelope = client.get_json("verify server", "/identity", &[])?;
     let root: Option<IdentityEnvelope> = client.get_json("read server info", "/", &[]).ok();
     let machine_id = identity

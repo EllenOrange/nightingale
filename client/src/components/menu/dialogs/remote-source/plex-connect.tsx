@@ -43,6 +43,7 @@ export const PlexConnectDialog = () => {
   const [manualUrl, setManualUrl] = useState("");
   const [manualToken, setManualToken] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signInPhase, setSignInPhase] = useState<"waiting" | "discovering">("waiting");
   const polling = useRef(false);
   const connect = useConnectPlex();
 
@@ -71,6 +72,7 @@ export const PlexConnectDialog = () => {
     setManualUrl("");
     setManualToken("");
     setBusy(false);
+    setSignInPhase("waiting");
     connect.reset();
     // mutation refs are stable across renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,9 +89,16 @@ export const PlexConnectDialog = () => {
     const poll = async () => {
       if (polling.current) return;
       polling.current = true;
+      const discoveryTimer = window.setTimeout(() => {
+        if (!cancelled) setSignInPhase("discovering");
+      }, 1_500);
       try {
         const result = await plexPollPin({ pinId: pin.pin_id, clientId: pin.client_id });
-        if (cancelled || !result.authorized) return;
+        if (cancelled) return;
+        if (!result.authorized) {
+          setSignInPhase("waiting");
+          return;
+        }
         setPin(null);
         setServers(result.servers);
         setServerIndex(0);
@@ -102,6 +111,7 @@ export const PlexConnectDialog = () => {
           setPin(null);
         }
       } finally {
+        window.clearTimeout(discoveryTimer);
         polling.current = false;
       }
     };
@@ -178,10 +188,25 @@ export const PlexConnectDialog = () => {
         </DialogHeader>
 
         {servers.length === 0 && !advanced && pin && (
-          <p className="-mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2Icon className="size-3.5 animate-spin" />
-            Waiting for Plex authorization (code {pin.code})…
-          </p>
+          <div
+            className="-mt-2 flex items-start gap-2 rounded-md bg-muted px-3 py-2.5 text-xs"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2Icon className="mt-0.5 size-3.5 shrink-0 animate-spin text-primary" />
+            <div className="space-y-0.5">
+              <p className="font-medium text-foreground">
+                {signInPhase === "waiting"
+                  ? "Waiting for approval in Plex…"
+                  : "Signed in. Looking for your Plex server…"}
+              </p>
+              <p className="text-muted-foreground">
+                {signInPhase === "waiting"
+                  ? `Approve code ${pin.code} in the browser. You can keep using this window.`
+                  : "Checking the addresses Plex advertised. Slow or unreachable addresses can take a moment."}
+              </p>
+            </div>
+          </div>
         )}
 
         {servers.length === 0 && advanced && (

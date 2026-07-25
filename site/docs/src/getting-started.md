@@ -52,15 +52,24 @@ This process takes a few minutes and shows a progress screen. After setup comple
 
 When prompted, select your music folder. Nightingale scans it for supported audio and video files. You can change this folder later from the sidebar actions menu.
 
+## Browsing and Playing Songs
+
+Use the song-list toolbar to switch between a compact table and an artwork grid. Search combines with sidebar selections and the toolbar's analysis-status and lyric-source filters, so you can narrow the library without losing context.
+
+Select a song to open its details sidebar before playback. From there you can review the cover, metadata, and analysis state; adjust key and tempo; edit or provide lyrics; run analysis actions; or press **Play**. Nightingale restores the selected song and scroll position when you return from playback.
+
 ## Analysis
 
-Before a song can be played as karaoke, it needs to be analyzed:
+Before most songs can be played as karaoke, they need to be analyzed:
 
-1. Select a song from the library
-2. Analysis runs automatically (stem separation → lyrics → transcription)
-3. Results are cached — subsequent plays are instant
+1. Select a song from the library to open its details sidebar.
+2. Start analysis from the available action.
+3. Nightingale separates stems, finds or transcribes lyrics, and aligns their timing.
+4. Results are cached — subsequent plays are instant.
 
-You can also batch analysis with **Analyze All** from the song list toolbar, or enable **Settings → Analysis → Auto-analyze** to queue newly discovered unanalyzed songs after each scan.
+Timed LRC / Enhanced LRC and UltraStar songs can skip some or all of this pipeline. See [Lyrics & Transcription](./lyrics.md#editing--providing-lyrics) and [UltraStar Deluxe](./usdx.md).
+
+You can also batch analysis with **Analyze All** from the song list toolbar, or enable **Settings → Analysis → Auto-analyze** to queue newly discovered unanalyzed songs after each scan. **Analyze All** respects the active search, sidebar selection, status filter, and lyric-source filter.
 
 <!-- TODO: screenshot of the song library with a mix of analyzed/queued/not-analyzed songs -->
 

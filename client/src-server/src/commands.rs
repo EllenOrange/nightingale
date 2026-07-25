@@ -174,7 +174,9 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
                 client_id: Option<String>,
             }
             let args: Args = deserialize(payload)?;
-            let result = app_core::plex_begin_pin(args.client_id)
+            let result = tokio::task::spawn_blocking(move || app_core::plex_begin_pin(args.client_id))
+                .await
+                .map_err(blocking_task_err)?
                 .map_err(|error| ApiError::bad_request(error.to_string()))?;
             Ok(serde_json::to_value(result).map_err(serde_err)?)
         }
@@ -186,8 +188,12 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
                 client_id: String,
             }
             let args: Args = deserialize(payload)?;
-            let result = app_core::plex_poll_pin(&args.pin_id, &args.client_id)
-                .map_err(|error| ApiError::bad_request(error.to_string()))?;
+            let result = tokio::task::spawn_blocking(move || {
+                app_core::plex_poll_pin(&args.pin_id, &args.client_id)
+            })
+            .await
+            .map_err(blocking_task_err)?
+            .map_err(|error| ApiError::bad_request(error.to_string()))?;
             Ok(serde_json::to_value(result).map_err(serde_err)?)
         }
         "plex_manual_login" => {
@@ -200,12 +206,20 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
                 client_id: Option<String>,
             }
             let args: Args = deserialize(payload)?;
-            let result =
+            let result = tokio::task::spawn_blocking(move || {
                 app_core::plex_manual_login(&args.base_url, &args.access_token, args.client_id)
-                    .map_err(|error| ApiError::bad_request(error.to_string()))?;
+            })
+            .await
+            .map_err(blocking_task_err)?
+            .map_err(|error| ApiError::bad_request(error.to_string()))?;
             Ok(serde_json::to_value(result).map_err(serde_err)?)
         }
-        "plex_ping" => Ok(serde_json::to_value(app_core::plex_ping_current()).map_err(serde_err)?),
+        "plex_ping" => {
+            let result = tokio::task::spawn_blocking(app_core::plex_ping_current)
+                .await
+                .map_err(blocking_task_err)?;
+            Ok(serde_json::to_value(result).map_err(serde_err)?)
+        }
         "load_songs" => {
             #[derive(Deserialize)]
             struct Args {
@@ -367,6 +381,10 @@ async fn dispatch(events: std::sync::Arc<EventBus>, name: &str, payload: Value) 
 
 fn serde_err(e: serde_json::Error) -> ApiError {
     ApiError::internal(format!("serialise: {e}"))
+}
+
+fn blocking_task_err(error: tokio::task::JoinError) -> ApiError {
+    ApiError::internal(format!("blocking command failed: {error}"))
 }
 
 fn deserialize<T: for<'de> Deserialize<'de>>(value: Value) -> Result<T, ApiError> {

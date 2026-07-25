@@ -60,6 +60,26 @@ impl PlexClient {
         }
     }
 
+    /// Short timeouts for probing Plex-advertised alternatives. Discovery may
+    /// include stale LAN, WAN, and relay addresses; one dead address must not
+    /// hold the sign-in flow for the normal request timeout.
+    pub fn for_discovery(
+        base_url: impl Into<String>,
+        token: impl Into<String>,
+        client_id: impl Into<String>,
+    ) -> Self {
+        let config = ureq::Agent::config_builder()
+            .timeout_connect(Some(Duration::from_secs(3)))
+            .timeout_recv_response(Some(Duration::from_secs(8)))
+            .build();
+        Self {
+            agent: Agent::new_with_config(config),
+            base_url: trim_base_url(&base_url.into()),
+            token: Arc::from(token.into()),
+            client_id: Arc::from(client_id.into()),
+        }
+    }
+
     pub fn base_url(&self) -> &str {
         &self.base_url
     }
@@ -144,8 +164,11 @@ impl PlexClient {
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
+        // Tell PMS this is an original-file download, not an ad-hoc playback
+        // request. Without this flag Plex may try to make a streaming decision
+        // and return 5xx for otherwise downloadable audio.
         let response = self
-            .authed_get(path, &[])?
+            .authed_get(path, &[("download", "1")])?
             .call()
             .map_err(|error| NightingaleError::plex(stage, error))?;
         let temporary = dest.with_extension("part");

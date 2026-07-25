@@ -21,10 +21,11 @@ below.
 
 - Provide your own lyrics — paste timed **LRC / Enhanced LRC** to skip transcription (optionally skipping stem separation to play over the original mix), or plain lyrics to run alignment. Available on un-analyzed songs via a new **Provide LRC** action and in the existing lyrics editor; LRCLIB matches now include plain-text results. No-stems songs still detect key for key/tempo shifts, hide the guide control, and score pitch against the original mix (flagged as less accurate).
 - Plex Media Server provider — authorize through Plex's hosted PIN flow with account server discovery, or connect a LAN-only PMS directly with its URL and token. Choose one or more music libraries; Nightingale syncs their tracks and associated playable clips, metadata, covers, and read-only audio playlists. Playback and analysis lazily cache original media, video uses the authenticated range proxy, and every normal provider request goes directly to the selected PMS rather than app.plex.tv. Tokens are encrypted at rest and never placed in frontend media URLs.
-- Read-only playlist navigation — the sidebar now imports existing Jellyfin and Navidrome playlists, plus `.m3u`, `.m3u8`, and `.pls` files from folder libraries. Playlist order is preserved, relative local paths are resolved from the playlist file, and missing library entries are skipped.
+- Playlist browsing — open existing Plex, Jellyfin, Navidrome, `.m3u`, `.m3u8`, and `.pls` playlists from the sidebar.
 
 ### Improvements
 
+- Redesigned song browser — switch between a compact table and an artwork-first grid, scan clearer status and metadata at a glance, and select a song to open a dedicated details sidebar before playback. The sidebar brings the cover, analysis state, key/tempo controls, lyrics and language tools, analysis actions, and Play button into one focused view.
 - Jellyfin library selection — choose which Jellyfin music libraries Nightingale syncs instead of importing every library.
 - Analysis queue navigation — Quick Filters now includes a **Queued** view that shows the active track first followed by pending tracks in queue order. Sidebar counts use one compact segmented badge for total, queued, analysing, and analysed tracks, with matching status colors on song cards.
 - Song list filtering — the responsive top toolbar can filter songs by analysis status and transcript type (**Generated**, **AI Aligned**, or **LRC**). Filters combine with search and sidebar selections, and **Analyze all** now respects the complete filtered view.
