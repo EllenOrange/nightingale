@@ -49,20 +49,28 @@ export const SongList = () => {
     songKey(lastSelectedSongRef.current) === selectedKey
       ? lastSelectedSongRef.current
       : null);
-  const isFirstFilterRun = useRef(true);
+  const filterKey = JSON.stringify([
+    search,
+    artist,
+    album,
+    playlist,
+    query,
+    status,
+    transcript_source,
+  ]);
+  const previousFilterKeyRef = useRef(filterKey);
   const songsRef = useRef(songs);
   const sentinelRef = useRef<HTMLDivElement>(null);
   songsRef.current = songs;
 
   useEffect(() => {
-    if (isFirstFilterRun.current) {
-      isFirstFilterRun.current = false;
-      return;
-    }
+    if (previousFilterKeyRef.current === filterKey) return;
+    previousFilterKeyRef.current = filterKey;
+
     setSelectedKey(null);
     resetScroll();
     setFocus((previous) => ({ ...previous, songIndex: 0 }));
-  }, [search, artist, album, playlist, query, status, transcript_source, resetScroll, setFocus]);
+  }, [filterKey, resetScroll, setFocus]);
 
   useEffect(() => {
     selectedSongKeyRef.current = selectedKey;
