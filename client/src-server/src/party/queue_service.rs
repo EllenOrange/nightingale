@@ -117,6 +117,13 @@ struct AddArgs {
     file_hash: Option<String>,
     #[serde(default)]
     requested_by: Option<String>,
+    /// Canonical title/artist for a YouTube pick chosen via LRCLIB search. Shown
+    /// on the queue entry and written onto the song after download so the
+    /// analyzer's LRCLIB match is guaranteed.
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    artist: Option<String>,
 }
 
 pub async fn party_queue_add(state: &AppState, payload: Value) -> CmdResult {
@@ -157,8 +164,15 @@ pub async fn party_queue_add(state: &AppState, payload: Value) -> CmdResult {
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        // YouTube query: title starts as the query, refined once resolved.
-        (Some(q.to_string()), None, q.to_string(), String::new(), QueueStatus::Queued)
+        // YouTube query. If the guest chose it via LRCLIB search we have a
+        // canonical title/artist; otherwise the title starts as the raw query
+        // and is refined once the download is scanned.
+        let clean = |o: &Option<String>| {
+            o.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+        };
+        let title = clean(&args.title).unwrap_or_else(|| q.to_string());
+        let artist = clean(&args.artist).unwrap_or_default();
+        (Some(q.to_string()), None, title, artist, QueueStatus::Queued)
     } else {
         return Err(ApiError(
             axum::http::StatusCode::BAD_REQUEST,
@@ -388,6 +402,18 @@ async fn process_entry(state: &AppState, id: &str) {
             return;
         }
     };
+
+    // If the guest chose this via LRCLIB search, stamp the canonical
+    // artist/title onto the scanned song BEFORE analysis, so the analyzer's own
+    // LRCLIB lookup (which keys on these fields) matches even if the video's
+    // embedded tags are poor.
+    if !entry.artist.is_empty() {
+        let (h, title, artist) = (hash.clone(), entry.title.clone(), entry.artist.clone());
+        let _ = tokio::task::spawn_blocking(move || {
+            app_core::set_song_metadata(&h, &title, &artist);
+        })
+        .await;
+    }
 
     // Already analyzed (idempotent re-add of a known song)?
     if app_core::song_by_hash(&hash)

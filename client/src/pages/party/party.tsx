@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { loadSongs } from "@/bridge/songs";
 import { partyQueueAdd } from "@/bridge/party";
 import { usePartyQueue } from "@/hooks/party/use-party-queue";
+import { OnlineSearch } from "./online-search";
 import type { Song } from "@/types/Song";
 import type { QueueEntry, QueueStatus } from "@/types/party";
 
@@ -109,6 +110,7 @@ export const Party = () => {
   const [searching, setSearching] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showOnline, setShowOnline] = useState(false);
   const searchSeq = useRef(0);
 
   const queue = usePartyQueue();
@@ -156,8 +158,7 @@ export const Party = () => {
     try {
       await partyQueueAdd({ fileHash: song.file_hash, requestedBy: name ?? "Guest" });
       flash(`Added "${song.title}"`);
-      setSearch("");
-      setResults([]);
+      resetSearch();
     } catch (e) {
       flash(`Could not add: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -165,20 +166,10 @@ export const Party = () => {
     }
   };
 
-  const requestFromYouTube = async () => {
-    const term = search.trim();
-    if (!term) return;
-    setAdding("__yt__");
-    try {
-      await partyQueueAdd({ query: term, requestedBy: name ?? "Guest" });
-      flash(`Requested "${term}" from YouTube`);
-      setSearch("");
-      setResults([]);
-    } catch (e) {
-      flash(`Could not request: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setAdding(null);
-    }
+  const resetSearch = () => {
+    setSearch("");
+    setResults([]);
+    setShowOnline(false);
   };
 
   if (!name) {
@@ -220,9 +211,21 @@ export const Party = () => {
             {!searching && results.length === 0 && (
               <p className="text-muted-foreground px-1 text-sm">Not in your library.</p>
             )}
-            <Button variant="secondary" disabled={adding === "__yt__"} onClick={requestFromYouTube}>
-              {adding === "__yt__" ? "Requesting…" : `Request “${search.trim()}” from YouTube`}
-            </Button>
+
+            {showOnline ? (
+              <OnlineSearch
+                query={search}
+                requestedBy={name ?? "Guest"}
+                onAdded={(label) => {
+                  flash(`Requested "${label}"`);
+                  resetSearch();
+                }}
+              />
+            ) : (
+              <Button variant="secondary" onClick={() => setShowOnline(true)}>
+                Search online for “{search.trim()}”
+              </Button>
+            )}
           </div>
         )}
       </div>

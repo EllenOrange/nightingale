@@ -180,7 +180,7 @@ fn ffmpeg_path() -> PathBuf {
 /// bare `yt-dlp` on PATH, then the per-user WinGet package location (where it
 /// installs without a PATH shim on this machine). Returns the string to pass to
 /// `Command::new`.
-fn resolve_ytdlp() -> Option<String> {
+pub(crate) fn resolve_ytdlp() -> Option<String> {
     if let Ok(p) = std::env::var("NIGHTINGALE_YTDLP") {
         let p = p.trim();
         if !p.is_empty() {
@@ -230,6 +230,9 @@ fn build_ytdlp_args(query: &str, library_dir: &Path, ffmpeg: &Path) -> Vec<Strin
         .into_owned();
 
     vec![
+        // UTF-8 output so unicode in the printed final path survives on Windows.
+        "--encoding".to_string(),
+        "utf-8".to_string(),
         // Best video + best audio, preferring <=1080p, muxed to mp4.
         "-f".to_string(),
         "bv*+ba/b".to_string(),
@@ -397,6 +400,13 @@ mod tests {
     fn always_embeds_metadata() {
         assert!(args_for("never gonna give you up").contains(&"--embed-metadata".to_string()));
         assert!(args_for("https://youtu.be/dQw4w9WgXcQ").contains(&"--embed-metadata".to_string()));
+    }
+
+    #[test]
+    fn forces_utf8_encoding() {
+        let args = args_for("some song");
+        let i = args.iter().position(|a| a == "--encoding").expect("--encoding present");
+        assert_eq!(args[i + 1], "utf-8");
     }
 
     // T2.1: the output template must live under the library directory.

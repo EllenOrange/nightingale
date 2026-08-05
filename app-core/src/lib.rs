@@ -31,8 +31,8 @@ pub use library_db::{init_library, library_db_path};
 pub use library_menu::{LibraryMenuItem, LibraryMenuItems, load_library_menu_items};
 pub use library_model::{LibraryMenuFilters, LoadSongsParams, SongsMeta, SongsStore};
 pub use lyrics::{
-    LrclibCandidate, LyricsFile, apply_timed_lyrics, load_lyrics_file, provide_lrc,
-    save_lyrics_and_realign, search_lrclib_for_hash,
+    LrclibCandidate, LrclibSearchResult, LyricsFile, apply_timed_lyrics, load_lyrics_file,
+    provide_lrc, save_lyrics_and_realign, search_lrclib_for_hash, search_lrclib_query,
 };
 pub use media_server::MediaEndpoint;
 pub use playback::{
@@ -97,4 +97,16 @@ pub fn startup() -> Result<(), String> {
 /// `Song` for the frontend.
 pub fn song_by_hash(file_hash: &str) -> Option<Song> {
     library_db::load_song_by_hash(file_hash).ok().flatten()
+}
+
+/// Overwrite a song's title/artist. The party layer calls this after
+/// downloading a YouTube pick, using the canonical artist/title the guest chose
+/// from LRCLIB, so the analyzer's own LRCLIB lookup (which keys on these fields)
+/// matches even when the source video's embedded tags are poor.
+pub fn set_song_metadata(file_hash: &str, title: &str, artist: &str) {
+    if let Some(mut song) = library_db::load_song_by_hash(file_hash).ok().flatten() {
+        song.title = title.to_string();
+        song.artist = artist.to_string();
+        let _ = library_db::update_song_fields(file_hash, &song);
+    }
 }

@@ -25,3 +25,23 @@ export interface QueueEntry {
 export interface PartyQueue {
   entries: QueueEntry[];
 }
+
+// A lyric-available track from LRCLIB (snake_case, matching the Rust struct).
+export interface LrclibSearchResult {
+  track_name: string;
+  artist_name: string;
+  album_name: string;
+  duration_secs: number;
+  has_synced: boolean;
+  has_plain: boolean;
+}
+
+// A YouTube search hit (camelCase, matching the Rust serde rename).
+export interface YoutubeCandidate {
+  videoId: string;
+  url: string;
+  title: string;
+  channel: string;
+  durationSecs: number | null;
+  thumbnail: string;
+}

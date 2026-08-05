@@ -135,6 +135,72 @@ pub fn search_lrclib_for_hash(file_hash: &str) -> Vec<LrclibCandidate> {
     lrclib_candidates(&song)
 }
 
+/// A lightweight LRCLIB search hit for the party layer's "not in my library"
+/// flow: enough to show and disambiguate a track, without shipping the whole
+/// lyric body to the browser.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct LrclibSearchResult {
+    pub track_name: String,
+    pub artist_name: String,
+    pub album_name: String,
+    pub duration_secs: f64,
+    pub has_synced: bool,
+    pub has_plain: bool,
+}
+
+/// Free-text LRCLIB search (`/api/search?q=`). Returns only tracks that actually
+/// carry lyrics, so the party layer can gate downloads on lyric availability.
+pub fn search_lrclib_query(query: &str) -> Vec<LrclibSearchResult> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let agent = ureq::Agent::new_with_defaults();
+    let url = format!(
+        "https://lrclib.net/api/search?q={}",
+        urlencoding::encode(query)
+    );
+    let resp = match agent
+        .get(&url)
+        .header("User-Agent", "Nightingale/1.0")
+        .call()
+    {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("[lrclib] Query search failed: {e}");
+            return Vec::new();
+        }
+    };
+    let results: Vec<LrclibCandidate> = match resp.into_body().read_json() {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("[lrclib] Failed to parse query results: {e}");
+            return Vec::new();
+        }
+    };
+
+    results
+        .into_iter()
+        .filter_map(|r| {
+            let has_plain = !r.plain_lyrics.is_empty();
+            let has_synced = r.synced_lyrics.as_deref().is_some_and(|s| !s.trim().is_empty());
+            if !has_plain && !has_synced {
+                return None;
+            }
+            Some(LrclibSearchResult {
+                track_name: r.track_name,
+                artist_name: r.artist_name,
+                album_name: r.album_name,
+                duration_secs: r.duration_secs,
+                has_synced,
+                has_plain,
+            })
+        })
+        .collect()
+}
+
 pub fn load_lyrics_file(file_hash: &str) -> Option<LyricsFile> {
     let cache = CacheDir::new();
     let path = cache.lyrics_path(file_hash);

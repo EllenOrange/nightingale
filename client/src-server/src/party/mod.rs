@@ -18,6 +18,7 @@ pub mod playback;
 pub mod qr;
 pub mod queue;
 pub mod queue_service;
+pub mod search;
 
 /// Route a `party_*` command. Returns `Err(NOT_FOUND)` for an unknown party
 /// command so a typo surfaces instead of silently succeeding.
@@ -26,6 +27,8 @@ pub async fn dispatch(state: &AppState, name: &str, payload: Value) -> CmdResult
         "party_play" => playback::party_play(state, payload).await,
         "party_song_by_hash" => playback::party_song_by_hash(payload).await,
         "party_ingest" => ingest::party_ingest(state, payload).await,
+        "party_search_lrclib" => search::party_search_lrclib(payload).await,
+        "party_youtube_candidates" => search::party_youtube_candidates(payload).await,
         "party_queue_list" => queue_service::party_queue_list(state).await,
         "party_queue_add" => queue_service::party_queue_add(state, payload).await,
         "party_queue_remove" => queue_service::party_queue_remove(state, payload).await,

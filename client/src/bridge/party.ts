@@ -1,8 +1,16 @@
 // Typed wrappers for the party-layer commands. Thin over `invoke` so the pages
 // don't repeat command-name strings.
 
-import type { PartyQueue, QueueEntry } from "@/types/party";
+import type { LrclibSearchResult, PartyQueue, QueueEntry, YoutubeCandidate } from "@/types/party";
 import { invoke } from "./runtime";
+
+// ── Online search (songs not in the local library) ──────────────────────────
+
+export const partySearchLrclib = (query: string): Promise<LrclibSearchResult[]> =>
+  invoke("party_search_lrclib", { query });
+
+export const partyYoutubeCandidates = (query: string, limit = 8): Promise<YoutubeCandidate[]> =>
+  invoke("party_youtube_candidates", { query, limit });
 
 export const partyQueueList = (): Promise<PartyQueue> => invoke<PartyQueue>("party_queue_list");
 
@@ -10,6 +18,9 @@ export interface AddToQueueArgs {
   query?: string;
   fileHash?: string;
   requestedBy?: string;
+  /** Canonical title/artist for a YouTube pick chosen via LRCLIB search. */
+  title?: string;
+  artist?: string;
 }
 
 export const partyQueueAdd = (args: AddToQueueArgs): Promise<{ id: string; entry: QueueEntry }> =>

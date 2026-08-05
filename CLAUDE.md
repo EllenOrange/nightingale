@@ -297,6 +297,16 @@ Step 5 (PHASE1_PLAN.md) is **done and validated**, completing the Phase 1 MVP.
 
 **Phase 1 MVP is complete.** A guest on a phone adds a song (library or YouTube), it downloads + separates (Demucs) + LRCLIB-aligns, plays on the TV with synced lyrics, and the queue auto-advances; the host has an admin panel and the TV shows a scannable lobby between songs. Remaining brief items are Phase 2/3 (scoring surface, key change live, dedupe, deployment/mDNS/HTTPS).
 
+### Online song search (LRCLIB-gated -> YouTube pick), post-MVP
+
+A key owner requirement: from the web client, search for songs **not** in the library. Only offer songs that exist in the lyrics DB (so they will karaoke well), then let the guest choose which YouTube video to download.
+
+- **Flow:** guest types a song, the guest page's local-library search comes up empty, they tap "Search online". Step 1 queries LRCLIB (`party_search_lrclib {query}` -> `app_core::search_lrclib_query`, `/api/search?q=`, only lyric-carrying hits) and shows canonical `Artist - Title` matches with a "synced" badge. Step 2, on picking a match, runs `party_youtube_candidates {query}` (flat yt-dlp search, no download) and shows video candidates with channel, duration, and a thumbnail (derived from the video id, `i.ytimg.com/vi/<id>/mqdefault.jpg`). Picking a video enqueues it via `party_queue_add {query: url, title, artist}`.
+- **Guaranteed lyrics:** the chosen video is enqueued carrying the LRCLIB **canonical** artist/title. After download+scan, the ingest worker calls `app_core::set_song_metadata(hash, title, artist)` *before* analysis, so the analyzer's own LRCLIB lookup (which keys on the song's artist/title) matches even when the source video's embedded tags are messy. This is why the queue entry shows `Bohemian Rhapsody` / `Queen` rather than the raw video title.
+- **UTF-8:** yt-dlp on Windows emits stdout in the ANSI codepage by default, mangling non-ASCII titles (an en dash became `�`). Fixed with the `--encoding utf-8` yt-dlp flag on every invocation (search and download); verified `Queen – Bohemian Rhapsody` renders correctly.
+- **Frontend:** `pages/party/online-search.tsx` (the two-step component), wired into the guest page; types + bridge wrappers in `types/party.ts` and `bridge/party.ts`.
+- **Tests:** `scripts/party-test/t5-search.mjs` asserts LRCLIB returns lyric-available matches (and `[]` for an empty query), YouTube candidates carry a `watch?v=` url + `i.ytimg.com` thumbnail, and no title contains a replacement char (the mojibake regression). Plus a `cargo test` for the yt-dlp `--encoding utf-8` arg. Browser-verified end to end: search -> LRCLIB matches -> pick -> YouTube thumbnails -> Add creates a queue entry with the canonical metadata that proceeds to download + analyze.
+
 ### Phase 1: MVP
 
 Party Server with: YouTube search and yt-dlp download into the library folder, trigger analysis, mark ready, auto-advancing playback, a phone guest UI (search, add, see queue), and a minimal admin (skip, clear). Acceptance: a guest on a phone adds a YouTube song; it downloads, gets separated and lyric-aligned, and plays on the TV, and the queue advances when it ends.
