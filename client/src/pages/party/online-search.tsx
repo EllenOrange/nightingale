@@ -1,16 +1,20 @@
 /**
- * Online song search: find a song that is NOT in the local library.
+ * Online song search: find a song that is NOT in the local library, in one
+ * step. As soon as it is shown (the local search came up empty), it looks the
+ * query up in LRCLIB to confirm lyrics exist and get the canonical artist/title,
+ * then lists YouTube videos to choose from. Picking a video downloads it and
+ * enqueues it carrying the canonical artist/title, so the analyzer's own LRCLIB
+ * match is guaranteed.
  *
- * Two steps, gated on lyrics so guests can only pick songs that will karaoke
- * well: (1) find the track in LRCLIB (confirms lyrics exist, gives the
- * canonical artist/title), then (2) choose which YouTube video to download.
- * The chosen video is enqueued carrying the canonical artist/title so the
- * analyzer's own LRCLIB match is guaranteed.
+ * Kept to a single visible step (type -> pick a video) on purpose: the LRCLIB
+ * lookup happens automatically and the top lyric match supplies the metadata.
  */
 
 import { useEffect, useState } from "react";
 import { partyQueueAdd, partySearchLrclib, partyYoutubeCandidates } from "@/bridge/party";
 import type { LrclibSearchResult, YoutubeCandidate } from "@/types/party";
+
+const DEBOUNCE_MS = 500;
 
 const fmtDuration = (secs: number | null | undefined): string => {
   if (secs == null || !Number.isFinite(secs)) return "";
@@ -26,68 +30,67 @@ interface OnlineSearchProps {
 }
 
 export const OnlineSearch = ({ query, requestedBy, onAdded }: OnlineSearchProps) => {
-  const [tracks, setTracks] = useState<LrclibSearchResult[] | null>(null);
-  const [selected, setSelected] = useState<LrclibSearchResult | null>(null);
-  const [videos, setVideos] = useState<YoutubeCandidate[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [canonical, setCanonical] = useState<LrclibSearchResult | null>(null);
+  const [videos, setVideos] = useState<YoutubeCandidate[]>([]);
+  const [noLyrics, setNoLyrics] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Step 1: LRCLIB search whenever the query changes.
   useEffect(() => {
     const term = query.trim();
-    setSelected(null);
-    setVideos(null);
+    setCanonical(null);
+    setVideos([]);
+    setNoLyrics(false);
     setError(null);
     if (!term) {
-      setTracks(null);
+      setLoading(false);
       return;
     }
+
     let cancelled = false;
-    setTracks(null);
-    partySearchLrclib(term)
-      .then((r) => {
-        if (!cancelled) setTracks(r);
-      })
-      .catch((e) => {
+    setLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        // Step 1 (automatic): confirm lyrics exist and get canonical metadata.
+        const tracks = await partySearchLrclib(term);
+        if (cancelled) return;
+        if (tracks.length === 0) {
+          setNoLyrics(true);
+          setLoading(false);
+          return;
+        }
+        const top = tracks[0];
+        setCanonical(top);
+
+        // Step 2 (automatic): list videos to choose from.
+        const vids = await partyYoutubeCandidates(`${top.artist_name} ${top.track_name}`);
+        if (cancelled) return;
+        setVideos(vids);
+      } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, DEBOUNCE_MS);
+
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [query]);
 
-  // Step 2: YouTube candidates for the chosen track.
-  useEffect(() => {
-    if (!selected) {
-      setVideos(null);
-      return;
-    }
-    let cancelled = false;
-    setVideos(null);
-    setError(null);
-    partyYoutubeCandidates(`${selected.artist_name} ${selected.track_name}`)
-      .then((r) => {
-        if (!cancelled) setVideos(r);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selected]);
-
   const addVideo = async (video: YoutubeCandidate) => {
-    if (!selected) return;
+    if (!canonical) return;
     setAdding(video.videoId);
     try {
       await partyQueueAdd({
         query: video.url,
-        title: selected.track_name,
-        artist: selected.artist_name,
+        title: canonical.track_name,
+        artist: canonical.artist_name,
         requestedBy,
       });
-      onAdded(`${selected.artist_name} - ${selected.track_name}`);
+      onAdded(`${canonical.artist_name} - ${canonical.track_name}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -106,90 +109,61 @@ export const OnlineSearch = ({ query, requestedBy, onAdded }: OnlineSearchProps)
     );
   }
 
-  // ── Step 2 UI: pick a video ──────────────────────────────────────────────
-  if (selected) {
+  if (loading) {
+    return <div className="text-muted-foreground py-4 text-center text-sm">Searching online…</div>;
+  }
+
+  if (noLyrics) {
     return (
-      <div className="flex flex-col gap-2">
-        <button
-          className="text-muted-foreground self-start text-xs underline"
-          onClick={() => setSelected(null)}
-        >
-          ← back to matches
-        </button>
-        <div className="text-sm font-medium">
-          {selected.artist_name} - {selected.track_name}
-        </div>
-        <div className="text-muted-foreground text-xs">Choose a video to download:</div>
-        {videos === null ? (
-          <div className="text-muted-foreground py-4 text-center text-sm">Searching YouTube…</div>
-        ) : videos.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No videos found.</p>
-        ) : (
-          videos.map((v) => (
-            <button
-              key={v.videoId}
-              className="hover:bg-accent flex items-center gap-3 rounded-lg border p-2 text-left disabled:opacity-50"
-              disabled={adding !== null}
-              onClick={() => addVideo(v)}
-            >
-              <img
-                src={v.thumbnail}
-                alt=""
-                width={80}
-                height={45}
-                className="h-[45px] w-[80px] shrink-0 rounded object-cover"
-                onError={(e) => {
-                  e.currentTarget.style.visibility = "hidden";
-                }}
-              />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{v.title}</div>
-                <div className="text-muted-foreground truncate text-xs">
-                  {v.channel}
-                  {v.durationSecs ? ` · ${fmtDuration(v.durationSecs)}` : ""}
-                </div>
-              </div>
-              <span className="text-primary shrink-0 text-sm">
-                {adding === v.videoId ? "Adding…" : "Add"}
-              </span>
-            </button>
-          ))
-        )}
-      </div>
+      <p className="text-muted-foreground text-sm">
+        Not found in the lyrics database. Try including the artist, or check the spelling.
+      </p>
     );
   }
 
-  // ── Step 1 UI: pick the song from LRCLIB ─────────────────────────────────
+  if (!canonical) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-2">
-      {tracks === null ? (
-        <div className="text-muted-foreground py-4 text-center text-sm">
-          Searching lyrics database…
-        </div>
-      ) : tracks.length === 0 ? (
-        <p className="text-muted-foreground text-sm">
-          No lyrics found for that. Try a different spelling, or include the artist.
-        </p>
+      <div className="text-muted-foreground text-xs">
+        Lyrics:{" "}
+        <span className="text-foreground font-medium">
+          {canonical.artist_name} - {canonical.track_name}
+        </span>
+        {" · pick a video to add:"}
+      </div>
+      {videos.length === 0 ? (
+        <p className="text-muted-foreground text-sm">No videos found.</p>
       ) : (
-        tracks.slice(0, 8).map((t, i) => (
+        videos.map((v) => (
           <button
-            key={`${t.artist_name}-${t.track_name}-${i}`}
-            className="hover:bg-accent flex items-center gap-3 rounded-lg border p-3 text-left"
-            onClick={() => setSelected(t)}
+            key={v.videoId}
+            className="hover:bg-accent flex items-center gap-3 rounded-lg border p-2 text-left disabled:opacity-50"
+            disabled={adding !== null}
+            onClick={() => addVideo(v)}
           >
+            <img
+              src={v.thumbnail}
+              alt=""
+              width={80}
+              height={45}
+              className="h-[45px] w-[80px] shrink-0 rounded object-cover"
+              onError={(e) => {
+                e.currentTarget.style.visibility = "hidden";
+              }}
+            />
             <div className="min-w-0 flex-1">
-              <div className="truncate font-medium">{t.track_name}</div>
+              <div className="truncate text-sm font-medium">{v.title}</div>
               <div className="text-muted-foreground truncate text-xs">
-                {t.artist_name}
-                {t.album_name ? ` · ${t.album_name}` : ""}
-                {t.duration_secs ? ` · ${fmtDuration(t.duration_secs)}` : ""}
+                {v.channel}
+                {v.durationSecs ? ` · ${fmtDuration(v.durationSecs)}` : ""}
               </div>
             </div>
-            {t.has_synced && (
-              <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-2 py-0.5 text-xs">
-                synced
-              </span>
-            )}
+            <span className="text-primary shrink-0 text-sm">
+              {adding === v.videoId ? "Adding…" : "Add"}
+            </span>
           </button>
         ))
       )}

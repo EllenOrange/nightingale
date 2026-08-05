@@ -295,22 +295,75 @@ async fn maybe_start_next(state: &AppState) {
         if q.playing().is_some() {
             return None;
         }
-        let Some(ready_id) = q.first_ready() else {
-            return None;
-        };
+        let ready_id = q.first_ready()?;
         // A ready entry must have a hash; guard anyway.
-        let hash = q.get(&ready_id).and_then(|e| e.file_hash.clone());
-        if hash.is_none() {
-            return None;
-        }
+        let hash = q.get(&ready_id).and_then(|e| e.file_hash.clone())?;
         q.set_status(&ready_id, QueueStatus::Playing);
-        hash
+        Some((ready_id, hash))
     });
 
-    if let Some(hash) = to_play {
+    if let Some((id, hash)) = to_play {
         broadcast(state, &snapshot);
-        issue_play(state, hash).await;
+        let token = issue_play(state, hash.clone()).await;
+        spawn_advance_watchdog(state, id, hash, token);
     }
+}
+
+/// Grace period past a song's nominal duration before the watchdog assumes it
+/// ended without the TV reporting it.
+const WATCHDOG_GRACE: f64 = 6.0;
+
+/// Auto-advance safety net: the TV normally reports `party_song_ended` the
+/// instant a song finishes, but a party must not stall if the TV tab is closed,
+/// asleep, or on a stale build. This waits out the song's duration and, if it is
+/// still the current song and not paused, advances anyway.
+///
+/// It is superseded by anything that changes the play token (a skip, or the next
+/// song already starting), and it waits while playback is paused, so it never
+/// cuts a song short.
+fn spawn_advance_watchdog(state: &AppState, id: String, hash: String, token: u64) {
+    let duration = app_core::song_by_hash(&hash)
+        .map(|s| s.duration_secs)
+        .unwrap_or(0.0);
+    if duration <= 0.0 {
+        return;
+    }
+
+    let state = state.clone();
+    tokio::spawn(async move {
+        let mut remaining = duration + WATCHDOG_GRACE;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs_f64(remaining)).await;
+
+            let juke = state.jukebox.snapshot().await;
+            // A newer play superseded this one (skip, or already advanced).
+            if juke.play_token != token {
+                return;
+            }
+            // Paused: check back shortly rather than cutting the song off.
+            if juke.paused {
+                remaining = 3.0;
+                continue;
+            }
+            break;
+        }
+
+        // Still the current, unpaused song past its end: advance if the TV
+        // never reported it. If the entry already left Playing (the TV did
+        // report), this is a no-op.
+        let (changed, snapshot) = state.party_queue.mutate(|q| {
+            if q.get(&id).map(|e| e.status) == Some(QueueStatus::Playing) {
+                q.set_status(&id, QueueStatus::Done)
+            } else {
+                false
+            }
+        });
+        if changed {
+            tracing::info!(%id, "party watchdog advanced a song the TV never reported ending");
+            broadcast(&state, &snapshot);
+            Box::pin(maybe_start_next(&state)).await;
+        }
+    });
 }
 
 // ── Ingest worker ──────────────────────────────────────────────────────────
