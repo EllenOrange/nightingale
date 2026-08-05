@@ -22,6 +22,8 @@ import {
 import { usePlaybackInput, usePlaybackResult } from "@/hooks/playback";
 import { PartySongEndReporter } from "@/hooks/party/use-report-song-end";
 import { PartyRemoteControls } from "@/hooks/party/use-apply-remote-controls";
+import { PartyPlaybackOverlay } from "@/components/party/playback-overlay";
+import { isTauri } from "@/bridge/runtime";
 import type { AppConfig } from "@/types/AppConfig";
 import type { Song } from "@/types/Song";
 
@@ -58,7 +60,11 @@ function PlaybackLayout({ song, config }: PlaybackLayoutProps) {
             artist={song.artist}
             config={config}
             position={hudPosition}
+            hideSettingsInfo={!isTauri}
           />
+          {/* Party TV: queue in the upper right, join QR in the lower right,
+              hints toggled with `?`. */}
+          {!isTauri && <PartyPlaybackOverlay />}
           <PitchGraph series={series} position={hudPosition} />
           <LyricsDisplay
             segments={segments}
