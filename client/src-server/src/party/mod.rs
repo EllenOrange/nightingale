@@ -35,6 +35,7 @@ pub async fn dispatch(state: &AppState, name: &str, payload: Value) -> CmdResult
         "party_queue_clear" => queue_service::party_queue_clear(state).await,
         "party_queue_reorder" => queue_service::party_queue_reorder(state, payload).await,
         "party_song_ended" => queue_service::party_song_ended(state, payload).await,
+        "party_progress" => queue_service::party_progress(state, payload).await,
         "party_skip" | "party_control_skip" => queue_service::party_skip(state).await,
         "party_control_pause" => controls::party_control_pause(state, true).await,
         "party_control_resume" => controls::party_control_pause(state, false).await,

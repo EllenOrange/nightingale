@@ -10,12 +10,19 @@
 //! analyzer's own LRCLIB match is guaranteed.
 
 use std::process::Command;
+use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::sync::Semaphore;
 
 use crate::commands::{ApiError, CmdResult};
 use crate::party::ingest;
+
+/// Cap concurrent yt-dlp search processes so a guest hammering the search
+/// endpoint (bypassing the client debounce) cannot spawn unbounded processes and
+/// wedge the host. Excess requests queue on the permit.
+static YT_SEARCH_LIMIT: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(3));
 
 fn bad(e: impl std::fmt::Display) -> ApiError {
     ApiError(axum::http::StatusCode::BAD_REQUEST, format!("invalid args: {e}"))
@@ -71,6 +78,14 @@ pub async fn party_youtube_candidates(payload: Value) -> CmdResult {
         return Err(bad("query must not be empty"));
     }
     let limit = args.limit.unwrap_or(8).clamp(1, 20);
+
+    // Bound concurrent yt-dlp processes; excess callers wait here.
+    let _permit = YT_SEARCH_LIMIT.acquire().await.map_err(|e| {
+        ApiError(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            format!("search limiter closed: {e}"),
+        )
+    })?;
 
     let candidates = tokio::task::spawn_blocking(move || youtube_candidates(&query, limit))
         .await

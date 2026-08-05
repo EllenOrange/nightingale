@@ -39,6 +39,10 @@ pub async fn issue_play(state: &AppState, file_hash: String) -> u64 {
         .mutate(|s| {
             s.requested_song_hash = Some(file_hash);
             s.play_token = s.play_token.wrapping_add(1);
+            // A fresh song always starts playing, even if the previous one was
+            // paused when it was skipped; otherwise the next song would load
+            // and immediately pause.
+            s.paused = false;
         })
         .await;
 

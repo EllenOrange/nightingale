@@ -318,6 +318,16 @@ Owner testing surfaced four items, all addressed:
 - **Now playing pinned above the reorderable list.** On `/party` and `/admin`, the playing song is shown in its own block (with Skip) and "Up next" is the reorderable list below it, so nothing can be moved ahead of the current song (the first up-next row's up arrow is disabled).
 - **Playback TV screen overlay.** On the `/playback` screen in web mode, the upper right now shows the live **Up next** queue and the lower right shows the **join QR** (`GET /qr`), replacing the keyboard-shortcut hints that lived there. Pressing **`?`** toggles those hints back in, in place of the queue. Implemented as `components/party/playback-overlay.tsx` mounted in the playback tree; `PlaybackHud` gained a `hideSettingsInfo` prop (passed in web mode) and now exports `SettingsInfo` so the overlay can reuse it for the hints. The score line stays.
 
+### Code-review fixes (party layer)
+
+A review pass over the party-layer diff found the auto-advance watchdog was the weak spot (it timed off wall-clock from play start and only cancelled on `play_token`, so it fought pause and restart). Fixes:
+
+- **Watchdog now defers to real playback position.** The TV heartbeats `party_progress {positionMs, paused}` (~every 3s, `hooks/party/use-report-progress.ts`), stored in `AppState.progress`. The watchdog (`queue_service.rs`) polls every 3s and advances only when the *estimated actual position* passes the song's end: a paused song holds (reported position stops rising), a restarted song resets, and a genuinely absent TV falls back to wall-clock from play start. Fixes: watchdog skipping paused/restarted songs, and the missing-metadata case now uses a 15-min fallback instead of never arming. Polling also drops superseded watchdogs within ~3s.
+- **Skip while paused no longer starts the next song paused:** `issue_play` clears `paused` on every fresh play.
+- **Ingest worker cannot wedge on panic:** a drop guard clears the worker-running flag if the worker task unwinds, so a panic no longer permanently stalls the queue (a fresh worker can spawn). Disarmed on normal exit to avoid clobbering a legitimately re-acquired worker.
+- **Basic resource caps (LAN, but guests are untrusted-ish):** live queue capped at 100 entries (`party_queue_add` returns 429 when full); concurrent yt-dlp search processes capped at 3 via a semaphore (the client debounce is bypassable by hitting the endpoint directly).
+- Review confirmed no shell/argument injection (yt-dlp always via `Command::args`, bare queries wrapped `ytsearch1:`), reorder index math correct, master-gain graph intact, and no lock held across an await. Tested by `scripts/party-test/t3d-watchdog-pause.mjs` (paused song is not advanced, then advances once position passes the end) plus the existing t3c (absent TV) and the full suite.
+
 ### Phase 1: MVP
 
 Party Server with: YouTube search and yt-dlp download into the library folder, trigger analysis, mark ready, auto-advancing playback, a phone guest UI (search, add, see queue), and a minimal admin (skip, clear). Acceptance: a guest on a phone adds a YouTube song; it downloads, gets separated and lyric-aligned, and plays on the TV, and the queue advances when it ends.

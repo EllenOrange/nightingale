@@ -3,6 +3,7 @@
 //! to the event bus, the ingest pipeline, and remote playback.
 
 use std::sync::Mutex;
+use std::time::Instant;
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -12,6 +13,21 @@ use crate::party::ingest;
 use crate::party::playback::issue_play;
 use crate::party::queue::{PartyQueue, QueueStatus};
 use crate::state::AppState;
+
+/// How much live playback state the TV last reported, keyed to the play token it
+/// was playing. The watchdog uses this to tell "TV present and progressing" from
+/// "TV present but paused" from "TV gone".
+#[derive(Clone, Copy)]
+pub struct PlaybackProgress {
+    pub play_token: u64,
+    pub position_ms: u64,
+    pub paused: bool,
+    pub updated_at: Instant,
+}
+
+/// Cap the number of live (not yet played) queue entries so a guest cannot fill
+/// the disk with thousands of downloads. Generous for a real party.
+const MAX_LIVE_QUEUE: usize = 100;
 
 /// Event name for every queue broadcast. The guest/admin pages subscribe to it.
 const QUEUE_EVENT: &str = "party.queue";
@@ -81,6 +97,30 @@ impl PartyQueueStore {
             false
         }
     }
+
+    /// Unconditionally clear the worker flag. Only used by the worker's drop
+    /// guard on an abnormal (panic) exit, so a crashed worker cannot wedge the
+    /// queue by leaving the flag set forever.
+    fn force_release_worker(&self) {
+        self.inner.lock().unwrap().worker_running = false;
+    }
+}
+
+/// Clears the worker flag if the worker task unwinds (panics). On a normal exit
+/// the flag was already cleared by `keep_worker_running` under the lock, so the
+/// guard is disarmed to avoid clobbering a worker that legitimately re-acquired
+/// in the meantime.
+struct WorkerGuard {
+    store: std::sync::Arc<PartyQueueStore>,
+    disarmed: bool,
+}
+
+impl Drop for WorkerGuard {
+    fn drop(&mut self) {
+        if !self.disarmed {
+            self.store.force_release_worker();
+        }
+    }
 }
 
 /// Reset states that only the running server can exit, so a crash mid-flight
@@ -128,6 +168,23 @@ struct AddArgs {
 
 pub async fn party_queue_add(state: &AppState, payload: Value) -> CmdResult {
     let args: AddArgs = deserialize(payload)?;
+
+    // Reject once the live queue is full, so a guest cannot fill the library
+    // folder with runaway downloads.
+    let live = state
+        .party_queue
+        .snapshot()
+        .entries
+        .iter()
+        .filter(|e| e.status != QueueStatus::Done)
+        .count();
+    if live >= MAX_LIVE_QUEUE {
+        return Err(ApiError(
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            format!("queue is full ({MAX_LIVE_QUEUE} songs); wait for some to play"),
+        ));
+    }
+
     let requested_by = args
         .requested_by
         .map(|s| s.trim().to_string())
@@ -269,6 +326,29 @@ pub async fn party_song_ended(state: &AppState, payload: Value) -> CmdResult {
     Ok(json!({ "advanced": changed }))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProgressArgs {
+    position_ms: u64,
+    #[serde(default)]
+    paused: bool,
+}
+
+/// The TV heartbeats its playback position (~every 3s). Recorded against the
+/// current play token so the watchdog can defer to real progress. Deliberately
+/// does not broadcast: this is high-frequency and only the server needs it.
+pub async fn party_progress(state: &AppState, payload: Value) -> CmdResult {
+    let args: ProgressArgs = deserialize(payload)?;
+    let play_token = state.jukebox.snapshot().await.play_token;
+    *state.progress.lock().unwrap() = Some(PlaybackProgress {
+        play_token,
+        position_ms: args.position_ms,
+        paused: args.paused,
+        updated_at: Instant::now(),
+    });
+    Ok(Value::Null)
+}
+
 /// Skip the current song (admin): mark it done and advance. Used in Step 4 too.
 pub async fn party_skip(state: &AppState) -> CmdResult {
     let (changed, snapshot) = state.party_queue.mutate(|q| {
@@ -309,59 +389,88 @@ async fn maybe_start_next(state: &AppState) {
     }
 }
 
-/// Grace period past a song's nominal duration before the watchdog assumes it
-/// ended without the TV reporting it.
+/// Grace period past a song's real end before the watchdog assumes it finished
+/// without the TV reporting it.
 const WATCHDOG_GRACE: f64 = 6.0;
+/// A heartbeat older than this means the TV has gone silent (tab closed/asleep).
+const PROGRESS_STALE_SECS: f64 = 8.0;
+/// How often the watchdog re-evaluates.
+const WATCHDOG_POLL_SECS: f64 = 3.0;
+/// Fallback song length when metadata reports none, so a truly stuck song still
+/// eventually advances rather than wedging the queue forever.
+const WATCHDOG_FALLBACK_DURATION: f64 = 900.0;
 
-/// Auto-advance safety net: the TV normally reports `party_song_ended` the
-/// instant a song finishes, but a party must not stall if the TV tab is closed,
-/// asleep, or on a stale build. This waits out the song's duration and, if it is
-/// still the current song and not paused, advances anyway.
+/// Auto-advance safety net for when the TV never reports `party_song_ended`
+/// (tab closed, asleep, or on a stale build).
 ///
-/// It is superseded by anything that changes the play token (a skip, or the next
-/// song already starting), and it waits while playback is paused, so it never
-/// cuts a song short.
+/// The TV normally drives advancing (`party_song_ended`), which respects pause
+/// and restart because the browser plays in real time. This watchdog must not
+/// fight that: it estimates the *actual* elapsed position from the TV's progress
+/// heartbeats and only advances once that estimate is past the song's end. So a
+/// paused song holds (its reported position stops rising), a restarted song
+/// resets (its reported position drops), and a TV that is simply gone falls back
+/// to wall-clock from the play start. Polling means it also exits promptly once
+/// a skip/next changes the play token.
 fn spawn_advance_watchdog(state: &AppState, id: String, hash: String, token: u64) {
-    let duration = app_core::song_by_hash(&hash)
+    let mut duration = app_core::song_by_hash(&hash)
         .map(|s| s.duration_secs)
         .unwrap_or(0.0);
     if duration <= 0.0 {
-        return;
+        duration = WATCHDOG_FALLBACK_DURATION;
     }
 
     let state = state.clone();
+    let play_start = Instant::now();
     tokio::spawn(async move {
-        let mut remaining = duration + WATCHDOG_GRACE;
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs_f64(remaining)).await;
+            tokio::time::sleep(std::time::Duration::from_secs_f64(WATCHDOG_POLL_SECS)).await;
 
-            let juke = state.jukebox.snapshot().await;
-            // A newer play superseded this one (skip, or already advanced).
-            if juke.play_token != token {
+            // Superseded by a newer play (skip, or the next song already started).
+            if state.jukebox.snapshot().await.play_token != token {
                 return;
             }
-            // Paused: check back shortly rather than cutting the song off.
-            if juke.paused {
-                remaining = 3.0;
+
+            let now = Instant::now();
+            let progress = *state.progress.lock().unwrap();
+            let (estimated_pos, hold) = match progress {
+                // The TV is reporting on this very play.
+                Some(p) if p.play_token == token => {
+                    let age = now.duration_since(p.updated_at).as_secs_f64();
+                    let fresh = age < PROGRESS_STALE_SECS;
+                    if p.paused && fresh {
+                        // Paused and the TV is alive: hold, never advance.
+                        (p.position_ms as f64 / 1000.0, true)
+                    } else {
+                        // Playing, or the TV went silent: extrapolate forward
+                        // from the last known position.
+                        (p.position_ms as f64 / 1000.0 + age, false)
+                    }
+                }
+                // No heartbeat for this play at all: the TV is absent, so fall
+                // back to wall-clock from when the song started.
+                _ => (now.duration_since(play_start).as_secs_f64(), false),
+            };
+
+            if hold || estimated_pos < duration + WATCHDOG_GRACE {
                 continue;
             }
-            break;
-        }
 
-        // Still the current, unpaused song past its end: advance if the TV
-        // never reported it. If the entry already left Playing (the TV did
-        // report), this is a no-op.
-        let (changed, snapshot) = state.party_queue.mutate(|q| {
-            if q.get(&id).map(|e| e.status) == Some(QueueStatus::Playing) {
-                q.set_status(&id, QueueStatus::Done)
-            } else {
-                false
+            // Past the end and not held: advance if the TV never did. If the
+            // entry already left Playing (the TV reported the end), this is a
+            // no-op and we simply stop.
+            let (changed, snapshot) = state.party_queue.mutate(|q| {
+                if q.get(&id).map(|e| e.status) == Some(QueueStatus::Playing) {
+                    q.set_status(&id, QueueStatus::Done)
+                } else {
+                    false
+                }
+            });
+            if changed {
+                tracing::info!(%id, "party watchdog advanced a song the TV never reported ending");
+                broadcast(&state, &snapshot);
+                Box::pin(maybe_start_next(&state)).await;
             }
-        });
-        if changed {
-            tracing::info!(%id, "party watchdog advanced a song the TV never reported ending");
-            broadcast(&state, &snapshot);
-            Box::pin(maybe_start_next(&state)).await;
+            return;
         }
     });
 }
@@ -382,6 +491,13 @@ fn ensure_worker(state: &AppState) {
 /// blocking download/analysis runs on a blocking thread so the async runtime
 /// stays free to serve the queue's live updates.
 async fn run_worker(state: &AppState) {
+    // On panic the guard clears the worker flag so a fresh worker can spawn;
+    // on the normal path below we disarm it (the flag is already cleared).
+    let mut guard = WorkerGuard {
+        store: state.party_queue.clone(),
+        disarmed: false,
+    };
+
     loop {
         let Some(id) = state.party_queue.snapshot().first_queued() else {
             if state.party_queue.keep_worker_running() {
@@ -396,6 +512,8 @@ async fn run_worker(state: &AppState) {
             break;
         }
     }
+
+    guard.disarmed = true;
 }
 
 /// Take one queued entry through ingest to ready (or error), broadcasting each
