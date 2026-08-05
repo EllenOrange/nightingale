@@ -39,6 +39,22 @@ const STATUS_LABEL: Record<QueueStatus, string> = {
   error: "Failed",
 };
 
+const NowPlaying = ({ entry, onSkip }: { entry: QueueEntry; onSkip: () => void }) => (
+  <div className="bg-primary/10 flex items-center gap-3 rounded-lg border p-3">
+    <div className="min-w-0 flex-1">
+      <div className="text-muted-foreground text-xs uppercase tracking-wide">Now playing</div>
+      <div className="truncate font-medium">{entry.title || entry.query || "Untitled"}</div>
+      <div className="text-muted-foreground truncate text-xs">
+        {entry.artist ? `${entry.artist} · ` : ""}
+        {entry.requestedBy}
+      </div>
+    </div>
+    <Button size="sm" variant="secondary" className="h-8 px-2 shrink-0" onClick={onSkip}>
+      Skip
+    </Button>
+  </div>
+);
+
 interface QueueRowProps {
   entry: QueueEntry;
   canMoveUp: boolean;
@@ -46,7 +62,6 @@ interface QueueRowProps {
   onMoveUp: () => void;
   onMoveDown: () => void;
   onRemove: () => void;
-  onSkip: () => void;
 }
 
 const QueueRow = ({
@@ -56,11 +71,9 @@ const QueueRow = ({
   onMoveUp,
   onMoveDown,
   onRemove,
-  onSkip,
 }: QueueRowProps) => {
   const inFlight =
     entry.status === "downloading" || entry.status === "analyzing" || entry.status === "queued";
-  const isPlaying = entry.status === "playing";
 
   return (
     <li className="flex items-center gap-2 rounded-lg border p-3">
@@ -75,61 +88,47 @@ const QueueRow = ({
         ) : null}
       </div>
 
-      <span
-        className={
-          "shrink-0 rounded-full px-2 py-0.5 text-xs " +
-          (isPlaying
-            ? "bg-primary text-primary-foreground"
-            : entry.status === "error"
-              ? "bg-destructive/15 text-destructive"
-              : "bg-muted text-muted-foreground")
-        }
-      >
-        {inFlight ? (
-          <span className="animate-pulse">{STATUS_LABEL[entry.status]}…</span>
-        ) : (
-          STATUS_LABEL[entry.status]
-        )}
-      </span>
+      {inFlight && (
+        <span className="bg-muted text-muted-foreground shrink-0 animate-pulse rounded-full px-2 py-0.5 text-xs">
+          {STATUS_LABEL[entry.status]}…
+        </span>
+      )}
+      {entry.status === "error" && (
+        <span className="bg-destructive/15 text-destructive shrink-0 rounded-full px-2 py-0.5 text-xs">
+          Failed
+        </span>
+      )}
 
       <div className="flex shrink-0 items-center gap-1">
-        {isPlaying ? (
-          <Button size="sm" variant="secondary" className="h-8 px-2" onClick={onSkip}>
-            Skip
-          </Button>
-        ) : (
-          <>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 p-0"
-              disabled={!canMoveUp}
-              aria-label="Move up"
-              onClick={onMoveUp}
-            >
-              ↑
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 p-0"
-              disabled={!canMoveDown}
-              aria-label="Move down"
-              onClick={onMoveDown}
-            >
-              ↓
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 w-8 p-0"
-              aria-label="Remove"
-              onClick={onRemove}
-            >
-              ✕
-            </Button>
-          </>
-        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 w-8 p-0"
+          disabled={!canMoveUp}
+          aria-label="Move up"
+          onClick={onMoveUp}
+        >
+          ↑
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 w-8 p-0"
+          disabled={!canMoveDown}
+          aria-label="Move down"
+          onClick={onMoveDown}
+        >
+          ↓
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 w-8 p-0"
+          aria-label="Remove"
+          onClick={onRemove}
+        >
+          ✕
+        </Button>
       </div>
     </li>
   );
@@ -145,9 +144,14 @@ export const Party = () => {
   const searchSeq = useRef(0);
 
   const queue = usePartyQueue();
-  // The live part of the queue (drop entries that already played).
-  const visibleQueue = useMemo(
-    () => queue.entries.filter((e) => e.status !== "done"),
+  // The currently-playing song is pinned outside the reorderable list; "up next"
+  // is everything else still live (not the playing song, not already played).
+  const nowPlaying = useMemo(
+    () => queue.entries.find((e) => e.status === "playing") ?? null,
+    [queue.entries],
+  );
+  const upNext = useMemo(
+    () => queue.entries.filter((e) => e.status !== "playing" && e.status !== "done"),
     [queue.entries],
   );
 
@@ -205,12 +209,13 @@ export const Party = () => {
     }
   };
 
-  // Reorder against the full queue array so indices stay correct even with
-  // played/errored entries interleaved.
+  // Reorder within Up Next. Targets are computed against the full queue array
+  // so indices stay correct with the playing/played entries interleaved, and
+  // because the playing song is not in this list, nothing can jump ahead of it.
   const move = (id: string, dir: -1 | 1) => {
-    const visibleIds = visibleQueue.map((e) => e.id);
-    const vi = visibleIds.indexOf(id);
-    const neighborId = visibleIds[vi + dir];
+    const upNextIds = upNext.map((e) => e.id);
+    const vi = upNextIds.indexOf(id);
+    const neighborId = upNextIds[vi + dir];
     if (!neighborId) return;
     const targetFullIdx = queue.entries.findIndex((e) => e.id === neighborId);
     if (targetFullIdx >= 0) void partyQueueReorder(id, targetFullIdx);
@@ -278,24 +283,27 @@ export const Party = () => {
         <div className="bg-muted text-muted-foreground rounded-md px-3 py-2 text-sm">{notice}</div>
       )}
 
+      {nowPlaying && <NowPlaying entry={nowPlaying} onSkip={() => void partySkip()} />}
+
       <section className="flex min-h-0 flex-1 flex-col gap-2">
-        <h2 className="text-muted-foreground text-sm font-medium">
-          Up next ({visibleQueue.length})
-        </h2>
-        {visibleQueue.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Nothing queued yet. Add the first song!</p>
+        <h2 className="text-muted-foreground text-sm font-medium">Up next ({upNext.length})</h2>
+        {upNext.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            {nowPlaying
+              ? "Nothing queued yet. Add a song!"
+              : "Nothing queued yet. Add the first song!"}
+          </p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {visibleQueue.map((entry, i) => (
+            {upNext.map((entry, i) => (
               <QueueRow
                 key={entry.id}
                 entry={entry}
                 canMoveUp={i > 0}
-                canMoveDown={i < visibleQueue.length - 1}
+                canMoveDown={i < upNext.length - 1}
                 onMoveUp={() => move(entry.id, -1)}
                 onMoveDown={() => move(entry.id, 1)}
                 onRemove={() => void partyQueueRemove(entry.id)}
-                onSkip={() => void partySkip()}
               />
             ))}
           </ul>

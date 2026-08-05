@@ -59,12 +59,16 @@ const Slider = ({
 
 const AdminQueueRow = ({
   entry,
-  index,
-  count,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
 }: {
   entry: QueueEntry;
-  index: number;
-  count: number;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }) => (
   <li className="flex items-center gap-2 rounded-md border p-2">
     <div className="min-w-0 flex-1">
@@ -76,20 +80,10 @@ const AdminQueueRow = ({
       </div>
     </div>
     <div className="flex shrink-0 gap-1">
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={index === 0}
-        onClick={() => partyQueueReorder(entry.id, index - 1)}
-      >
+      <Button size="sm" variant="ghost" disabled={!canMoveUp} onClick={onMoveUp}>
         ↑
       </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={index === count - 1}
-        onClick={() => partyQueueReorder(entry.id, index + 1)}
-      >
+      <Button size="sm" variant="ghost" disabled={!canMoveDown} onClick={onMoveDown}>
         ↓
       </Button>
       {entry.status === "error" && entry.query ? (
@@ -116,9 +110,18 @@ export const Admin = () => {
   const volume = jukebox?.volume ?? 1;
   const paused = jukebox?.paused ?? false;
 
-  // Render the full array (including played entries) so reorder indices line up
-  // exactly with the server's positions; played entries stay visible as history.
-  const entries = queue.entries;
+  // Pin the playing song outside the reorderable list; "up next" is everything
+  // else still live. Reorder targets are computed against the full array so the
+  // playing song's position is respected and nothing jumps ahead of it.
+  const nowPlaying = queue.entries.find((e) => e.status === "playing") ?? null;
+  const upNext = queue.entries.filter((e) => e.status !== "playing" && e.status !== "done");
+  const move = (id: string, dir: -1 | 1) => {
+    const ids = upNext.map((e) => e.id);
+    const neighborId = ids[ids.indexOf(id) + dir];
+    if (!neighborId) return;
+    const targetFullIdx = queue.entries.findIndex((e) => e.id === neighborId);
+    if (targetFullIdx >= 0) void partyQueueReorder(id, targetFullIdx);
+  };
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-xl flex-col gap-4 p-4">
@@ -145,17 +148,43 @@ export const Admin = () => {
         <Slider label="Volume" value={volume} onCommit={(v) => partySetVolume(v)} />
       </Section>
 
-      <Section title={`Queue (${entries.length})`}>
-        {entries.length === 0 ? (
-          <p className="text-muted-foreground text-sm">Queue is empty.</p>
+      {nowPlaying && (
+        <Section title="Now playing">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium">
+                {nowPlaying.title || nowPlaying.query || "Untitled"}
+              </div>
+              <div className="text-muted-foreground truncate text-xs">
+                {nowPlaying.artist ? `${nowPlaying.artist} · ` : ""}
+                {nowPlaying.requestedBy}
+              </div>
+            </div>
+            <Button size="sm" variant="secondary" onClick={() => partySkip()}>
+              Skip
+            </Button>
+          </div>
+        </Section>
+      )}
+
+      <Section title={`Up next (${upNext.length})`}>
+        {upNext.length === 0 ? (
+          <p className="text-muted-foreground text-sm">Nothing queued.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {entries.map((entry, i) => (
-              <AdminQueueRow key={entry.id} entry={entry} index={i} count={entries.length} />
+            {upNext.map((entry, i) => (
+              <AdminQueueRow
+                key={entry.id}
+                entry={entry}
+                canMoveUp={i > 0}
+                canMoveDown={i < upNext.length - 1}
+                onMoveUp={() => move(entry.id, -1)}
+                onMoveDown={() => move(entry.id, 1)}
+              />
             ))}
           </ul>
         )}
-        {entries.length > 0 && (
+        {upNext.length > 0 && (
           <Button
             variant="ghost"
             className="text-destructive self-start"
