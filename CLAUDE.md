@@ -252,6 +252,17 @@ The Step 1 spike (PHASE1_PLAN.md) is **done and validated**. A WS message now dr
 
 **Autoplay finding (the risk the plan flagged): not a problem here.** From a cold browser tab sitting on the menu, the remote play navigates *and the stem audio starts on its own*, confirmed by ear on this machine (Windows, WebView-class browser, `http://127.0.0.1:8080`). The source video element autoplays muted (audio is the Web Audio stem mix, not the video track). So a party can start hands-free without a priming gesture on the TV. Revisit only if a stricter browser blocks it.
 
+### Phase 1 Step 2 results: YouTube ingest proven end to end
+
+Step 2 (PHASE1_PLAN.md) is **done and validated**. One call now takes a URL or search string to an analyzed, lyric-aligned song.
+
+- **Server:** `client/src-server/src/party/ingest.rs`. `POST /api/cmd/party_ingest {query}` spawns the pipeline on a background thread and reports progress as `party.ingest` events (`downloading` -> `scanning` -> `analyzing` -> `ready`, or `error`). The pipeline: resolve yt-dlp -> download with `--embed-metadata` -> `start_scan` and poll for the file's hash by path -> `enqueue_one` and poll the analysis queue to completion -> report the final `transcript_source`.
+- **No separate LRCLIB step is needed.** The analyzer already calls `fetch_lrclib_lyrics` automatically (`analyzer.rs:675`) when the song has real artist/title tags, so `--embed-metadata` alone yields `transcript_source = Lyrics` (LRCLIB text run through forced alignment). Confirmed by the server log: "Using pre-fetched lyrics ... Lyrics loaded: 9 lines". The manual `save_lyrics` path the plan described is only a fallback for when metadata is missing, which `--embed-metadata` prevents.
+- **`transcript_source` enum values:** `Lyrics` = LRCLIB text + forced alignment (the good path), `Generated` = Whisper fallback, `Lrc` = provided timed LRC without alignment, `Usdx`. The party layer wants `Lyrics`.
+- **yt-dlp is not on PATH and has no shim on this machine.** It lives at `%LOCALAPPDATA%\Microsoft\WinGet\Packages\yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe\yt-dlp.exe`. `resolve_ytdlp()` checks `NIGHTINGALE_YTDLP` (set this on the server for reliability), then PATH, then that WinGet path. yt-dlp warns "No supported JavaScript runtime" (deno) but still works for standard videos; install deno if extraction starts failing.
+- **`after_move:filepath`** prints the final on-disk path on both a fresh download and an idempotent re-run, so the pipeline locates the file to scan without a directory diff. Warnings go to stderr; the printed path is the last stdout line.
+- **Tests:** T2.1 (`cargo test -p server`, arg builder: always `--embed-metadata`, template under library, URL not wrapped, search wrapped once). T2.2 + T2.3 (`scripts/party-test/t2-ingest.mjs`, real end-to-end against a live server, using a 26s fixture, The Beatles - Her Majesty, `watch?v=Mh1hKt5kQ_4`). The script self-cleans the fixture first so it exercises a real analysis every run, asserts `analyzed`/artist/`source=Lyrics`, then asserts the re-ingest is idempotent (no second `analyzing` stage, same hash). Both pass.
+
 ### Phase 1: MVP
 
 Party Server with: YouTube search and yt-dlp download into the library folder, trigger analysis, mark ready, auto-advancing playback, a phone guest UI (search, add, see queue), and a minimal admin (skip, clear). Acceptance: a guest on a phone adds a YouTube song; it downloads, gets separated and lyric-aligned, and plays on the TV, and the queue advances when it ends.

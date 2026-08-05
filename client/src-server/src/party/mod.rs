@@ -12,6 +12,7 @@ use serde_json::Value;
 use crate::commands::{ApiError, CmdResult};
 use crate::state::AppState;
 
+pub mod ingest;
 pub mod playback;
 
 /// Route a `party_*` command. Returns `Err(NOT_FOUND)` for an unknown party
@@ -20,6 +21,7 @@ pub async fn dispatch(state: &AppState, name: &str, payload: Value) -> CmdResult
     match name {
         "party_play" => playback::party_play(state, payload).await,
         "party_song_by_hash" => playback::party_song_by_hash(payload).await,
+        "party_ingest" => ingest::party_ingest(state, payload).await,
         _ => Err(ApiError(
             axum::http::StatusCode::NOT_FOUND,
             format!("unknown party command {name}"),
