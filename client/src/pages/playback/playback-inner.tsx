@@ -95,7 +95,7 @@ export function PlaybackInner({ song, config }: PlaybackInnerProps) {
       {/* Party layer: tells the server when this song ends so the queue can
           auto-advance, and applies the admin's live controls (inert on Tauri). */}
       <PartySongEndReporter fileHash={song.file_hash} />
-      <PartyProgressReporter />
+      <PartyProgressReporter fileHash={song.file_hash} />
       <PartyRemoteControls />
       <PlaybackLayout song={song} config={config} />
     </PlaybackProviders>

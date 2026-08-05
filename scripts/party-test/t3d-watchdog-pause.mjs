@@ -50,7 +50,7 @@ const main = async () => {
   console.log("heartbeating paused=true for ~42s (song is 26s)...");
   const pausedUntil = Date.now() + 42000;
   while (Date.now() < pausedUntil) {
-    await post("party_progress", { positionMs: 5000, paused: true });
+    await post("party_progress", { fileHash: SHORT, positionMs: 5000, paused: true });
     await sleep(2000);
   }
 
@@ -59,9 +59,22 @@ const main = async () => {
   }
   console.log("ok: paused song held past duration + grace (not advanced)");
 
+  // A heartbeat for a DIFFERENT song must be ignored, so a stale report from a
+  // just-finished song can never be tagged to the current play and skip it.
+  await post("party_progress", {
+    fileHash: "0000000000000000deadbeef00000000",
+    positionMs: 999000,
+    paused: false,
+  });
+  await sleep(4000);
+  if ((await statusOf(SHORT)) !== "playing") {
+    fail("a heartbeat for a different song advanced the current song");
+  }
+  console.log("ok: heartbeat for a different song was ignored");
+
   // Now report playing, position past the end: the watchdog should advance.
   console.log("heartbeating playing position past the end...");
-  await post("party_progress", { positionMs: 40000, paused: false });
+  await post("party_progress", { fileHash: SHORT, positionMs: 40000, paused: false });
   const deadline = Date.now() + 8000;
   let advanced = false;
   while (Date.now() < deadline) {

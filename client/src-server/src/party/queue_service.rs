@@ -14,12 +14,13 @@ use crate::party::playback::issue_play;
 use crate::party::queue::{PartyQueue, QueueStatus};
 use crate::state::AppState;
 
-/// How much live playback state the TV last reported, keyed to the play token it
-/// was playing. The watchdog uses this to tell "TV present and progressing" from
-/// "TV present but paused" from "TV gone".
-#[derive(Clone, Copy)]
+/// How much live playback state the TV last reported, keyed to the exact song
+/// and play token it was playing. The watchdog uses this to tell "TV present and
+/// progressing" from "TV present but paused" from "TV gone".
+#[derive(Clone)]
 pub struct PlaybackProgress {
     pub play_token: u64,
+    pub file_hash: String,
     pub position_ms: u64,
     pub paused: bool,
     pub updated_at: Instant,
@@ -106,19 +107,36 @@ impl PartyQueueStore {
     }
 }
 
-/// Clears the worker flag if the worker task unwinds (panics). On a normal exit
-/// the flag was already cleared by `keep_worker_running` under the lock, so the
-/// guard is disarmed to avoid clobbering a worker that legitimately re-acquired
-/// in the meantime.
+/// Recovers the ingest pipeline if the worker task unwinds (panics): clears the
+/// worker flag so a fresh worker can spawn, and moves any in-flight entry (which
+/// would otherwise orphan in Downloading/Analyzing) to Error so it is visible
+/// and retryable rather than silently stuck. On a normal exit the flag was
+/// already cleared by `keep_worker_running` under the lock, so the guard is
+/// disarmed to avoid clobbering a worker that legitimately re-acquired.
 struct WorkerGuard {
-    store: std::sync::Arc<PartyQueueStore>,
+    state: AppState,
     disarmed: bool,
 }
 
 impl Drop for WorkerGuard {
     fn drop(&mut self) {
-        if !self.disarmed {
-            self.store.force_release_worker();
+        if self.disarmed {
+            return;
+        }
+        let (failed, snapshot) = self.state.party_queue.mutate(|q| {
+            let mut failed = false;
+            for e in &mut q.entries {
+                if matches!(e.status, QueueStatus::Downloading | QueueStatus::Analyzing) {
+                    e.status = QueueStatus::Error;
+                    e.error = Some("ingest worker crashed".to_string());
+                    failed = true;
+                }
+            }
+            failed
+        });
+        self.state.party_queue.force_release_worker();
+        if failed {
+            broadcast(&self.state, &snapshot);
         }
     }
 }
@@ -170,13 +188,15 @@ pub async fn party_queue_add(state: &AppState, payload: Value) -> CmdResult {
     let args: AddArgs = deserialize(payload)?;
 
     // Reject once the live queue is full, so a guest cannot fill the library
-    // folder with runaway downloads.
+    // folder with runaway downloads. Only entries still heading for playback
+    // count; already-played (Done) and failed (Error) entries do not, so
+    // accumulated failures cannot erode the cap.
     let live = state
         .party_queue
         .snapshot()
         .entries
         .iter()
-        .filter(|e| e.status != QueueStatus::Done)
+        .filter(|e| e.status != QueueStatus::Done && e.status != QueueStatus::Error)
         .count();
     if live >= MAX_LIVE_QUEUE {
         return Err(ApiError(
@@ -329,19 +349,28 @@ pub async fn party_song_ended(state: &AppState, payload: Value) -> CmdResult {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProgressArgs {
+    file_hash: String,
     position_ms: u64,
     #[serde(default)]
     paused: bool,
 }
 
-/// The TV heartbeats its playback position (~every 3s). Recorded against the
-/// current play token so the watchdog can defer to real progress. Deliberately
-/// does not broadcast: this is high-frequency and only the server needs it.
+/// The TV heartbeats its playback position (~every 3s). Ignored unless it is for
+/// the song the server currently believes is playing, so a stale heartbeat from
+/// the just-finished song (in flight during a transition) cannot be tagged to
+/// the next song and skip it. Recorded against the current play token so the
+/// watchdog can defer to real progress. Deliberately does not broadcast: this is
+/// high-frequency and only the server needs it.
 pub async fn party_progress(state: &AppState, payload: Value) -> CmdResult {
     let args: ProgressArgs = deserialize(payload)?;
-    let play_token = state.jukebox.snapshot().await.play_token;
+    let juke = state.jukebox.snapshot().await;
+    // Only accept progress for the currently-requested song.
+    if juke.requested_song_hash.as_deref() != Some(args.file_hash.as_str()) {
+        return Ok(Value::Null);
+    }
     *state.progress.lock().unwrap() = Some(PlaybackProgress {
-        play_token,
+        play_token: juke.play_token,
+        file_hash: args.file_hash,
         position_ms: args.position_ms,
         paused: args.paused,
         updated_at: Instant::now(),
@@ -393,7 +422,9 @@ async fn maybe_start_next(state: &AppState) {
 /// without the TV reporting it.
 const WATCHDOG_GRACE: f64 = 6.0;
 /// A heartbeat older than this means the TV has gone silent (tab closed/asleep).
-const PROGRESS_STALE_SECS: f64 = 8.0;
+/// Comfortably longer than several heartbeat intervals so a brief network stall
+/// on a paused TV does not read as "gone" and let the song advance.
+const PROGRESS_STALE_SECS: f64 = 15.0;
 /// How often the watchdog re-evaluates.
 const WATCHDOG_POLL_SECS: f64 = 3.0;
 /// Fallback song length when metadata reports none, so a truly stuck song still
@@ -431,10 +462,11 @@ fn spawn_advance_watchdog(state: &AppState, id: String, hash: String, token: u64
             }
 
             let now = Instant::now();
-            let progress = *state.progress.lock().unwrap();
+            let progress = state.progress.lock().unwrap().clone();
             let (estimated_pos, hold) = match progress {
-                // The TV is reporting on this very play.
-                Some(p) if p.play_token == token => {
+                // The TV is reporting on this very play (token AND song must
+                // match, so a stale heartbeat for another song is ignored).
+                Some(p) if p.play_token == token && p.file_hash == hash => {
                     let age = now.duration_since(p.updated_at).as_secs_f64();
                     let fresh = age < PROGRESS_STALE_SECS;
                     if p.paused && fresh {
@@ -491,10 +523,10 @@ fn ensure_worker(state: &AppState) {
 /// blocking download/analysis runs on a blocking thread so the async runtime
 /// stays free to serve the queue's live updates.
 async fn run_worker(state: &AppState) {
-    // On panic the guard clears the worker flag so a fresh worker can spawn;
-    // on the normal path below we disarm it (the flag is already cleared).
+    // On panic the guard clears the worker flag (so a fresh worker can spawn)
+    // and fails the in-flight entry; on the normal path below we disarm it.
     let mut guard = WorkerGuard {
-        store: state.party_queue.clone(),
+        state: state.clone(),
         disarmed: false,
     };
 

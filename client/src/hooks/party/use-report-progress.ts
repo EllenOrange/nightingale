@@ -13,7 +13,7 @@ import { usePlaybackTransportActions, usePlaybackTransportState } from "@/contex
 
 const INTERVAL_MS = 3000;
 
-export const PartyProgressReporter = () => {
+export const PartyProgressReporter = ({ fileHash }: { fileHash: string }) => {
   const { paused } = usePlaybackTransportState();
   const { getCurrentTime } = usePlaybackTransportActions();
 
@@ -21,7 +21,10 @@ export const PartyProgressReporter = () => {
     if (isTauri) return;
 
     const send = () => {
+      // Include the hash so the server can drop a stale heartbeat from a
+      // just-finished song during a transition.
       void invoke("party_progress", {
+        fileHash,
         positionMs: Math.round(getCurrentTime() * 1000),
         paused,
       }).catch(() => {});
@@ -32,7 +35,7 @@ export const PartyProgressReporter = () => {
     send();
     const id = setInterval(send, INTERVAL_MS);
     return () => clearInterval(id);
-  }, [getCurrentTime, paused]);
+  }, [fileHash, getCurrentTime, paused]);
 
   return null;
 };
