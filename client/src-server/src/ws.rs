@@ -244,6 +244,6 @@ fn apply_patch(state: &mut JukeboxState, patch: JukeboxPatch) {
     }
 }
 
-fn broadcast_jukebox(state: &AppState, snapshot: &JukeboxState) {
+pub(crate) fn broadcast_jukebox(state: &AppState, snapshot: &JukeboxState) {
     state.events.emit("jukebox", snapshot);
 }

@@ -44,7 +44,7 @@ pub use playback::{
 };
 pub use profile::ProfileStore;
 pub use scanner::start_scan;
-pub use song::SongOrigin;
+pub use song::{Song, SongOrigin};
 pub use source::{
     JellyfinAuth, JellyfinSource, MediaSource, NavidromeAuth, NavidromeSource, PlexAuth,
     PlexSource, SourceKind, active_source,
@@ -89,4 +89,12 @@ pub fn startup() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Look up a single indexed song by its blake3 file hash. Returns `None` if the
+/// hash is unknown or the row cannot be read. Used by the party layer to resolve
+/// a play request (which carries only a hash over the wire) back to a full
+/// `Song` for the frontend.
+pub fn song_by_hash(file_hash: &str) -> Option<Song> {
+    library_db::load_song_by_hash(file_hash).ok().flatten()
 }

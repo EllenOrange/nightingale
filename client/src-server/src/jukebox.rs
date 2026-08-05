@@ -24,6 +24,14 @@ pub struct JukeboxState {
     pub controller: Option<ClientId>,
     pub theme: Option<usize>,
     pub score: u32,
+
+    // ── Party layer ─────────────────────────────────────────────────────────
+    /// The song the TV browser tab should be playing. Set by `party_play`.
+    pub requested_song_hash: Option<String>,
+    /// Monotonic counter bumped on every `party_play`. The frontend triggers a
+    /// navigate when this changes, so replaying the same song still fires (the
+    /// hash alone would look unchanged).
+    pub play_token: u64,
 }
 
 #[derive(Default)]

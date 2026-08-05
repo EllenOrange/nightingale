@@ -44,6 +44,15 @@ pub async fn handle_cmd(
     body: Option<Json<Value>>,
 ) -> Result<Json<Value>, ApiError> {
     let payload = body.map(|Json(v)| v).unwrap_or(Value::Null);
+
+    // Party-layer commands need the full AppState (jukebox + events), not just
+    // the event bus the upstream dispatcher threads through. Route them first
+    // so party code stays isolated from the ~490-line table below.
+    if name.starts_with("party_") {
+        let value = crate::party::dispatch(&state, &name, payload).await?;
+        return Ok(Json(value));
+    }
+
     let value = dispatch(state.events.clone(), &name, payload).await?;
     Ok(Json(value))
 }

@@ -3,6 +3,7 @@ mod commands;
 mod events;
 mod jukebox;
 mod media;
+mod party;
 mod state;
 mod static_files;
 mod ws;

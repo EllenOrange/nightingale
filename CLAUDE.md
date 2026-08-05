@@ -242,6 +242,16 @@ Timing caution: the Demucs full reanalyze took 44s versus 265s for the original 
    - screen/state gating for accepting a play command
 5. Spike: drive a song end to end from `curl` or a WS client against the running server, with no code changes. This is the go/no-go test for Section 5 decision 1.
 
+### Phase 1 Step 1 results: remote-controlled playback proven
+
+The Step 1 spike (PHASE1_PLAN.md) is **done and validated**. A WS message now drives the TV browser tab into playback with no interaction.
+
+- **Server:** `JukeboxState` gained `requested_song_hash` and a monotonic `play_token` (`jukebox.rs`). New party command surface at `POST /api/cmd/party_play {fileHash}` and `party_song_by_hash {fileHash}`, isolated in `client/src-server/src/party/`. `party_*` commands are routed before the upstream dispatcher in `handle_cmd`, since they need the full `AppState` (jukebox), not just the event bus. `app_core` gained a `song_by_hash` helper and a `Song` re-export (the only upstream-file touch, two lines in `lib.rs`).
+- **Frontend:** `client/src/hooks/party/use-remote-playback.ts` listens for the `jukebox` event (note: the real event name is `jukebox`, **not** `jukebox.state` as the plan assumed), and on a `play_token` change resolves the hash to a `Song` and does the same `navigate("/playback", { state: { song } })` the sidebar uses. Mounted once inside `<BrowserRouter>` in `App.tsx`, inert on Tauri.
+- **Tests:** T1.1 (`cargo test -p server`, token increment + camelCase rejection) and T1.2 (`scripts/party-test/t1-remote-play.mjs`, drives a live server, asserts advancing token) both pass. T1.2 is written to be re-runnable against a long-lived server (baselines off the connect snapshot, since jukebox state is in-memory for the process lifetime).
+
+**Autoplay finding (the risk the plan flagged): not a problem here.** From a cold browser tab sitting on the menu, the remote play navigates *and the stem audio starts on its own*, confirmed by ear on this machine (Windows, WebView-class browser, `http://127.0.0.1:8080`). The source video element autoplays muted (audio is the Web Audio stem mix, not the video track). So a party can start hands-free without a priming gesture on the TV. Revisit only if a stricter browser blocks it.
+
 ### Phase 1: MVP
 
 Party Server with: YouTube search and yt-dlp download into the library folder, trigger analysis, mark ready, auto-advancing playback, a phone guest UI (search, add, see queue), and a minimal admin (skip, clear). Acceptance: a guest on a phone adds a YouTube song; it downloads, gets separated and lyric-aligned, and plays on the TV, and the queue advances when it ends.
