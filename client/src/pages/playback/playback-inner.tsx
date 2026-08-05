@@ -21,6 +21,7 @@ import {
 } from "@/contexts/playback";
 import { usePlaybackInput, usePlaybackResult } from "@/hooks/playback";
 import { PartySongEndReporter } from "@/hooks/party/use-report-song-end";
+import { PartyRemoteControls } from "@/hooks/party/use-apply-remote-controls";
 import type { AppConfig } from "@/types/AppConfig";
 import type { Song } from "@/types/Song";
 
@@ -85,8 +86,9 @@ export function PlaybackInner({ song, config }: PlaybackInnerProps) {
   return (
     <PlaybackProviders song={song} config={config}>
       {/* Party layer: tells the server when this song ends so the queue can
-          auto-advance (inert on Tauri). */}
+          auto-advance, and applies the admin's live controls (inert on Tauri). */}
       <PartySongEndReporter fileHash={song.file_hash} />
+      <PartyRemoteControls />
       <PlaybackLayout song={song} config={config} />
     </PlaybackProviders>
   );

@@ -12,6 +12,7 @@ use serde_json::Value;
 use crate::commands::{ApiError, CmdResult};
 use crate::state::AppState;
 
+pub mod controls;
 pub mod ingest;
 pub mod playback;
 pub mod queue;
@@ -27,9 +28,16 @@ pub async fn dispatch(state: &AppState, name: &str, payload: Value) -> CmdResult
         "party_queue_list" => queue_service::party_queue_list(state).await,
         "party_queue_add" => queue_service::party_queue_add(state, payload).await,
         "party_queue_remove" => queue_service::party_queue_remove(state, payload).await,
+        "party_queue_clear" => queue_service::party_queue_clear(state).await,
         "party_queue_reorder" => queue_service::party_queue_reorder(state, payload).await,
         "party_song_ended" => queue_service::party_song_ended(state, payload).await,
-        "party_skip" => queue_service::party_skip(state).await,
+        "party_skip" | "party_control_skip" => queue_service::party_skip(state).await,
+        "party_control_pause" => controls::party_control_pause(state, true).await,
+        "party_control_resume" => controls::party_control_pause(state, false).await,
+        "party_control_restart" => controls::party_control_restart(state).await,
+        "party_set_guide_vocal" => controls::party_set_guide_vocal(state, payload).await,
+        "party_set_volume" => controls::party_set_volume(state, payload).await,
+        "party_set_key" => controls::party_set_key(state, payload).await,
         _ => Err(ApiError(
             axum::http::StatusCode::NOT_FOUND,
             format!("unknown party command {name}"),

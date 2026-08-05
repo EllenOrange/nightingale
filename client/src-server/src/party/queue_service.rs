@@ -202,6 +202,12 @@ struct ReorderArgs {
     position: usize,
 }
 
+pub async fn party_queue_clear(state: &AppState) -> CmdResult {
+    let (_, snapshot) = state.party_queue.mutate(|q| q.entries.clear());
+    broadcast(state, &snapshot);
+    Ok(json!({ "cleared": true }))
+}
+
 pub async fn party_queue_reorder(state: &AppState, payload: Value) -> CmdResult {
     let args: ReorderArgs = deserialize(payload)?;
     let (ok, snapshot) = state

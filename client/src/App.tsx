@@ -15,6 +15,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { UPDATES_SUPPORTED } from "./bridge/platform";
 import { RemotePlayback } from "./hooks/party/use-remote-playback";
 import { Party } from "./pages/party/party";
+import { Admin } from "./pages/admin/admin";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ const InnerWrapper = () => (
           </Route>
           <Route path="/playback" element={<Playback />} />
           <Route path="/party" element={<Party />} />
+          <Route path="/admin" element={<Admin />} />
         </Routes>
       </BrowserRouter>
     </MenuFocusProvider>

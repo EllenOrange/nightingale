@@ -32,6 +32,19 @@ pub struct JukeboxState {
     /// navigate when this changes, so replaying the same song still fires (the
     /// hash alone would look unchanged).
     pub play_token: u64,
+    /// Bumped by `party_control_restart` to re-trigger the current song from the
+    /// top without changing which song plays.
+    pub restart_token: u64,
+
+    // Live audio controls set from the admin page. `None` means "no remote
+    // override, keep the TV's local default", so the server never forces a
+    // control the admin has not touched (e.g. muting volume to 0).
+    /// Guide-vocal mix level, 0.0 to 1.0.
+    pub guide_vocal: Option<f32>,
+    /// Semitone key offset applied to the current song.
+    pub key_offset: Option<i32>,
+    /// Master volume, 0.0 to 1.0.
+    pub volume: Option<f32>,
 }
 
 #[derive(Default)]
