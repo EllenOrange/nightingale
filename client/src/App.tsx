@@ -16,6 +16,7 @@ import { UPDATES_SUPPORTED } from "./bridge/platform";
 import { RemotePlayback } from "./hooks/party/use-remote-playback";
 import { Party } from "./pages/party/party";
 import { Admin } from "./pages/admin/admin";
+import { Tv } from "./pages/tv/tv";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const InnerWrapper = () => (
           <Route path="/playback" element={<Playback />} />
           <Route path="/party" element={<Party />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/tv" element={<Tv />} />
         </Routes>
       </BrowserRouter>
     </MenuFocusProvider>

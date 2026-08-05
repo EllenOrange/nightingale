@@ -80,6 +80,7 @@ async fn main() {
         .route("/api/cmd/:name", post(commands::handle_cmd))
         .route("/api/asset", get(media::handle_asset))
         .route("/media/:hash/:kind", get(media::handle_hashed))
+        .route("/qr", get(party::qr::handle_qr))
         .route("/ws", any(ws::handle_upgrade))
         .fallback(static_files::handle)
         .with_state(state.clone());

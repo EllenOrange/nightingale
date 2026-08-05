@@ -15,6 +15,7 @@ use crate::state::AppState;
 pub mod controls;
 pub mod ingest;
 pub mod playback;
+pub mod qr;
 pub mod queue;
 pub mod queue_service;
 

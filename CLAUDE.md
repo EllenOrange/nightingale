@@ -287,6 +287,16 @@ Step 4 (PHASE1_PLAN.md) is **done and validated** (except live key change, delib
 
 **Resolved open question (was in Section 5.1):** rust-embed is used without `debug-embed`, so the **debug** server serves `client/dist/` from disk at runtime. A frontend-only change needs just `pnpm build` (no `cargo build`); a already-open browser tab must still hard-reload to fetch the new bundle (react-router navigation alone keeps the stale JS). The server binary only needs rebuilding for Rust changes.
 
+### Phase 1 Step 5 results: QR join and TV idle page
+
+Step 5 (PHASE1_PLAN.md) is **done and validated**, completing the Phase 1 MVP.
+
+- **`GET /qr` (`party/qr.rs`, top-level axum route in `main.rs`):** renders an SVG QR of `http://<host>/party`, where `<host>` comes from the request's `Host` header, so the QR always points at whatever LAN address the TV was reached on (no config). Uses the `qrcode` crate. Returns `image/svg+xml`, `Cache-Control: no-store`. Verified: 200, valid SVG.
+- **`/tv` (`pages/tv/tv.tsx`):** the full-screen lobby shown between songs, big join QR (`<img src="/qr">`) plus live now-playing and up-next from `usePartyQueue`. A *screen*, not a controller.
+- **Display policy (the open question, now decided):** open the TV browser on `/tv`. Because `/tv` is not a controller route, `use-remote-playback` is active there and takes it into `/playback` (video + synced lyrics) when a new song starts; loading `/tv` while a song is already playing does *not* bounce it, since the hook only navigates on a `play_token` change. When the queue runs dry, playback returns to the menu; auto-returning to `/tv` on an empty queue is a Phase 3 polish. Verified both directions in the browser: `/tv` stays put during an already-playing song and follows a fresh play into `/playback`.
+
+**Phase 1 MVP is complete.** A guest on a phone adds a song (library or YouTube), it downloads + separates (Demucs) + LRCLIB-aligns, plays on the TV with synced lyrics, and the queue auto-advances; the host has an admin panel and the TV shows a scannable lobby between songs. Remaining brief items are Phase 2/3 (scoring surface, key change live, dedupe, deployment/mDNS/HTTPS).
+
 ### Phase 1: MVP
 
 Party Server with: YouTube search and yt-dlp download into the library folder, trigger analysis, mark ready, auto-advancing playback, a phone guest UI (search, add, see queue), and a minimal admin (skip, clear). Acceptance: a guest on a phone adds a YouTube song; it downloads, gets separated and lyric-aligned, and plays on the TV, and the queue advances when it ends.

@@ -16,15 +16,15 @@
  * get yanked into the video when their song starts).
  */
 
-/** Routes that act as remote controllers and must never become the TV screen. */
-const CONTROLLER_ROUTES = ["/party", "/admin"];
-
-const isControllerTab = () => CONTROLLER_ROUTES.some((r) => window.location.pathname.startsWith(r));
-
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { invoke, isTauri, listen, type UnlistenFn } from "@/bridge/runtime";
 import type { Song } from "@/types/Song";
+
+/** Routes that act as remote controllers and must never become the TV screen. */
+const CONTROLLER_ROUTES = ["/party", "/admin"];
+
+const isControllerTab = () => CONTROLLER_ROUTES.some((r) => window.location.pathname.startsWith(r));
 
 interface JukeboxState {
   requested_song_hash: string | null;
