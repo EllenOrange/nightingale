@@ -26,17 +26,24 @@ pub async fn party_play(state: &AppState, payload: Value) -> CmdResult {
     let args: PartyPlayArgs = serde_json::from_value(payload)
         .map_err(|e| ApiError(axum::http::StatusCode::BAD_REQUEST, format!("invalid args: {e}")))?;
 
+    let play_token = issue_play(state, args.file_hash).await;
+    Ok(json!({ "playToken": play_token }))
+}
+
+/// Publish a play intent for `file_hash`: set it as the requested song, bump
+/// `play_token`, and broadcast. Shared by the `party_play` command and the
+/// queue's auto-advance. Returns the new play token.
+pub async fn issue_play(state: &AppState, file_hash: String) -> u64 {
     let snapshot = state
         .jukebox
         .mutate(|s| {
-            s.requested_song_hash = Some(args.file_hash.clone());
+            s.requested_song_hash = Some(file_hash);
             s.play_token = s.play_token.wrapping_add(1);
         })
         .await;
 
     broadcast_jukebox(state, &snapshot);
-
-    Ok(json!({ "playToken": snapshot.play_token }))
+    snapshot.play_token
 }
 
 /// `POST /api/cmd/party_song_by_hash {"fileHash": "..."}`

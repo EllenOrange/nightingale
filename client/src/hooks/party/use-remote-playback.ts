@@ -9,7 +9,17 @@
  *
  * Mount this once, high in the tree (inside the Router), so it is active while
  * the tab sits on the menu. See PHASE1_PLAN.md Step 1.
+ *
+ * Role split: only the "screen" (the TV) should obey a play signal. The guest
+ * and admin pages are controllers, not screens, so a tab currently on `/party`
+ * or `/admin` never navigates to playback (otherwise a guest's own phone would
+ * get yanked into the video when their song starts).
  */
+
+/** Routes that act as remote controllers and must never become the TV screen. */
+const CONTROLLER_ROUTES = ["/party", "/admin"];
+
+const isControllerTab = () => CONTROLLER_ROUTES.some((r) => window.location.pathname.startsWith(r));
 
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
@@ -49,6 +59,10 @@ export const useRemotePlayback = () => {
 
       if (token === lastTokenRef.current || !hash) return;
       lastTokenRef.current = token;
+
+      // Controllers (guest/admin phones) observe play signals but never follow
+      // them into the video; only the TV screen does.
+      if (isControllerTab()) return;
 
       try {
         const song = await invoke<Song | null>("party_song_by_hash", { fileHash: hash });

@@ -162,7 +162,7 @@ fn run_ingest(query: &str, events: &EventBus) {
 }
 
 /// The configured library folder, or `None` if the source is remote/unset.
-fn folder_library_dir() -> Option<PathBuf> {
+pub(crate) fn folder_library_dir() -> Option<PathBuf> {
     match app_core::AppConfig::load().library_source {
         Some(app_core::LibrarySource::Folder { path }) => Some(path),
         _ => None,
@@ -270,7 +270,7 @@ fn resolve_target(query: &str) -> String {
 }
 
 /// Run yt-dlp and return the final on-disk path of the downloaded file.
-fn download(query: &str, library_dir: &Path) -> Result<PathBuf, String> {
+pub(crate) fn download(query: &str, library_dir: &Path) -> Result<PathBuf, String> {
     let ytdlp = resolve_ytdlp().ok_or_else(|| {
         "yt-dlp not found (set NIGHTINGALE_YTDLP, or install it on PATH)".to_string()
     })?;
@@ -312,7 +312,7 @@ fn download(query: &str, library_dir: &Path) -> Result<PathBuf, String> {
 
 /// Trigger a scan and wait for the given file path to surface as an indexed
 /// song, returning its blake3 file hash.
-fn scan_for_path(path: &Path) -> Result<String, String> {
+pub(crate) fn scan_for_path(path: &Path) -> Result<String, String> {
     app_core::start_scan();
     let deadline = Instant::now() + SCAN_TIMEOUT;
     loop {
@@ -346,7 +346,7 @@ fn normalize_path(path: &Path) -> String {
 }
 
 /// Poll the analysis queue until the hash leaves it analyzed, or it fails.
-fn wait_for_analysis(hash: &str) -> Result<(), String> {
+pub(crate) fn wait_for_analysis(hash: &str) -> Result<(), String> {
     use app_core::AnalysisQueue;
 
     let deadline = Instant::now() + ANALYSIS_TIMEOUT;

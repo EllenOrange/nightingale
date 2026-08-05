@@ -14,6 +14,7 @@ import { useUpdate } from "./queries/use-update";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { UPDATES_SUPPORTED } from "./bridge/platform";
 import { RemotePlayback } from "./hooks/party/use-remote-playback";
+import { Party } from "./pages/party/party";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,7 @@ const InnerWrapper = () => (
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/playback" element={<Playback />} />
+          <Route path="/party" element={<Party />} />
         </Routes>
       </BrowserRouter>
     </MenuFocusProvider>
