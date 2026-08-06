@@ -1,5 +1,7 @@
 # Phase 1 Implementation Plan: Party Layer (Path B)
 
+> **STATUS: COMPLETE AND MERGED (2026-08-05).** Every step below (1 to 5) is built, tested, and shipped, plus the online-song-search feature, a round of owner UX feedback, and two code-review passes. It landed as PR #1 (`EllenOrange/nightingale`), **merged to `master`**. The per-step "results" write-ups and the review-fix notes are in `CLAUDE.md` (the sections headed "Phase 1 Step N results", "Online song search", "Feedback round", and "Code-review fixes"). This file is kept as the original plan of record; do not re-execute it. See the "Where things stand / next" note at the top of `CLAUDE.md` for what a fresh session should do.
+
 Self-contained plan for a fresh session. Read `CLAUDE.md` first for background; this file assumes it.
 
 **Architecture decision (settled, do not relitigate):** Path B. The party layer is built **into this fork**, as pages in the existing React app plus routes in the axum server. The design brief's filesystem IPC (`commands/*.json`, `state.json`, `events.log`) is **not** being implemented; it was designed around a limitation that does not exist. See `CLAUDE.md` Sections 4 and 5.1.

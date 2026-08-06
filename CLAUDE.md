@@ -9,6 +9,25 @@ Working notes and plan for this fork. Source of truth for intent is the owner's 
 - Prefer reusing Nightingale's existing code paths over reimplementing them.
 - Study `vicwomg/pikaraoke` and `xuancong84/OpenHomeKaraoke` for proven patterns before inventing new ones.
 
+## 0.5 Where things stand (read this second)
+
+**The Phase 1 party layer is built, tested, and MERGED (2026-08-05).** It shipped as PR #1 on `EllenOrange/nightingale`, merged to `master`. `PHASE1_PLAN.md` is now historical (all steps done). The detailed, still-accurate write-ups live below in this file: the "Phase 1 Step 1..5 results" sections, "Online song search", "Feedback round", "Code-review fixes (party layer)". Read those for how each piece actually works before changing it.
+
+**Git state for a fresh session:** the merge is on GitHub. The local repo may still be on branch `party-layer` with a stale local `master` ref (`382f0b5`). To continue on the merged code: `git fetch origin`, then `git checkout master && git merge --ff-only origin/master` (or branch fresh from `origin/master`). Do not keep building on `party-layer`; start a new branch off the updated `master`.
+
+**What exists now (all under the party layer):**
+- Server (`client/src-server/src/party/`): `playback.rs` (remote play), `ingest.rs` (yt-dlp download + analyze), `queue.rs` + `queue_service.rs` (queue model, worker, auto-advance watchdog, progress), `controls.rs` (admin transport/audio), `search.rs` (LRCLIB + YouTube search), `qr.rs`. Plus `app-core` helpers (`song_by_hash`, `set_song_metadata`, `search_lrclib_query`, `Song`/`QueuedStatus` exports).
+- Frontend: pages `/party` (guest), `/admin`, `/tv`; hooks under `client/src/hooks/party/`; `components/party/playback-overlay.tsx`; a master gain node in `use-audio-player.ts`.
+- Tests: Rust `cargo test -p server` (16 unit tests) and Node integration scripts `scripts/party-test/t{1,2,3,3b,3c,3d,4,5}-*.mjs` that drive a live server. `t2` and `t3c`/`t3d` are slow (real analysis / wall-clock waits).
+
+**How to run it (this machine):** none of cargo/node/pnpm are on PATH by default (see the [[toolchain-paths]] memory / Section 3). Build the frontend before the server (`pnpm build`, then `cargo build -p server`) because a release server embeds `client/dist/`; the **debug** server serves `dist/` from disk, so a frontend-only change just needs `pnpm build` plus a browser hard-reload. Run the server with `NIGHTINGALE_YTDLP` set to the yt-dlp exe (it has no PATH shim here, see the Online-search section). Never run the desktop app and `server.exe` at once.
+
+**Not done (Phase 2/3, the natural next work):**
+- **Live key change** on the TV (currently descoped: `party_set_key` broadcasts but no live pitch node exists; a live change needs an offline `shift_key` stem re-render + stem re-fetch).
+- **Scoring surface** in the party UI, duplicate / recently-played handling, pre-seed and favorites tooling.
+- **Windows deployment**: mDNS (Bonjour or static LAN IP; `scripts/install.sh` is Linux-only), and HTTPS/secure context for microphone capture (scoring needs it). See "Deployment" at the bottom of `PHASE1_PLAN.md`.
+- **Optional carry-overs:** the one-step online search and the reorder/skip queue controls currently live on `/party`; `/admin` has queue controls but not the online search. Consider unifying if desired.
+
 ## 1. Goal
 
 A self-hosted, LAN-only karaoke system for house parties. Guests use their phones to search for and queue songs; songs play on a TV through Nightingale, which handles vocal separation, synced lyrics over the original video, guide vocals, scoring, and key/tempo.
