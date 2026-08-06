@@ -13,6 +13,10 @@ import { useConfig } from "./queries/use-config";
 import { useUpdate } from "./queries/use-update";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { UPDATES_SUPPORTED } from "./bridge/platform";
+import { RemotePlayback } from "./hooks/party/use-remote-playback";
+import { Party } from "./pages/party/party";
+import { Admin } from "./pages/admin/admin";
+import { Tv } from "./pages/tv/tv";
 
 const queryClient = new QueryClient();
 
@@ -26,12 +30,17 @@ const InnerWrapper = () => (
   <>
     <MenuFocusProvider>
       <BrowserRouter>
+        {/* Party layer: obeys remote play signals on any route (inert on Tauri). */}
+        <RemotePlayback />
         <Routes>
           <Route path="/" element={<MenuLayout />}>
             <Route index element={<MenuIndex />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
           <Route path="/playback" element={<Playback />} />
+          <Route path="/party" element={<Party />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/tv" element={<Tv />} />
         </Routes>
       </BrowserRouter>
     </MenuFocusProvider>

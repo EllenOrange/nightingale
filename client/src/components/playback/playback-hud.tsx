@@ -93,7 +93,7 @@ function TouchButton({
   );
 }
 
-function SettingsInfo({
+export function SettingsInfo({
   guideVolume,
   guideAvailable,
   micUserEnabled,
@@ -293,9 +293,18 @@ interface PlaybackHudProps {
   artist: string;
   config: AppConfig | null;
   position?: PlaybackHudPosition;
+  /** Party TV mode hides the keyboard-shortcut hints here; the party overlay
+   * shows the queue instead and toggles the hints back in with `?`. */
+  hideSettingsInfo?: boolean;
 }
 
-function PlaybackHudImpl({ title, artist, config, position = "top" }: PlaybackHudProps) {
+function PlaybackHudImpl({
+  title,
+  artist,
+  config,
+  position = "top",
+  hideSettingsInfo = false,
+}: PlaybackHudProps) {
   const { duration, guideVolume, guideAvailable } = usePlaybackTransportState();
   const { subscribe, getCurrentTime } = usePlaybackTransportActions();
   const { themeIndex, videoFlavor } = usePlaybackThemeState();
@@ -372,18 +381,20 @@ function PlaybackHudImpl({ title, artist, config, position = "top" }: PlaybackHu
           <div className={`text-base md:text-lg ${pitchScore ? "text-white" : "text-white/50"}`}>
             Score: {pitchScore ?? "--"}
           </div>
-          <div className="hidden sm:block">
-            <SettingsInfo
-              guideVolume={guideVolume}
-              guideAvailable={guideAvailable}
-              micUserEnabled={micUserEnabled}
-              micName={micName}
-              micMonitorUserEnabled={micMonitorUserEnabled}
-              themeIndex={themeIndex}
-              videoFlavor={videoFlavor}
-              showShortcuts={!hasTouch}
-            />
-          </div>
+          {!hideSettingsInfo && (
+            <div className="hidden sm:block">
+              <SettingsInfo
+                guideVolume={guideVolume}
+                guideAvailable={guideAvailable}
+                micUserEnabled={micUserEnabled}
+                micName={micName}
+                micMonitorUserEnabled={micMonitorUserEnabled}
+                themeIndex={themeIndex}
+                videoFlavor={videoFlavor}
+                showShortcuts={!hasTouch}
+              />
+            </div>
+          )}
           <TouchControls config={config} hasTouch={hasTouch} position={position} />
         </div>
       </div>

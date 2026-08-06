@@ -26,11 +26,14 @@ export interface AudioPlayer {
   /** False for LRC-provided songs without stems: the original mix plays and
    * there is no separate guide vocal track to control. */
   guideAvailable: boolean;
+  /** Master output level, 0..1. Applies to instrumental + guide together. */
+  masterVolume: number;
   play: () => void;
   pause: () => void;
   resume: () => void;
   seek: (time: number) => void;
   setGuideVolume: (v: number) => void;
+  setMasterVolume: (v: number) => void;
   cleanup: () => void;
   getVocalsBuffer: () => AudioBuffer | null;
   getScoringBuffer: () => AudioBuffer | null;
@@ -49,6 +52,8 @@ export function useAudioPlayer(
   const instrumentalSrcRef = useRef<AudioBufferSourceNode | null>(null);
   const vocalsSrcRef = useRef<AudioBufferSourceNode | null>(null);
   const vocalsGainRef = useRef<GainNode | null>(null);
+  /** Master gain between the mix and the speakers; drives `setMasterVolume`. */
+  const masterGainRef = useRef<GainNode | null>(null);
   const rafRef = useRef<number>(0);
   const currentTimeRef = useRef(0);
   const subscribersRef = useRef<Set<TimeSubscriber>>(new Set());
@@ -67,6 +72,7 @@ export function useAudioPlayer(
   const [error, setError] = useState<string | null>(null);
   const [guideVolume, setGuideVolumeState] = useState(initialGuideVolume);
   const [guideAvailable, setGuideAvailable] = useState(true);
+  const [masterVolume, setMasterVolumeState] = useState(1);
 
   const getVocalsBuffer = useCallback(() => vocalsBufRef.current, []);
 
@@ -135,7 +141,7 @@ export function useAudioPlayer(
 
       const instSrc = ctx.createBufferSource();
       instSrc.buffer = instBuf;
-      instSrc.connect(ctx.destination);
+      instSrc.connect(masterGainRef.current ?? ctx.destination);
 
       instSrc.onended = () => {
         if (!cancelledRef.current && playingRef.current && instrumentalSrcRef.current === instSrc) {
@@ -184,9 +190,16 @@ export function useAudioPlayer(
     const ctx = new AudioContext();
     ctxRef.current = ctx;
 
+    // Master gain sits between the whole mix and the speakers so the party
+    // admin can turn the room down without touching the guide-vocal balance.
+    const master = ctx.createGain();
+    master.gain.value = 1;
+    master.connect(ctx.destination);
+    masterGainRef.current = master;
+
     const gainNode = ctx.createGain();
     gainNode.gain.value = Math.max(0, Math.min(1, initialGuideVolume));
-    gainNode.connect(ctx.destination);
+    gainNode.connect(master);
     vocalsGainRef.current = gainNode;
 
     const isCancelled = () => cancelled || cancelledRef.current;
@@ -340,6 +353,16 @@ export function useAudioPlayer(
     }
   }, []);
 
+  const setMasterVolume = useCallback((v: number) => {
+    const clamped = Math.max(0, Math.min(1, v));
+
+    setMasterVolumeState(clamped);
+
+    if (masterGainRef.current) {
+      masterGainRef.current.gain.value = clamped;
+    }
+  }, []);
+
   const cleanup = useCallback(() => {
     cancelledRef.current = true;
 
@@ -362,11 +385,13 @@ export function useAudioPlayer(
       error,
       guideVolume,
       guideAvailable,
+      masterVolume,
       play,
       pause,
       resume,
       seek,
       setGuideVolume,
+      setMasterVolume,
       cleanup,
       getVocalsBuffer,
       getScoringBuffer,
@@ -382,11 +407,13 @@ export function useAudioPlayer(
       error,
       guideVolume,
       guideAvailable,
+      masterVolume,
       play,
       pause,
       resume,
       seek,
       setGuideVolume,
+      setMasterVolume,
       cleanup,
       getVocalsBuffer,
       getScoringBuffer,

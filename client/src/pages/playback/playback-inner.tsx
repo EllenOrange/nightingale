@@ -20,6 +20,11 @@ import {
   usePlaybackTransportState,
 } from "@/contexts/playback";
 import { usePlaybackInput, usePlaybackResult } from "@/hooks/playback";
+import { PartySongEndReporter } from "@/hooks/party/use-report-song-end";
+import { PartyProgressReporter } from "@/hooks/party/use-report-progress";
+import { PartyRemoteControls } from "@/hooks/party/use-apply-remote-controls";
+import { PartyPlaybackOverlay } from "@/components/party/playback-overlay";
+import { isTauri } from "@/bridge/runtime";
 import type { AppConfig } from "@/types/AppConfig";
 import type { Song } from "@/types/Song";
 
@@ -56,7 +61,11 @@ function PlaybackLayout({ song, config }: PlaybackLayoutProps) {
             artist={song.artist}
             config={config}
             position={hudPosition}
+            hideSettingsInfo={!isTauri}
           />
+          {/* Party TV: queue in the upper right, join QR in the lower right,
+              hints toggled with `?`. */}
+          {!isTauri && <PartyPlaybackOverlay />}
           <PitchGraph series={series} position={hudPosition} />
           <LyricsDisplay
             segments={segments}
@@ -83,6 +92,11 @@ function PlaybackLayout({ song, config }: PlaybackLayoutProps) {
 export function PlaybackInner({ song, config }: PlaybackInnerProps) {
   return (
     <PlaybackProviders song={song} config={config}>
+      {/* Party layer: tells the server when this song ends so the queue can
+          auto-advance, and applies the admin's live controls (inert on Tauri). */}
+      <PartySongEndReporter fileHash={song.file_hash} />
+      <PartyProgressReporter fileHash={song.file_hash} />
+      <PartyRemoteControls />
       <PlaybackLayout song={song} config={config} />
     </PlaybackProviders>
   );
